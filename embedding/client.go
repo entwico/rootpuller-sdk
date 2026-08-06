@@ -21,7 +21,8 @@ import (
 // Client calls the VectorEmbeddingService. Obtain one from
 // rootpuller.Client.Embedding.
 type Client struct {
-	rpc embeddingconnect.VectorEmbeddingServiceClient
+	rpc        embeddingconnect.VectorEmbeddingServiceClient
+	deployment string
 }
 
 // NewFromCore is the internal constructor used by rootpuller.New.
@@ -29,10 +30,20 @@ func NewFromCore(core *transport.Core) *Client {
 	return &Client{rpc: embeddingconnect.NewVectorEmbeddingServiceClient(core.HTTPClient, core.BaseURL, core.ClientOpts...)}
 }
 
+// WithDeployment returns a client that sends the rootpuller-deployment
+// routing header (e.g. "local", "cloudrun") on every call. A per-call
+// rootpuller.ContextWithDeployment value still wins.
+func (c *Client) WithDeployment(name string) *Client {
+	derived := *c
+	derived.deployment = name
+	return &derived
+}
+
 // Embed calls VectorEmbeddingService/Embed: embeds all inputs in one
 // round trip. For large ingestion batches where results should arrive
 // incrementally, use EmbedStream.
 func (c *Client) Embed(ctx context.Context, req *Request) (*Response, error) {
+	ctx = transport.EnsureDeployment(ctx, c.deployment)
 	msg, err := req.toProto()
 	if err != nil {
 		return nil, err
@@ -61,6 +72,7 @@ func (c *Client) Embed(ctx context.Context, req *Request) (*Response, error) {
 // Iteration stops on the first error; breaking out of the loop closes the
 // stream.
 func (c *Client) EmbedStream(ctx context.Context, req *Request) iter.Seq2[StreamResult, error] {
+	ctx = transport.EnsureDeployment(ctx, c.deployment)
 	msg, err := req.toProto()
 	if err != nil {
 		return func(yield func(StreamResult, error) bool) {
@@ -93,6 +105,7 @@ func (c *Client) EmbedStream(ctx context.Context, req *Request) iter.Seq2[Stream
 // ListModels calls VectorEmbeddingService/ListModels: the embedding
 // models available on this server.
 func (c *Client) ListModels(ctx context.Context) ([]ModelInfo, error) {
+	ctx = transport.EnsureDeployment(ctx, c.deployment)
 	resp, err := c.rpc.ListModels(ctx, connect.NewRequest(&emptypb.Empty{}))
 	if err != nil {
 		return nil, transport.WrapError(err, embeddingconnect.VectorEmbeddingServiceListModelsProcedure)

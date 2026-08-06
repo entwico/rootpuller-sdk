@@ -32,7 +32,6 @@ oauth := &clientcredentials.Config{
 
 c, err := rootpuller.New("http://rootpuller-api:8755",
     rootpuller.WithTokenSource(oauth.TokenSource(ctx)),
-    rootpuller.WithDeployment("cloudrun"),
 )
 if err != nil { ... }
 
@@ -67,15 +66,27 @@ speaking the gRPC protocol, so it talks to the unmodified server.
 |---|---|
 | `WithTokenSource(ts)` | OAuth bearer auth from any `oauth2.TokenSource` (cached via `ReuseTokenSource`) |
 | `WithToken(s)` | Static bearer token |
-| `WithDeployment(name)` | Default `rootpuller-deployment` routing header (chunker/embedding/vectorops) |
-| `WithBot(name)` | Default `rootpuller-bot` header (webcontent/scrape) |
 | `WithTLSConfig` / `WithInsecureTLS` | TLS settings for `https` URLs |
 | `WithOTel(...)` | OpenTelemetry tracing/metrics via otelconnect |
 | `WithReadMaxBytes(n)` | Receive size cap (default 64 MiB) |
 | `WithInterceptors(...)` | Custom connect interceptors (escape hatch) |
 | `WithHTTPClient(hc)` | Full HTTP client override |
 
-Per-call header overrides: `rootpuller.ContextWithDeployment(ctx, "local")`,
+### Routing headers
+
+The two routing headers are scoped to the services that understand them,
+so they live on the service clients rather than on `rootpuller.New`:
+
+- `rootpuller-deployment` (chunker, embedding, vectorops — selects the
+  backend deployment, e.g. `"local"` / `"cloudrun"`):
+  `c.Chunker().WithDeployment("cloudrun")`, likewise on `Embedding()`
+  and `VectorOps()`.
+- `rootpuller-bot` (webcontent, scrape — selects the bot identity):
+  `c.WebContent().WithBot("crawler-a")`, `c.Scrape().WithBot(...)`.
+
+`WithDeployment`/`WithBot` return cheap derived clients, so a default can
+be baked once and reused. Per-call overrides win over the client default:
+`rootpuller.ContextWithDeployment(ctx, "local")`,
 `rootpuller.ContextWithBot(ctx, "crawler-b")`.
 
 ### Services

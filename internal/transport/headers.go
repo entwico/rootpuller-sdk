@@ -20,45 +20,60 @@ const (
 	botCtxKey
 )
 
-// ContextWithDeployment returns a context that overrides the client-wide
-// rootpuller-deployment header for calls made with it.
+// ContextWithDeployment returns a context that sets the
+// rootpuller-deployment header for calls made with it, overriding any
+// service-client default.
 func ContextWithDeployment(ctx context.Context, name string) context.Context {
 	return context.WithValue(ctx, deploymentCtxKey, name)
 }
 
-// ContextWithBot returns a context that overrides the client-wide
-// rootpuller-bot header for calls made with it.
+// ContextWithBot returns a context that sets the rootpuller-bot header
+// for calls made with it, overriding any service-client default.
 func ContextWithBot(ctx context.Context, name string) context.Context {
 	return context.WithValue(ctx, botCtxKey, name)
 }
 
-// NewHeadersInterceptor injects the deployment/bot routing headers.
-// Per-call context values win over the client-wide defaults; an empty
-// resolved value sends no header (the server treats absent and empty
-// alike, but absent keeps requests clean).
-func NewHeadersInterceptor(defaultDeployment, defaultBot string) connect.Interceptor {
-	return &headersInterceptor{deployment: defaultDeployment, bot: defaultBot}
+// EnsureDeployment injects a service-client deployment default unless
+// the context already carries an explicit value (which wins).
+func EnsureDeployment(ctx context.Context, name string) context.Context {
+	if name == "" {
+		return ctx
+	}
+	if _, ok := ctx.Value(deploymentCtxKey).(string); ok {
+		return ctx
+	}
+	return ContextWithDeployment(ctx, name)
 }
 
-type headersInterceptor struct {
-	deployment string
-	bot        string
+// EnsureBot injects a service-client bot default unless the context
+// already carries an explicit value (which wins).
+func EnsureBot(ctx context.Context, name string) context.Context {
+	if name == "" {
+		return ctx
+	}
+	if _, ok := ctx.Value(botCtxKey).(string); ok {
+		return ctx
+	}
+	return ContextWithBot(ctx, name)
 }
+
+// NewHeadersInterceptor turns the context values set by
+// ContextWithDeployment/ContextWithBot (or the service clients' Ensure*
+// defaults) into wire headers. An empty value sends no header (the
+// server treats absent and empty alike, but absent keeps requests
+// clean).
+func NewHeadersInterceptor() connect.Interceptor {
+	return &headersInterceptor{}
+}
+
+type headersInterceptor struct{}
 
 func (i *headersInterceptor) apply(ctx context.Context, h http.Header) {
-	deployment := i.deployment
-	if v, ok := ctx.Value(deploymentCtxKey).(string); ok {
-		deployment = v
+	if v, ok := ctx.Value(deploymentCtxKey).(string); ok && v != "" {
+		h.Set(DeploymentHeader, v)
 	}
-	if deployment != "" {
-		h.Set(DeploymentHeader, deployment)
-	}
-	bot := i.bot
-	if v, ok := ctx.Value(botCtxKey).(string); ok {
-		bot = v
-	}
-	if bot != "" {
-		h.Set(BotHeader, bot)
+	if v, ok := ctx.Value(botCtxKey).(string); ok && v != "" {
+		h.Set(BotHeader, v)
 	}
 }
 

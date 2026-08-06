@@ -19,7 +19,8 @@ import (
 // Client calls the TextChunkerService. Obtain one from
 // rootpuller.Client.Chunker.
 type Client struct {
-	rpc chunkerconnect.TextChunkerServiceClient
+	rpc        chunkerconnect.TextChunkerServiceClient
+	deployment string
 }
 
 // NewFromCore is the internal constructor used by rootpuller.New.
@@ -27,10 +28,19 @@ func NewFromCore(core *transport.Core) *Client {
 	return &Client{rpc: chunkerconnect.NewTextChunkerServiceClient(core.HTTPClient, core.BaseURL, core.ClientOpts...)}
 }
 
+// WithDeployment returns a client that sends the rootpuller-deployment
+// routing header (e.g. "local", "cloudrun") on every call. A per-call
+// rootpuller.ContextWithDeployment value still wins.
+func (c *Client) WithDeployment(name string) *Client {
+	derived := *c
+	derived.deployment = name
+	return &derived
+}
+
 func (c *Client) call(ctx context.Context, procedure string,
 	send func(context.Context) (*connect.Response[chunkerpb.TextChunkResponse], error),
 ) ([][]common.TextChunk, error) {
-	resp, err := send(ctx)
+	resp, err := send(transport.EnsureDeployment(ctx, c.deployment))
 	if err != nil {
 		return nil, transport.WrapError(err, procedure)
 	}

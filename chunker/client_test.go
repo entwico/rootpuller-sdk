@@ -80,15 +80,12 @@ func newHeaderCapturingServer(t *testing.T) (*rootpullertest.Server, chan http.H
 func TestAuthAndRoutingHeaders(t *testing.T) {
 	srv, headers := newHeaderCapturingServer(t)
 
-	c, err := rootpuller.New(srv.URL,
-		rootpuller.WithToken("test-token"),
-		rootpuller.WithDeployment("cloudrun"),
-		rootpuller.WithBot("crawler-a"),
-	)
+	c, err := rootpuller.New(srv.URL, rootpuller.WithToken("test-token"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := c.Chunker().ChunkToken(t.Context(), &chunker.TokenRequest{Texts: []string{"x"}}); err != nil {
+	chk := c.Chunker().WithDeployment("cloudrun")
+	if _, err := chk.ChunkToken(t.Context(), &chunker.TokenRequest{Texts: []string{"x"}}); err != nil {
 		t.Fatal(err)
 	}
 	h := <-headers
@@ -98,22 +95,24 @@ func TestAuthAndRoutingHeaders(t *testing.T) {
 	if got := h.Get("rootpuller-deployment"); got != "cloudrun" {
 		t.Errorf("rootpuller-deployment = %q, want cloudrun", got)
 	}
-	if got := h.Get("rootpuller-bot"); got != "crawler-a" {
-		t.Errorf("rootpuller-bot = %q, want crawler-a", got)
-	}
 
-	// Per-call context overrides beat the client-wide defaults.
+	// Per-call context overrides beat the service-client default.
 	ctx := rootpuller.ContextWithDeployment(t.Context(), "local")
-	ctx = rootpuller.ContextWithBot(ctx, "crawler-b")
-	if _, err := c.Chunker().ChunkToken(ctx, &chunker.TokenRequest{Texts: []string{"x"}}); err != nil {
+	if _, err := chk.ChunkToken(ctx, &chunker.TokenRequest{Texts: []string{"x"}}); err != nil {
 		t.Fatal(err)
 	}
 	h = <-headers
 	if got := h.Get("rootpuller-deployment"); got != "local" {
 		t.Errorf("override rootpuller-deployment = %q, want local", got)
 	}
-	if got := h.Get("rootpuller-bot"); got != "crawler-b" {
-		t.Errorf("override rootpuller-bot = %q, want crawler-b", got)
+
+	// The derived client left the original untouched.
+	if _, err := c.Chunker().ChunkToken(t.Context(), &chunker.TokenRequest{Texts: []string{"x"}}); err != nil {
+		t.Fatal(err)
+	}
+	h = <-headers
+	if got := h.Get("rootpuller-deployment"); got != "" {
+		t.Errorf("base client rootpuller-deployment = %q, want unset", got)
 	}
 }
 

@@ -24,11 +24,20 @@ import (
 // rootpuller.Client.Scrape.
 type ScrapeClient struct {
 	rpc webcontentconnect.ScrapeServiceClient
+	bot string
 }
 
 // NewScrapeFromCore is the internal constructor used by rootpuller.New.
 func NewScrapeFromCore(core *transport.Core) *ScrapeClient {
 	return &ScrapeClient{rpc: webcontentconnect.NewScrapeServiceClient(core.HTTPClient, core.BaseURL, core.ClientOpts...)}
+}
+
+// WithBot returns a client that sends the rootpuller-bot identity header
+// on every call. A per-call rootpuller.ContextWithBot value still wins.
+func (c *ScrapeClient) WithBot(name string) *ScrapeClient {
+	derived := *c
+	derived.bot = name
+	return &derived
 }
 
 // LinkExtraction controls which links a crawl follows.
@@ -176,6 +185,7 @@ func (CrawlProgressEvent) isCrawlEvent() {}
 // arrive as PageEvent.Err, not as iteration errors. For per-page buffered
 // results use CrawlPages.
 func (c *ScrapeClient) Crawl(ctx context.Context, req *CrawlRequest) iter.Seq2[CrawlEvent, error] {
+	ctx = transport.EnsureBot(ctx, c.bot)
 	msg, err := req.toProto()
 	if err != nil {
 		return errSeq[CrawlEvent](err)
@@ -291,6 +301,7 @@ type MapSummary struct {
 // MapURLs calls ScrapeService/Map: discovers a site's URLs from its
 // sitemaps, buffered into one slice.
 func (c *ScrapeClient) MapURLs(ctx context.Context, req *MapRequest) ([]string, *MapSummary, error) {
+	ctx = transport.EnsureBot(ctx, c.bot)
 	procedure := webcontentconnect.ScrapeServiceMapProcedure
 	stream, err := c.rpc.Map(ctx, connect.NewRequest(&webcontentpb.MapRequest{
 		Url:               req.URL,

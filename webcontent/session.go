@@ -76,6 +76,9 @@ type sessionCall struct {
 // starts the response demultiplexer. A nil init keeps all server
 // defaults.
 func (c *ScrapeClient) OpenSession(ctx context.Context, init *SessionInit) (*Session, error) {
+	// The bot identity is fixed at stream creation; it applies to every
+	// instruction of the session.
+	ctx = transport.EnsureBot(ctx, c.bot)
 	if init == nil {
 		init = &SessionInit{}
 	}

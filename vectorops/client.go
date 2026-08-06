@@ -21,12 +21,22 @@ import (
 // Client calls the VectorOpsService. Obtain one from
 // rootpuller.Client.VectorOps.
 type Client struct {
-	rpc vectoropsconnect.VectorOpsServiceClient
+	rpc        vectoropsconnect.VectorOpsServiceClient
+	deployment string
 }
 
 // NewFromCore is the internal constructor used by rootpuller.New.
 func NewFromCore(core *transport.Core) *Client {
 	return &Client{rpc: vectoropsconnect.NewVectorOpsServiceClient(core.HTTPClient, core.BaseURL, core.ClientOpts...)}
+}
+
+// WithDeployment returns a client that sends the rootpuller-deployment
+// routing header (e.g. "local", "cloudrun") on every call. A per-call
+// rootpuller.ContextWithDeployment value still wins.
+func (c *Client) WithDeployment(name string) *Client {
+	derived := *c
+	derived.deployment = name
+	return &derived
 }
 
 // Outbound chunk sizing. Frames must stay under streamio.MaxChunkBytes
@@ -85,6 +95,7 @@ func labelFrames(labels []int32) iter.Seq2[*vectoropspb.ProjectUmapRequest, erro
 // chunks, half-closes, and collects one metadata frame followed by
 // row-aligned result chunks. A nil params keeps all server defaults.
 func (c *Client) ClusterHdbscan(ctx context.Context, points Matrix, params *HdbscanParams) (*HdbscanResult, error) {
+	ctx = transport.EnsureDeployment(ctx, c.deployment)
 	if err := points.validate(); err != nil {
 		return nil, err
 	}
@@ -138,6 +149,7 @@ func (c *Client) ClusterHdbscan(ctx context.Context, points Matrix, params *Hdbs
 // one metadata frame (output dimensions) followed by row-aligned embedding
 // chunks. A nil params keeps all server defaults.
 func (c *Client) ProjectUmap(ctx context.Context, points Matrix, params *UmapParams) (*UmapResult, error) {
+	ctx = transport.EnsureDeployment(ctx, c.deployment)
 	if err := points.validate(); err != nil {
 		return nil, err
 	}

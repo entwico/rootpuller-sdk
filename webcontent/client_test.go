@@ -2,11 +2,17 @@ package webcontent_test
 
 import (
 	"bytes"
+	"context"
 	"errors"
+	"net/http"
 	"testing"
+
+	"connectrpc.com/connect"
 
 	rootpuller "github.com/entwico/rootpuller-sdk"
 	"github.com/entwico/rootpuller-sdk/apierror"
+	webcontentpb "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/webcontent"
+	"github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/webcontent/webcontentconnect"
 	"github.com/entwico/rootpuller-sdk/rootpullertest"
 	"github.com/entwico/rootpuller-sdk/webcontent"
 )
@@ -142,6 +148,57 @@ func TestExtractContentTerminalContentError(t *testing.T) {
 	var ce *webcontent.ContentError
 	if !errors.As(err, &ce) || ce.Code != webcontent.ErrorCodeExtractionNoContent {
 		t.Fatalf("err = %#v, want ContentError EXTRACTION_NO_CONTENT", err)
+	}
+}
+
+// botCapturingWebContent records the rootpuller-bot header of FetchUrl
+// calls and immediately completes the stream.
+type botCapturingWebContent struct {
+	webcontentconnect.UnimplementedWebContentServiceHandler
+
+	bots chan string
+}
+
+func (h *botCapturingWebContent) FetchUrl(_ context.Context, req *connect.Request[webcontentpb.FetchUrlRequest], stream *connect.ServerStream[webcontentpb.FetchUrlResponse]) error {
+	h.bots <- req.Header().Get("rootpuller-bot")
+	return stream.Send(&webcontentpb.FetchUrlResponse{
+		Message: &webcontentpb.FetchUrlResponse_Done{Done: &webcontentpb.Summary{}},
+	})
+}
+
+func TestWithBotHeader(t *testing.T) {
+	handler := &botCapturingWebContent{bots: make(chan string, 1)}
+	mux := http.NewServeMux()
+	mux.Handle(webcontentconnect.NewWebContentServiceHandler(handler))
+	srv := rootpullertest.NewServerWithMux(t, mux)
+	c, err := rootpuller.New(srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	wc := c.WebContent().WithBot("crawler-a")
+	if _, err := wc.Fetch(t.Context(), &webcontent.FetchURLRequest{URL: "https://example.com"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := <-handler.bots; got != "crawler-a" {
+		t.Errorf("rootpuller-bot = %q, want crawler-a", got)
+	}
+
+	// Per-call context override wins over the client default.
+	ctx := rootpuller.ContextWithBot(t.Context(), "crawler-b")
+	if _, err := wc.Fetch(ctx, &webcontent.FetchURLRequest{URL: "https://example.com"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := <-handler.bots; got != "crawler-b" {
+		t.Errorf("override rootpuller-bot = %q, want crawler-b", got)
+	}
+
+	// The base client sends no bot header.
+	if _, err := c.WebContent().Fetch(t.Context(), &webcontent.FetchURLRequest{URL: "https://example.com"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := <-handler.bots; got != "" {
+		t.Errorf("base client rootpuller-bot = %q, want unset", got)
 	}
 }
 

@@ -24,11 +24,20 @@ import (
 // rootpuller.Client.WebContent.
 type Client struct {
 	rpc webcontentconnect.WebContentServiceClient
+	bot string
 }
 
 // NewFromCore is the internal constructor used by rootpuller.New.
 func NewFromCore(core *transport.Core) *Client {
 	return &Client{rpc: webcontentconnect.NewWebContentServiceClient(core.HTTPClient, core.BaseURL, core.ClientOpts...)}
+}
+
+// WithBot returns a client that sends the rootpuller-bot identity header
+// on every call. A per-call rootpuller.ContextWithBot value still wins.
+func (c *Client) WithBot(name string) *Client {
+	derived := *c
+	derived.bot = name
+	return &derived
 }
 
 // FetchURLRequest configures FetchURL and Fetch.
@@ -70,6 +79,7 @@ func errSeq[E any](err error) iter.Seq2[E, error] {
 // frame yields apierror.ErrMissingTerminal. For the buffered convenience
 // form use Fetch.
 func (c *Client) FetchURL(ctx context.Context, req *FetchURLRequest) iter.Seq2[Event, error] {
+	ctx = transport.EnsureBot(ctx, c.bot)
 	msg, err := req.toProto()
 	if err != nil {
 		return errSeq[Event](err)
@@ -188,6 +198,7 @@ type ExtractResult struct {
 // marker) and returns the extracted artifacts. The extractor buffers the
 // whole document, so results arrive only after the upload completes.
 func (c *Client) ExtractContent(ctx context.Context, req *ExtractRequest) (*ExtractResult, error) {
+	ctx = transport.EnsureBot(ctx, c.bot)
 	procedure := webcontentconnect.WebContentServiceExtractContentProcedure
 	kind := req.Document.Kind
 	if kind == ArtifactKindUnspecified {

@@ -68,7 +68,7 @@ func New(baseURL string, opts ...Option) (*Client, error) {
 		}
 	}
 
-	interceptors := []connect.Interceptor{transport.NewHeadersInterceptor(cfg.deployment, cfg.bot)}
+	interceptors := []connect.Interceptor{transport.NewHeadersInterceptor()}
 	if cfg.tokenSource != nil {
 		interceptors = append(interceptors, transport.NewAuthInterceptor(cfg.tokenSource))
 	}

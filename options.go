@@ -16,8 +16,6 @@ const DefaultReadMaxBytes = 64 * 1024 * 1024
 
 type config struct {
 	tokenSource      oauth2.TokenSource
-	deployment       string
-	bot              string
 	httpClient       *http.Client
 	tlsConfig        *tls.Config
 	otelEnabled      bool
@@ -42,19 +40,6 @@ func WithToken(token string) Option {
 	return func(c *config) {
 		c.tokenSource = oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
 	}
-}
-
-// WithDeployment sets the client-wide default for the
-// rootpuller-deployment routing header (e.g. "local", "cloudrun").
-// Override per call with ContextWithDeployment.
-func WithDeployment(name string) Option {
-	return func(c *config) { c.deployment = name }
-}
-
-// WithBot sets the client-wide default for the rootpuller-bot header used
-// by the scrape/webcontent services. Override per call with ContextWithBot.
-func WithBot(name string) Option {
-	return func(c *config) { c.bot = name }
 }
 
 // WithHTTPClient replaces the scheme-derived HTTP client entirely. The
