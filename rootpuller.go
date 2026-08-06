@@ -62,6 +62,7 @@ func New(baseURL string, opts ...Option) (*Client, error) {
 	httpClient := cfg.httpClient
 	if httpClient == nil {
 		var err error
+
 		httpClient, err = transport.NewHTTPClient(baseURL, cfg.tlsConfig)
 		if err != nil {
 			return nil, err
@@ -72,13 +73,16 @@ func New(baseURL string, opts ...Option) (*Client, error) {
 	if cfg.tokenSource != nil {
 		interceptors = append(interceptors, transport.NewAuthInterceptor(cfg.tokenSource))
 	}
+
 	if cfg.otelEnabled {
 		otelInterceptor, err := otelconnect.NewInterceptor(cfg.otelOptions...)
 		if err != nil {
 			return nil, err
 		}
+
 		interceptors = append(interceptors, otelInterceptor)
 	}
+
 	interceptors = append(interceptors, cfg.userInterceptors...)
 
 	core := &transport.Core{

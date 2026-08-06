@@ -36,6 +36,7 @@ func NewFromCore(core *transport.Core) *Client {
 func (c *Client) WithDeployment(name string) *Client {
 	derived := *c
 	derived.deployment = name
+
 	return &derived
 }
 
@@ -44,19 +45,24 @@ func (c *Client) WithDeployment(name string) *Client {
 // incrementally, use EmbedStream.
 func (c *Client) Embed(ctx context.Context, req *Request) (*Response, error) {
 	ctx = transport.EnsureDeployment(ctx, c.deployment)
+
 	msg, err := req.toProto()
 	if err != nil {
 		return nil, err
 	}
+
 	resp, err := c.rpc.Embed(ctx, connect.NewRequest(msg))
 	if err != nil {
 		return nil, transport.WrapError(err, embeddingconnect.VectorEmbeddingServiceEmbedProcedure)
 	}
+
 	pb := resp.Msg
+
 	embeddings := make([]Embedding, len(pb.GetResults()))
 	for i, r := range pb.GetResults() {
 		embeddings[i] = embeddingFromProto(r)
 	}
+
 	return &Response{
 		Embeddings:     embeddings,
 		Model:          modelRefFromProto(pb.GetModel()),
@@ -73,20 +79,24 @@ func (c *Client) Embed(ctx context.Context, req *Request) (*Response, error) {
 // stream.
 func (c *Client) EmbedStream(ctx context.Context, req *Request) iter.Seq2[StreamResult, error] {
 	ctx = transport.EnsureDeployment(ctx, c.deployment)
+
 	msg, err := req.toProto()
 	if err != nil {
 		return func(yield func(StreamResult, error) bool) {
 			yield(StreamResult{}, err)
 		}
 	}
+
 	stream, serr := c.rpc.EmbedStream(ctx, connect.NewRequest(msg))
 	if serr != nil {
 		wrapped := transport.WrapError(serr, embeddingconnect.VectorEmbeddingServiceEmbedStreamProcedure)
+
 		return func(yield func(StreamResult, error) bool) {
 			yield(StreamResult{}, wrapped)
 		}
 	}
-	return streamio.EventSeq(stream, embeddingconnect.VectorEmbeddingServiceEmbedStreamProcedure, false,
+
+	return streamio.EventSeq(stream, embeddingconnect.VectorEmbeddingServiceEmbedStreamProcedure, nil,
 		func(pb *embeddingpb.EmbedResponse) (StreamResult, bool, error) {
 			result := StreamResult{
 				Model:          modelRefFromProto(pb.GetModel()),
@@ -98,6 +108,7 @@ func (c *Client) EmbedStream(ctx context.Context, req *Request) iter.Seq2[Stream
 			if results := pb.GetResults(); len(results) > 0 {
 				result.Embedding = embeddingFromProto(results[0])
 			}
+
 			return result, false, nil
 		})
 }
@@ -106,13 +117,16 @@ func (c *Client) EmbedStream(ctx context.Context, req *Request) iter.Seq2[Stream
 // models available on this server.
 func (c *Client) ListModels(ctx context.Context) ([]ModelInfo, error) {
 	ctx = transport.EnsureDeployment(ctx, c.deployment)
+
 	resp, err := c.rpc.ListModels(ctx, connect.NewRequest(&emptypb.Empty{}))
 	if err != nil {
 		return nil, transport.WrapError(err, embeddingconnect.VectorEmbeddingServiceListModelsProcedure)
 	}
+
 	models := make([]ModelInfo, len(resp.Msg.GetModels()))
 	for i, m := range resp.Msg.GetModels() {
 		models[i] = modelInfoFromProto(m)
 	}
+
 	return models, nil
 }

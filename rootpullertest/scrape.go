@@ -56,6 +56,14 @@ type scrapeHandler struct {
 	fake *Scrape
 }
 
+// Scrape-specific protocol-violation sentinels.
+var (
+	errClosedBeforeInit     = errors.New("client closed stream before sending Init")
+	errFirstMessageNotInit  = errors.New("first message must be Init")
+	errSessionReinitialised = errors.New("session already initialised")
+	errNilInstruction       = errors.New("instruction must not be nil")
+)
+
 func (h *scrapeHandler) Crawl(_ context.Context, _ *connect.Request[webcontentpb.CrawlRequest], stream *connect.ServerStream[webcontentpb.CrawlResponse]) error {
 	sendPage := func(pe *webcontentpb.CrawlResponse_PageEvent) error {
 		return stream.Send(&webcontentpb.CrawlResponse{
@@ -68,6 +76,7 @@ func (h *scrapeHandler) Crawl(_ context.Context, _ *connect.Request[webcontentpb
 		if page.Err != nil {
 			continue
 		}
+
 		if err := sendPage(&webcontentpb.CrawlResponse_PageEvent{
 			PageId: page.PageID,
 			Event: &webcontentpb.CrawlResponse_PageEvent_PageMetadata{
@@ -90,22 +99,30 @@ func (h *scrapeHandler) Crawl(_ context.Context, _ *connect.Request[webcontentpb
 		pageID int64
 		art    *webcontentpb.Artifact
 	}
+
 	var perPage [][]chunkItem
+
 	for _, page := range h.fake.Pages {
 		if page.Err != nil {
 			continue
 		}
+
 		var items []chunkItem
+
 		for kind, data := range page.Artifacts {
 			_ = sendArtifactChunks(artifactKindToProtoKind(kind), data, func(a *webcontentpb.Artifact) error {
 				items = append(items, chunkItem{pageID: page.PageID, art: a})
+
 				return nil
 			})
 		}
+
 		perPage = append(perPage, items)
 	}
+
 	for i := 0; ; i++ {
 		sent := false
+
 		for _, items := range perPage {
 			if i < len(items) {
 				if err := sendPage(&webcontentpb.CrawlResponse_PageEvent{
@@ -114,9 +131,11 @@ func (h *scrapeHandler) Crawl(_ context.Context, _ *connect.Request[webcontentpb
 				}); err != nil {
 					return err
 				}
+
 				sent = true
 			}
 		}
+
 		if !sent {
 			break
 		}
@@ -129,10 +148,12 @@ func (h *scrapeHandler) Crawl(_ context.Context, _ *connect.Request[webcontentpb
 		} else {
 			event.Event = &webcontentpb.CrawlResponse_PageEvent_Done{Done: &webcontentpb.Summary{}}
 		}
+
 		if err := sendPage(event); err != nil {
 			return err
 		}
 	}
+
 	return nil
 }
 
@@ -140,62 +161,80 @@ func (h *scrapeHandler) FetchSession(_ context.Context, stream *connect.BidiStre
 	first, err := stream.Receive()
 	if err != nil {
 		if errors.Is(err, io.EOF) {
-			return connect.NewError(connect.CodeInvalidArgument, errors.New("client closed stream before sending Init"))
+			return invalidArgument(errClosedBeforeInit)
 		}
+
 		return err
 	}
+
 	if first.GetInit() == nil {
-		return connect.NewError(connect.CodeInvalidArgument, errors.New("first message must be Init"))
+		return invalidArgument(errFirstMessageNotInit)
 	}
 
 	sessionFunc := h.fake.SessionFunc
-	if sessionFunc == nil {
-		sessionFunc = func(url string) (map[webcontent.ArtifactKind][]byte, *webcontent.ContentError) {
-			return map[webcontent.ArtifactKind][]byte{webcontent.ArtifactKindExtractedMarkdown: []byte(url)}, nil
-		}
-	}
 
 	var sendMu sync.Mutex
+
 	send := func(resp *webcontentpb.FetchSessionResponse) error {
 		sendMu.Lock()
 		defer sendMu.Unlock()
+
 		return stream.Send(resp)
 	}
 
 	var wg sync.WaitGroup
 	defer wg.Wait()
+
 	for {
 		req, rerr := stream.Receive()
 		if rerr != nil {
 			if errors.Is(rerr, io.EOF) {
 				return nil
 			}
+
 			return rerr
 		}
+
 		if req.GetInit() != nil {
-			return connect.NewError(connect.CodeInvalidArgument, errors.New("session already initialised"))
+			return invalidArgument(errSessionReinitialised)
 		}
+
 		instr := req.GetInstruction()
 		if instr == nil {
-			return connect.NewError(connect.CodeInvalidArgument, errors.New("instruction must not be nil"))
+			return invalidArgument(errNilInstruction)
 		}
+
 		wg.Go(func() {
 			cid := instr.GetCorrelationId()
 			url := instr.GetUrl()
-			artifacts, cerr := sessionFunc(url)
+
+			var (
+				artifacts map[webcontent.ArtifactKind][]byte
+				cerr      *webcontent.ContentError
+			)
+			if sessionFunc != nil {
+				artifacts, cerr = sessionFunc(url)
+			} else {
+				// Default: echo the URL as an extracted-markdown artifact.
+				artifacts = map[webcontent.ArtifactKind][]byte{webcontent.ArtifactKindExtractedMarkdown: []byte(url)}
+			}
+
 			if cerr != nil {
 				_ = send(&webcontentpb.FetchSessionResponse{
 					CorrelationId: cid,
 					Message:       &webcontentpb.FetchSessionResponse_Error{Error: contentErrorToProto(cerr)},
 				})
+
 				return
 			}
+
 			_ = send(&webcontentpb.FetchSessionResponse{
 				CorrelationId: cid,
 				Message: &webcontentpb.FetchSessionResponse_PageMetadata{
 					PageMetadata: &webcontentpb.PageMetadata{RequestedUrl: url, FinalUrl: url, StatusCode: 200},
 				},
 			})
+
 			for kind, data := range artifacts {
 				_ = sendArtifactChunks(artifactKindToProtoKind(kind), data, func(a *webcontentpb.Artifact) error {
 					return send(&webcontentpb.FetchSessionResponse{
@@ -204,6 +243,7 @@ func (h *scrapeHandler) FetchSession(_ context.Context, stream *connect.BidiStre
 					})
 				})
 			}
+
 			_ = send(&webcontentpb.FetchSessionResponse{
 				CorrelationId: cid,
 				Message:       &webcontentpb.FetchSessionResponse_Done{Done: &webcontentpb.Summary{}},
@@ -217,6 +257,7 @@ func (h *scrapeHandler) Map(_ context.Context, _ *connect.Request[webcontentpb.M
 	if batchSize <= 0 {
 		batchSize = 2
 	}
+
 	urls := h.fake.MapURLs
 	for len(urls) > 0 {
 		n := min(len(urls), batchSize)
@@ -225,8 +266,10 @@ func (h *scrapeHandler) Map(_ context.Context, _ *connect.Request[webcontentpb.M
 		}); err != nil {
 			return err
 		}
+
 		urls = urls[n:]
 	}
+
 	return stream.Send(&webcontentpb.MapResponse{
 		Message: &webcontentpb.MapResponse_Done{Done: &webcontentpb.MapResponse_Summary{
 			SitemapsProcessed: 1,

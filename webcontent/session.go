@@ -79,22 +79,28 @@ func (c *ScrapeClient) OpenSession(ctx context.Context, init *SessionInit) (*Ses
 	// The bot identity is fixed at stream creation; it applies to every
 	// instruction of the session.
 	ctx = transport.EnsureBot(ctx, c.bot)
+
 	if init == nil {
 		init = &SessionInit{}
 	}
+
 	fetcher, err := init.Fetcher.toProto()
 	if err != nil {
 		return nil, err
 	}
+
 	jobs, err := jobsToProto(init.Jobs)
 	if err != nil {
 		return nil, err
 	}
+
 	screenshot, err := init.Screenshot.toProto()
 	if err != nil {
 		return nil, err
 	}
+
 	procedure := webcontentconnect.ScrapeServiceFetchSessionProcedure
+
 	stream := c.rpc.FetchSession(ctx)
 	if err := stream.Send(&webcontentpb.FetchSessionRequest{
 		Message: &webcontentpb.FetchSessionRequest_Init_{Init: &webcontentpb.FetchSessionRequest_Init{
@@ -106,6 +112,7 @@ func (c *ScrapeClient) OpenSession(ctx context.Context, init *SessionInit) (*Ses
 	}); err != nil {
 		_ = stream.CloseRequest()
 		_ = stream.CloseResponse()
+
 		return nil, transport.WrapError(err, procedure)
 	}
 
@@ -117,39 +124,8 @@ func (c *ScrapeClient) OpenSession(ctx context.Context, init *SessionInit) (*Ses
 		recvDone:  make(chan struct{}),
 	}
 	go s.recvLoop()
-	return s, nil
-}
 
-// recvLoop is the single reader of the stream: it routes every response
-// frame to the call registered under its correlation ID. Frames for
-// unknown IDs are dropped.
-func (s *Session) recvLoop() {
-	defer close(s.recvDone)
-	for {
-		resp, err := s.stream.Receive()
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				s.fail(ErrSessionClosed)
-			} else {
-				s.fail(transport.WrapError(err, s.procedure))
-			}
-			return
-		}
-		frame, ok := sessionFrameFromProto(resp)
-		if !ok {
-			continue
-		}
-		s.mu.Lock()
-		call := s.calls[resp.GetCorrelationId()]
-		s.mu.Unlock()
-		if call == nil {
-			continue
-		}
-		select {
-		case call.frames <- frame:
-		case <-call.gone:
-		}
-	}
+	return s, nil
 }
 
 func sessionFrameFromProto(pb *webcontentpb.FetchSessionResponse) (sessionFrame, bool) {
@@ -175,34 +151,6 @@ func sessionFrameFromProto(pb *webcontentpb.FetchSessionResponse) (sessionFrame,
 	}
 }
 
-func (s *Session) fail(err error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.err != nil {
-		return
-	}
-	s.err = err
-	close(s.closed)
-}
-
-func (s *Session) register() (string, *sessionCall) {
-	buf := make([]byte, 8)
-	_, _ = rand.Read(buf)
-	id := hex.EncodeToString(buf)
-	call := &sessionCall{frames: make(chan sessionFrame, 16), gone: make(chan struct{})}
-	s.mu.Lock()
-	s.calls[id] = call
-	s.mu.Unlock()
-	return id, call
-}
-
-func (s *Session) unregister(id string, call *sessionCall) {
-	s.mu.Lock()
-	delete(s.calls, id)
-	s.mu.Unlock()
-	close(call.gone)
-}
-
 // FetchEvents sends one instruction and yields its event frames as they
 // arrive, ending with a DoneEvent (or the page's *ContentError as the
 // iteration error). Concurrent FetchEvents/Fetch calls on one session
@@ -211,6 +159,7 @@ func (s *Session) FetchEvents(ctx context.Context, instr *Instruction) iter.Seq2
 	s.mu.Lock()
 	sessionErr := s.err
 	s.mu.Unlock()
+
 	if sessionErr != nil {
 		return errSeq[Event](sessionErr)
 	}
@@ -228,53 +177,29 @@ func (s *Session) FetchEvents(ctx context.Context, instr *Instruction) iter.Seq2
 		}},
 	})
 	s.sendMu.Unlock()
+
 	if err != nil {
 		s.unregister(id, call)
+
 		return errSeq[Event](transport.WrapError(err, s.procedure))
 	}
 
 	return func(yield func(Event, error) bool) {
 		defer s.unregister(id, call)
+
 		for {
 			select {
 			case frame := <-call.frames:
-				if frame.err != nil {
-					yield(nil, frame.err)
-					return
-				}
-				if !yield(frame.event, nil) {
-					return
-				}
-				if frame.terminal {
+				if !yieldFrame(yield, frame) {
 					return
 				}
 			case <-s.closed:
-				// Drain anything routed before the failure.
-				for {
-					select {
-					case frame := <-call.frames:
-						if frame.err != nil {
-							yield(nil, frame.err)
-							return
-						}
-						if !yield(frame.event, nil) {
-							return
-						}
-						if frame.terminal {
-							return
-						}
-						continue
-					default:
-					}
-					break
-				}
-				s.mu.Lock()
-				err := s.err
-				s.mu.Unlock()
-				yield(nil, err)
+				s.yieldAfterClose(yield, call)
+
 				return
 			case <-ctx.Done():
 				yield(nil, apierror.New(connect.CodeCanceled, ctx.Err().Error(), s.procedure, 0, ctx.Err()))
+
 				return
 			}
 		}
@@ -293,9 +218,120 @@ func (s *Session) Fetch(ctx context.Context, instr *Instruction) (*FetchResult, 
 func (s *Session) Close() error {
 	err := s.stream.CloseRequest()
 	<-s.recvDone
+
 	_ = s.stream.CloseResponse()
 	if err != nil && !errors.Is(err, io.EOF) {
 		return transport.WrapError(err, s.procedure)
 	}
+
 	return nil
+}
+
+// recvLoop is the single reader of the stream: it routes every response
+// frame to the call registered under its correlation ID. Frames for
+// unknown IDs are dropped.
+func (s *Session) recvLoop() {
+	defer close(s.recvDone)
+
+	for {
+		resp, err := s.stream.Receive()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				s.fail(ErrSessionClosed)
+			} else {
+				s.fail(transport.WrapError(err, s.procedure))
+			}
+
+			return
+		}
+
+		frame, ok := sessionFrameFromProto(resp)
+		if !ok {
+			continue
+		}
+
+		s.mu.Lock()
+		call := s.calls[resp.GetCorrelationId()]
+		s.mu.Unlock()
+
+		if call == nil {
+			continue
+		}
+
+		select {
+		case call.frames <- frame:
+		case <-call.gone:
+		}
+	}
+}
+
+func (s *Session) fail(err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.err != nil {
+		return
+	}
+
+	s.err = err
+	close(s.closed)
+}
+
+func (s *Session) register() (string, *sessionCall) {
+	buf := make([]byte, 8)
+	_, _ = rand.Read(buf)
+	id := hex.EncodeToString(buf)
+	call := &sessionCall{frames: make(chan sessionFrame, 16), gone: make(chan struct{})}
+
+	s.mu.Lock()
+	s.calls[id] = call
+	s.mu.Unlock()
+
+	return id, call
+}
+
+func (s *Session) unregister(id string, call *sessionCall) {
+	s.mu.Lock()
+	delete(s.calls, id)
+	s.mu.Unlock()
+	close(call.gone)
+}
+
+// yieldAfterClose drains the frames routed to call before the session
+// failure, then yields the session-fatal error — unless a drained frame
+// already ended the iteration (terminal frame, frame error, or consumer
+// break).
+func (s *Session) yieldAfterClose(yield func(Event, error) bool, call *sessionCall) {
+	for {
+		select {
+		case frame := <-call.frames:
+			if !yieldFrame(yield, frame) {
+				return
+			}
+		default:
+			s.mu.Lock()
+			err := s.err
+			s.mu.Unlock()
+			yield(nil, err)
+
+			return
+		}
+	}
+}
+
+// yieldFrame delivers one routed frame to the iterator, reporting whether
+// iteration should continue: false on a frame error, a terminal frame, or
+// when the consumer breaks out of the loop.
+func yieldFrame(yield func(Event, error) bool, frame sessionFrame) bool {
+	if frame.err != nil {
+		yield(nil, frame.err)
+
+		return false
+	}
+
+	if !yield(frame.event, nil) {
+		return false
+	}
+
+	return !frame.terminal
 }

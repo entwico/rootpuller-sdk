@@ -59,6 +59,7 @@ func (p *UpscaleParams) toProto() (*unshakalerpb.UpscaleImageRequest_Params, err
 	if !ok {
 		return nil, apierror.New(connect.CodeInvalidArgument, fmt.Sprintf("unknown image format %q", p.Format), "", 0, nil)
 	}
+
 	msg := &unshakalerpb.UpscaleImageRequest_Params{
 		ModelName:   p.Model,
 		ScaleFactor: protoconv.Int32Ptr(p.ScaleFactor),
@@ -71,6 +72,7 @@ func (p *UpscaleParams) toProto() (*unshakalerpb.UpscaleImageRequest_Params, err
 	if format != commonpb.ImageFormat_IMAGE_FORMAT_UNSPECIFIED {
 		msg.Format = &format
 	}
+
 	return msg, nil
 }
 
@@ -82,6 +84,7 @@ func (c *Client) UpscaleImage(ctx context.Context, params *UpscaleParams, image 
 	if err != nil {
 		return nil, err
 	}
+
 	procedure := unshakalerconnect.UnshakalerServiceUpscaleImageProcedure
 	stream := c.rpc.UpscaleImage(ctx)
 
@@ -93,6 +96,7 @@ func (c *Client) UpscaleImage(ctx context.Context, params *UpscaleParams, image 
 	)
 
 	var collector streamio.FileCollector
+
 	err = streamio.UploadCollect(stream, procedure, frames, func(resp *unshakalerpb.UpscaleImageResponse) error {
 		switch r := resp.GetResponse().(type) {
 		case *unshakalerpb.UpscaleImageResponse_ProgressPercentage:
@@ -102,17 +106,21 @@ func (c *Client) UpscaleImage(ctx context.Context, params *UpscaleParams, image 
 		case *unshakalerpb.UpscaleImageResponse_File:
 			collector.Add(r.File)
 		}
+
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
+
 	files, err := collector.Files()
 	if err != nil {
 		return nil, err
 	}
+
 	if len(files) == 0 {
 		return nil, apierror.New(connect.CodeInternal, "server returned no image", procedure, 0, nil)
 	}
+
 	return &files[0], nil
 }

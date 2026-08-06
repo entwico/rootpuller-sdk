@@ -15,8 +15,8 @@ type Usage struct {
 }
 
 // EstimatedCost returns the estimated cost as a decimal amount with its
-// ISO currency code, e.g. (0.0042, "USD"). Amount is 0 when the server
-// could not price the call.
-func (u Usage) EstimatedCost() (amount float64, currency string) {
+// ISO currency code, e.g. (0.0042, "USD"). The amount is 0 when the
+// server could not price the call.
+func (u Usage) EstimatedCost() (float64, string) {
 	return float64(u.EstimatedCostMicros) / 1e6, u.CurrencyCode
 }

@@ -21,21 +21,15 @@ type authInterceptor struct {
 	ts oauth2.TokenSource
 }
 
-func (i *authInterceptor) bearer() (string, *connect.Error) {
-	tok, err := i.ts.Token()
-	if err != nil {
-		return "", connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("rootpuller: fetching oauth2 token: %w", err))
-	}
-	return "Bearer " + tok.AccessToken, nil
-}
-
 func (i *authInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 	return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
 		bearer, cerr := i.bearer()
 		if cerr != nil {
 			return nil, cerr
 		}
+
 		req.Header().Set("Authorization", bearer)
+
 		return next(ctx, req)
 	}
 }
@@ -43,23 +37,36 @@ func (i *authInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 func (i *authInterceptor) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
 	return func(ctx context.Context, spec connect.Spec) connect.StreamingClientConn {
 		conn := next(ctx, spec)
+
 		bearer, cerr := i.bearer()
 		if cerr != nil {
 			return &failedStreamingClientConn{StreamingClientConn: conn, err: cerr}
 		}
+
 		conn.RequestHeader().Set("Authorization", bearer)
+
 		return conn
 	}
 }
 
-func (i *authInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
+func (*authInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
 	return next // client-side SDK; handlers untouched
+}
+
+func (i *authInterceptor) bearer() (string, *connect.Error) {
+	tok, err := i.ts.Token()
+	if err != nil {
+		return "", connect.NewError(connect.CodeUnauthenticated, fmt.Errorf("rootpuller: fetching oauth2 token: %w", err))
+	}
+
+	return "Bearer " + tok.AccessToken, nil
 }
 
 // failedStreamingClientConn fails every stream operation with the token
 // error, because WrapStreamingClient cannot itself return an error.
 type failedStreamingClientConn struct {
 	connect.StreamingClientConn
+
 	err *connect.Error
 }
 

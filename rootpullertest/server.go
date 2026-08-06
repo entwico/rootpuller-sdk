@@ -25,11 +25,13 @@ type Server struct {
 // shuts it down when the test ends.
 func NewServer(tb testing.TB, services ...Service) *Server {
 	tb.Helper()
+
 	mux := http.NewServeMux()
 	for _, svc := range services {
 		svc.register(mux)
 	}
-	return newServer(tb, mux)
+
+	return startServer(tb, mux)
 }
 
 // NewServerWithMux starts an h2c test server for a hand-built mux. It is
@@ -37,11 +39,13 @@ func NewServer(tb testing.TB, services ...Service) *Server {
 // normally use NewServer with the typed fakes.
 func NewServerWithMux(tb testing.TB, mux *http.ServeMux) *Server {
 	tb.Helper()
-	return newServer(tb, mux)
+
+	return startServer(tb, mux)
 }
 
-func newServer(tb testing.TB, mux *http.ServeMux) *Server {
+func startServer(tb testing.TB, mux *http.ServeMux) *Server {
 	tb.Helper()
+
 	srv := httptest.NewUnstartedServer(mux)
 	protocols := new(http.Protocols)
 	protocols.SetHTTP1(true)
@@ -49,5 +53,6 @@ func newServer(tb testing.TB, mux *http.ServeMux) *Server {
 	srv.Config.Protocols = protocols
 	srv.Start()
 	tb.Cleanup(srv.Close)
+
 	return &Server{URL: srv.URL}
 }

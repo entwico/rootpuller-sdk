@@ -121,6 +121,7 @@ func invertMap[K, V comparable](m map[K]V) map[V]K {
 	for k, v := range m {
 		out[v] = k
 	}
+
 	return out
 }
 
@@ -141,10 +142,12 @@ func (m ModelRef) toProto() (*embeddingpb.ModelRef, error) {
 	if !ok {
 		return nil, invalidArgument(fmt.Sprintf("unknown embedding backend %q", m.Backend))
 	}
+
 	inference, ok := inferenceBackendToProto[m.InferenceBackend]
 	if !ok {
 		return nil, invalidArgument(fmt.Sprintf("unknown inference backend %q", m.InferenceBackend))
 	}
+
 	return &embeddingpb.ModelRef{Backend: backend, ModelId: m.ModelID, InferenceBackend: inference}, nil
 }
 
@@ -152,6 +155,7 @@ func modelRefFromProto(m *embeddingpb.ModelRef) ModelRef {
 	if m == nil {
 		return ModelRef{}
 	}
+
 	return ModelRef{
 		Backend:          enumFromProto(backendFromProto, m.GetBackend()),
 		ModelID:          m.GetModelId(),
@@ -168,6 +172,7 @@ func enumFromProto[P interface {
 	if f, ok := m[v]; ok {
 		return f
 	}
+
 	return F(v.String())
 }
 
@@ -184,6 +189,7 @@ func Text(texts ...string) []Input {
 	for i, t := range texts {
 		inputs[i] = Input{Content: t}
 	}
+
 	return inputs
 }
 
@@ -206,18 +212,22 @@ func (r *Request) toProto() (*embeddingpb.EmbedRequest, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	mode, ok := modeToProto[r.Mode]
 	if !ok {
 		return nil, invalidArgument(fmt.Sprintf("unknown embedding mode %q", r.Mode))
 	}
+
 	task, ok := taskToProto[r.Task]
 	if !ok {
 		return nil, invalidArgument(fmt.Sprintf("unknown embedding task %q", r.Task))
 	}
+
 	inputs := make([]*embeddingpb.TextInput, len(r.Inputs))
 	for i, in := range r.Inputs {
 		inputs[i] = &embeddingpb.TextInput{Content: in.Content, Metadata: in.Metadata}
 	}
+
 	msg := &embeddingpb.EmbedRequest{Inputs: inputs, Model: model, Mode: mode, Task: task}
 	if r.Dimensions != nil || r.MaxTokens != nil || r.Normalize {
 		msg.Options = &embeddingpb.EmbeddingOptions{
@@ -226,6 +236,7 @@ func (r *Request) toProto() (*embeddingpb.EmbedRequest, error) {
 			Normalize:  r.Normalize,
 		}
 	}
+
 	return msg, nil
 }
 
@@ -253,10 +264,12 @@ func embeddingFromProto(r *embeddingpb.EmbeddingResult) Embedding {
 		return Embedding{Kind: ModeSparse, Sparse: sparseFromProto(v.Sparse)}
 	case *embeddingpb.EmbeddingResult_MultiVector:
 		tokens := v.MultiVector.GetTokenVectors()
+
 		multi := make([][]float32, len(tokens))
 		for i, tv := range tokens {
 			multi[i] = tv.GetValues()
 		}
+
 		return Embedding{Kind: ModeMultiVector, Multi: multi}
 	case *embeddingpb.EmbeddingResult_Hybrid:
 		return Embedding{
@@ -273,6 +286,7 @@ func sparseFromProto(s *embeddingpb.SparseVector) *SparseVector {
 	if s == nil {
 		return nil
 	}
+
 	return &SparseVector{Indices: s.GetIndices(), Values: s.GetValues()}
 }
 
@@ -314,14 +328,17 @@ func modelInfoFromProto(m *embeddingpb.ModelInfo) ModelInfo {
 	for i, v := range m.GetSupportedModes() {
 		modes[i] = enumFromProto(modeFromProto, v)
 	}
+
 	tasks := make([]Task, len(m.GetSupportedTasks()))
 	for i, v := range m.GetSupportedTasks() {
 		tasks[i] = enumFromProto(taskFromProto, v)
 	}
+
 	dims := make([]int, len(m.GetMrlTruncationDims()))
 	for i, v := range m.GetMrlTruncationDims() {
 		dims[i] = int(v)
 	}
+
 	return ModelInfo{
 		Model:             modelRefFromProto(m.GetModel()),
 		SupportedModes:    modes,

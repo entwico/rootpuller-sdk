@@ -2,6 +2,7 @@ package vectorops
 
 import (
 	"fmt"
+	"math"
 
 	"connectrpc.com/connect"
 
@@ -24,12 +25,18 @@ type Matrix struct {
 }
 
 func (m *Matrix) validate() error {
+	if m.Rows < 0 || m.Cols < 0 || m.Rows > math.MaxInt32 || m.Cols > math.MaxInt32 {
+		return invalidArgument(fmt.Sprintf("matrix dimensions %dx%d out of range; rows and cols must be non-negative and fit int32", m.Rows, m.Cols))
+	}
+
 	if len(m.Data) != m.Rows*m.Cols {
 		return invalidArgument(fmt.Sprintf("matrix data length %d does not equal rows*cols = %d*%d", len(m.Data), m.Rows, m.Cols))
 	}
+
 	if len(m.IDs) != 0 && len(m.IDs) != m.Rows {
 		return invalidArgument(fmt.Sprintf("matrix has %d ids for %d rows; ids must be empty or one per row", len(m.IDs), m.Rows))
 	}
+
 	return nil
 }
 
@@ -58,6 +65,7 @@ func (d DistanceMetric) toProto() (vectoropspb.DistanceMetric, error) {
 	if !ok {
 		return 0, invalidArgument(fmt.Sprintf("unknown distance metric %q", d))
 	}
+
 	return v, nil
 }
 
@@ -82,6 +90,7 @@ func (m ClusterSelectionMethod) toProto() (vectoropspb.ClusterSelectionMethod, e
 	if !ok {
 		return 0, invalidArgument(fmt.Sprintf("unknown cluster selection method %q", m))
 	}
+
 	return v, nil
 }
 
@@ -113,17 +122,21 @@ func (p *HdbscanParams) toHeader(points *Matrix) (*vectoropspb.ClusterHdbscanReq
 	if p == nil {
 		p = &HdbscanParams{}
 	}
+
 	metric, err := p.Metric.toProto()
 	if err != nil {
 		return nil, err
 	}
+
 	method, err := p.ClusterSelectionMethod.toProto()
 	if err != nil {
 		return nil, err
 	}
+
 	return &vectoropspb.ClusterHdbscanRequest_Header{
-		Rows:                    int32(points.Rows),
-		Cols:                    int32(points.Cols),
+		// The dimensions were bounds-checked against int32 in validate().
+		Rows:                    protoconv.ClampInt32(int64(points.Rows)),
+		Cols:                    protoconv.ClampInt32(int64(points.Cols)),
 		MinClusterSize:          protoconv.Int32Ptr(p.MinClusterSize),
 		MinSamples:              protoconv.Int32Ptr(p.MinSamples),
 		ClusterSelectionEpsilon: p.ClusterSelectionEpsilon,
@@ -175,13 +188,16 @@ func (p *UmapParams) toHeader(points *Matrix) (*vectoropspb.ProjectUmapRequest_H
 	if p == nil {
 		p = &UmapParams{}
 	}
+
 	metric, err := p.Metric.toProto()
 	if err != nil {
 		return nil, err
 	}
+
 	return &vectoropspb.ProjectUmapRequest_Header{
-		Rows:        int32(points.Rows),
-		Cols:        int32(points.Cols),
+		// The dimensions were bounds-checked against int32 in validate().
+		Rows:        protoconv.ClampInt32(int64(points.Rows)),
+		Cols:        protoconv.ClampInt32(int64(points.Cols)),
 		NNeighbors:  protoconv.Int32Ptr(p.NNeighbors),
 		MinDist:     p.MinDist,
 		NComponents: protoconv.Int32Ptr(p.NComponents),

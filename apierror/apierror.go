@@ -39,9 +39,11 @@ func (e *Error) Error() string {
 	if e.Procedure != "" {
 		msg += " calling " + e.Procedure
 	}
+
 	if e.Message != "" {
 		msg += ": " + e.Message
 	}
+
 	return msg
 }
 
@@ -51,6 +53,7 @@ func (e *Error) Unwrap() error { return e.cause }
 // code, enabling errors.Is(err, apierror.ErrUnauthenticated).
 func (e *Error) Is(target error) bool {
 	s, ok := target.(*sentinelError)
+
 	return ok && e.Code == s.code
 }
 

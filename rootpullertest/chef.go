@@ -43,14 +43,17 @@ func (h *chefHandler) ProcessText(_ context.Context, req *connect.Request[chefpb
 			return &chef.TextResult{Content: text, ID: "text-1"}, nil
 		}
 	}
+
 	result, err := processText(req.Msg.GetText())
 	if err != nil {
 		return nil, err
 	}
+
 	metadata, err := toProtoMetadata(result.Metadata)
 	if err != nil {
 		return nil, err
 	}
+
 	return connect.NewResponse(&chefpb.ProcessTextResponse{
 		Content:  result.Content,
 		Id:       result.ID,
@@ -63,6 +66,7 @@ func (h *chefHandler) ProcessTable(_ context.Context, _ *connect.Request[chefpb.
 	if tables == nil {
 		tables = []chef.MarkdownTable{{Content: "| a | b |\n| 1 | 2 |", EndIndex: 18, TokenCount: 8}}
 	}
+
 	return connect.NewResponse(&chefpb.ProcessTableResponse{Tables: toProtoTables(tables)}), nil
 }
 
@@ -77,14 +81,17 @@ func (h *chefHandler) ProcessMarkdown(_ context.Context, req *connect.Request[ch
 			}, nil
 		}
 	}
+
 	result, err := processMarkdown(req.Msg.GetText())
 	if err != nil {
 		return nil, err
 	}
+
 	metadata, err := toProtoMetadata(result.Metadata)
 	if err != nil {
 		return nil, err
 	}
+
 	resp := &chefpb.ProcessMarkdownResponse{
 		Content:  result.Content,
 		Id:       result.ID,
@@ -95,27 +102,30 @@ func (h *chefHandler) ProcessMarkdown(_ context.Context, req *connect.Request[ch
 		resp.CodeBlocks = append(resp.CodeBlocks, &chefpb.CodeBlock{
 			Content:    b.Content,
 			Language:   b.Language,
-			StartIndex: int32(b.StartIndex),
-			EndIndex:   int32(b.EndIndex),
-			TokenCount: int32(b.TokenCount),
+			StartIndex: int32(b.StartIndex), //nolint:gosec // test-fixture indexes fit int32
+			EndIndex:   int32(b.EndIndex),   //nolint:gosec // test-fixture indexes fit int32
+			TokenCount: int32(b.TokenCount), //nolint:gosec // test-fixture counts fit int32
 		})
 	}
+
 	for _, img := range result.Images {
 		resp.Images = append(resp.Images, &chefpb.ImageRef{
 			Url:        img.URL,
 			AltText:    img.AltText,
-			StartIndex: int32(img.StartIndex),
-			EndIndex:   int32(img.EndIndex),
+			StartIndex: int32(img.StartIndex), //nolint:gosec // test-fixture indexes fit int32
+			EndIndex:   int32(img.EndIndex),   //nolint:gosec // test-fixture indexes fit int32
 		})
 	}
+
 	for _, c := range result.Chunks {
 		resp.Chunks = append(resp.Chunks, &commonpb.TextChunk{
 			Text:       c.Text,
-			StartIndex: int32(c.StartIndex),
-			EndIndex:   int32(c.EndIndex),
-			TokenCount: int32(c.TokenCount),
+			StartIndex: int32(c.StartIndex), //nolint:gosec // test-fixture indexes fit int32
+			EndIndex:   int32(c.EndIndex),   //nolint:gosec // test-fixture indexes fit int32
+			TokenCount: int32(c.TokenCount), //nolint:gosec // test-fixture counts fit int32
 		})
 	}
+
 	return connect.NewResponse(resp), nil
 }
 
@@ -127,6 +137,7 @@ func (h *chefHandler) ListTokenizers(_ context.Context, _ *connect.Request[empty
 			{ID: "word", Type: "builtin", Description: "Word tokenizer"},
 		}
 	}
+
 	resp := &chefpb.ListTokenizersResponse{}
 	for _, t := range tokenizers {
 		resp.Tokenizers = append(resp.Tokenizers, &chefpb.TokenizerInfo{
@@ -135,6 +146,7 @@ func (h *chefHandler) ListTokenizers(_ context.Context, _ *connect.Request[empty
 			Description: t.Description,
 		})
 	}
+
 	return connect.NewResponse(resp), nil
 }
 
@@ -144,11 +156,12 @@ func toProtoTables(tables []chef.MarkdownTable) []*chefpb.MarkdownTable {
 		out[i] = &chefpb.MarkdownTable{
 			Content:    t.Content,
 			Alias:      t.Alias,
-			StartIndex: int32(t.StartIndex),
-			EndIndex:   int32(t.EndIndex),
-			TokenCount: int32(t.TokenCount),
+			StartIndex: int32(t.StartIndex), //nolint:gosec // test-fixture indexes fit int32
+			EndIndex:   int32(t.EndIndex),   //nolint:gosec // test-fixture indexes fit int32
+			TokenCount: int32(t.TokenCount), //nolint:gosec // test-fixture counts fit int32
 		}
 	}
+
 	return out
 }
 
@@ -156,9 +169,11 @@ func toProtoMetadata(m map[string]any) (*structpb.Struct, error) {
 	if m == nil {
 		return nil, nil
 	}
+
 	s, err := structpb.NewStruct(m)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
+
 	return s, nil
 }

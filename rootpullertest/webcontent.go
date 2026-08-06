@@ -43,28 +43,43 @@ type webContentHandler struct {
 	fake *WebContent
 }
 
+// WebContent-specific protocol-violation sentinels.
+var (
+	errInitAfterInit          = errors.New("init received after stream already initialised")
+	errFirstFrameNotInit      = errors.New("first frame must contain init")
+	errUploadKindNotHTML      = errors.New("upload kind must be an HTML kind")
+	errStreamClosedBeforeInit = errors.New("stream closed before init frame")
+	errMissingLastChunk       = errors.New("upload ended without last_chunk")
+)
+
 func contentErrorToProto(e *webcontent.ContentError) *webcontentpb.ErrorDetail {
 	code := webcontentpb.ErrorDetail_CODE_UNSPECIFIED
+
 	if e.Code != "" {
 		if v, ok := webcontentpb.ErrorDetail_Code_value["CODE_"+string(e.Code)]; ok {
 			code = webcontentpb.ErrorDetail_Code(v)
 		}
 	}
+
 	pb := &webcontentpb.ErrorDetail{Code: code, Message: e.Message}
 	if e.HTTPStatus != 0 {
-		status := int32(e.HTTPStatus)
+		status := int32(e.HTTPStatus) //nolint:gosec // HTTP status codes fit int32
 		pb.HttpStatus = &status
 	}
+
 	if e.Retryable {
 		pb.Retryable = &e.Retryable
 	}
+
 	if e.Throttled {
 		pb.Throttled = &e.Throttled
 	}
+
 	if e.RetryAfter > 0 {
-		ms := int32(e.RetryAfter.Milliseconds())
+		ms := int32(e.RetryAfter.Milliseconds()) //nolint:gosec // test-fixture retry-after durations fit int32
 		pb.RetryAfterMs = &ms
 	}
+
 	return pb
 }
 
@@ -82,7 +97,16 @@ func artifactKindToProtoKind(k webcontent.ArtifactKind) webcontentpb.Artifact_Ki
 		webcontent.ArtifactKindScreenshotJPEG:    webcontentpb.Artifact_KIND_SCREENSHOT_JPEG,
 		webcontent.ArtifactKindScreenshotWebP:    webcontentpb.Artifact_KIND_SCREENSHOT_WEBP,
 	}
+
 	return name[k]
+}
+
+// isHTMLKind reports whether k is one of the HTML upload kinds accepted
+// by ExtractContent.
+func isHTMLKind(k webcontentpb.Artifact_Kind) bool {
+	return k == webcontentpb.Artifact_KIND_HTML_RAW ||
+		k == webcontentpb.Artifact_KIND_HTML_PRERENDER ||
+		k == webcontentpb.Artifact_KIND_HTML_RENDERED
 }
 
 // sendArtifactChunks streams one artifact in ≤2 MiB chunks with
@@ -98,17 +122,21 @@ func sendArtifactChunks(kind webcontentpb.Artifact_Kind, data []byte, send func(
 		}); err != nil {
 			return err
 		}
+
 		data = data[n:]
 	}
+
 	return nil
 }
 
+//nolint:revive // FetchUrl implements the generated connect handler interface and cannot be renamed.
 func (h *webContentHandler) FetchUrl(_ context.Context, req *connect.Request[webcontentpb.FetchUrlRequest], stream *connect.ServerStream[webcontentpb.FetchUrlResponse]) error {
 	if h.fake.FetchError != nil {
 		return stream.Send(&webcontentpb.FetchUrlResponse{
 			Message: &webcontentpb.FetchUrlResponse_Error{Error: contentErrorToProto(h.fake.FetchError)},
 		})
 	}
+
 	page := &webcontentpb.PageMetadata{
 		RequestedUrl: req.Msg.GetUrl(),
 		FinalUrl:     req.Msg.GetUrl(),
@@ -117,14 +145,16 @@ func (h *webContentHandler) FetchUrl(_ context.Context, req *connect.Request[web
 	}
 	if h.fake.Page != nil {
 		page.FinalUrl = h.fake.Page.FinalURL
-		page.StatusCode = int32(h.fake.Page.StatusCode)
+		page.StatusCode = int32(h.fake.Page.StatusCode) //nolint:gosec // HTTP status codes fit int32
 		page.ContentType = h.fake.Page.ContentType
 	}
+
 	if err := stream.Send(&webcontentpb.FetchUrlResponse{
 		Message: &webcontentpb.FetchUrlResponse_PageMetadata{PageMetadata: page},
 	}); err != nil {
 		return err
 	}
+
 	for kind, data := range h.fake.Artifacts {
 		if err := sendArtifactChunks(artifactKindToProtoKind(kind), data, func(a *webcontentpb.Artifact) error {
 			return stream.Send(&webcontentpb.FetchUrlResponse{Message: &webcontentpb.FetchUrlResponse_Artifact{Artifact: a}})
@@ -132,6 +162,7 @@ func (h *webContentHandler) FetchUrl(_ context.Context, req *connect.Request[web
 			return err
 		}
 	}
+
 	for kind, cerr := range h.fake.KindErrors {
 		if err := stream.Send(&webcontentpb.FetchUrlResponse{
 			Message: &webcontentpb.FetchUrlResponse_KindError{KindError: &webcontentpb.KindError{
@@ -142,56 +173,67 @@ func (h *webContentHandler) FetchUrl(_ context.Context, req *connect.Request[web
 			return err
 		}
 	}
+
 	if h.fake.OmitTerminal {
 		return nil
 	}
+
 	return stream.Send(&webcontentpb.FetchUrlResponse{
 		Message: &webcontentpb.FetchUrlResponse_Done{Done: &webcontentpb.Summary{TotalBytes: 1}},
 	})
 }
 
 func (h *webContentHandler) ExtractContent(_ context.Context, stream *connect.BidiStream[webcontentpb.ExtractContentRequest, webcontentpb.ExtractContentResponse]) error {
-	var initSeen bool
-	var kind webcontentpb.Artifact_Kind
-	var html []byte
-	var lastSeen bool
+	var (
+		initSeen bool
+		kind     webcontentpb.Artifact_Kind
+		html     []byte
+		lastSeen bool
+	)
+
 	for {
 		req, err := stream.Receive()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				break
 			}
+
 			return err
 		}
+
 		switch m := req.GetMessage().(type) {
 		case *webcontentpb.ExtractContentRequest_Init_:
 			if initSeen {
-				return connect.NewError(connect.CodeInvalidArgument, errors.New("init received after stream already initialised"))
+				return invalidArgument(errInitAfterInit)
 			}
+
 			initSeen = true
 		case *webcontentpb.ExtractContentRequest_Artifact:
 			if !initSeen {
-				return connect.NewError(connect.CodeInvalidArgument, errors.New("first frame must contain init"))
+				return invalidArgument(errFirstFrameNotInit)
 			}
-			switch m.Artifact.GetKind() {
-			case webcontentpb.Artifact_KIND_HTML_RAW, webcontentpb.Artifact_KIND_HTML_PRERENDER, webcontentpb.Artifact_KIND_HTML_RENDERED:
-			default:
-				return connect.NewError(connect.CodeInvalidArgument, errors.New("upload kind must be an HTML kind"))
+
+			if !isHTMLKind(m.Artifact.GetKind()) {
+				return invalidArgument(errUploadKindNotHTML)
 			}
+
 			kind = m.Artifact.GetKind()
+
 			html = append(html, m.Artifact.GetChunk()...)
 			if m.Artifact.GetLastChunk() {
 				lastSeen = true
 			}
 		default:
-			return connect.NewError(connect.CodeInvalidArgument, errors.New("unexpected request variant"))
+			return invalidArgument(errUnexpectedVariant)
 		}
 	}
+
 	if !initSeen {
-		return connect.NewError(connect.CodeInvalidArgument, errors.New("stream closed before init frame"))
+		return invalidArgument(errStreamClosedBeforeInit)
 	}
+
 	if !lastSeen {
-		return connect.NewError(connect.CodeInvalidArgument, errors.New("upload ended without last_chunk"))
+		return invalidArgument(errMissingLastChunk)
 	}
 
 	extract := h.fake.ExtractFunc
@@ -200,11 +242,13 @@ func (h *webContentHandler) ExtractContent(_ context.Context, stream *connect.Bi
 			return map[webcontent.ArtifactKind][]byte{webcontent.ArtifactKindExtractedMarkdown: html}, nil
 		}
 	}
+
 	facadeKind := map[webcontentpb.Artifact_Kind]webcontent.ArtifactKind{
 		webcontentpb.Artifact_KIND_HTML_RAW:       webcontent.ArtifactKindHTMLRaw,
 		webcontentpb.Artifact_KIND_HTML_PRERENDER: webcontent.ArtifactKindHTMLPrerender,
 		webcontentpb.Artifact_KIND_HTML_RENDERED:  webcontent.ArtifactKindHTMLRendered,
 	}[kind]
+
 	artifacts, err := extract(facadeKind, html)
 	if err != nil {
 		var ce *webcontent.ContentError
@@ -213,8 +257,10 @@ func (h *webContentHandler) ExtractContent(_ context.Context, stream *connect.Bi
 				Message: &webcontentpb.ExtractContentResponse_Error{Error: contentErrorToProto(ce)},
 			})
 		}
+
 		return err
 	}
+
 	for k, data := range artifacts {
 		if err := sendArtifactChunks(artifactKindToProtoKind(k), data, func(a *webcontentpb.Artifact) error {
 			return stream.Send(&webcontentpb.ExtractContentResponse{Message: &webcontentpb.ExtractContentResponse_Artifact{Artifact: a}})
@@ -222,9 +268,11 @@ func (h *webContentHandler) ExtractContent(_ context.Context, stream *connect.Bi
 			return err
 		}
 	}
+
 	if h.fake.OmitTerminal {
 		return nil
 	}
+
 	return stream.Send(&webcontentpb.ExtractContentResponse{
 		Message: &webcontentpb.ExtractContentResponse_Done{Done: &webcontentpb.Summary{TotalBytes: int64(len(html))}},
 	})

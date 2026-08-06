@@ -19,10 +19,12 @@ func headersToProto(hs []Header) []*webcontentpb.Header {
 	if len(hs) == 0 {
 		return nil
 	}
+
 	out := make([]*webcontentpb.Header, len(hs))
 	for i, h := range hs {
 		out[i] = &webcontentpb.Header{Name: h.Name, Value: h.Value}
 	}
+
 	return out
 }
 
@@ -30,10 +32,12 @@ func headersFromProto(hs []*webcontentpb.Header) []Header {
 	if len(hs) == 0 {
 		return nil
 	}
+
 	out := make([]Header, len(hs))
 	for i, h := range hs {
 		out[i] = Header{Name: h.GetName(), Value: h.GetValue()}
 	}
+
 	return out
 }
 
@@ -133,10 +137,12 @@ func (f *FetcherOptions) toProto() (*webcontentpb.FetcherOptions, error) {
 	if f == nil {
 		return nil, nil
 	}
+
 	engine, ok := engineToProto[f.Engine]
 	if !ok {
 		return nil, invalidArgument(fmt.Sprintf("unknown fetch engine %q", f.Engine))
 	}
+
 	msg := &webcontentpb.FetcherOptions{
 		Engine:           engine,
 		Retries:          protoconv.Int32Ptr(f.Retries),
@@ -154,6 +160,7 @@ func (f *FetcherOptions) toProto() (*webcontentpb.FetcherOptions, error) {
 		if err := requireEngine(f.Engine, EngineBasic); err != nil {
 			return nil, err
 		}
+
 		basic := &webcontentpb.FetcherOptions_Basic{
 			Headers:             headersToProto(cfg.Headers),
 			Cookies:             cfg.Cookies,
@@ -171,16 +178,19 @@ func (f *FetcherOptions) toProto() (*webcontentpb.FetcherOptions, error) {
 			if !ok {
 				return nil, invalidArgument(fmt.Sprintf("unknown HTTP method %q", cfg.Method))
 			}
+
 			basic.Method = &m
 		}
+
 		msg.Config = &webcontentpb.FetcherOptions_Basic_{Basic: basic}
-		if msg.Engine == webcontentpb.FetcherOptions_ENGINE_UNSPECIFIED {
+		if msg.GetEngine() == webcontentpb.FetcherOptions_ENGINE_UNSPECIFIED {
 			msg.Engine = webcontentpb.FetcherOptions_ENGINE_BASIC
 		}
 	case DynamicConfig:
 		if err := requireEngine(f.Engine, EngineDynamic); err != nil {
 			return nil, err
 		}
+
 		msg.Config = &webcontentpb.FetcherOptions_Dynamic_{Dynamic: &webcontentpb.FetcherOptions_Dynamic{
 			Headless:            cfg.Headless,
 			RealChrome:          cfg.RealChrome,
@@ -202,13 +212,14 @@ func (f *FetcherOptions) toProto() (*webcontentpb.FetcherOptions, error) {
 			Headers:             headersToProto(cfg.Headers),
 			CdpUrl:              cfg.CDPURL,
 		}}
-		if msg.Engine == webcontentpb.FetcherOptions_ENGINE_UNSPECIFIED {
+		if msg.GetEngine() == webcontentpb.FetcherOptions_ENGINE_UNSPECIFIED {
 			msg.Engine = webcontentpb.FetcherOptions_ENGINE_DYNAMIC
 		}
 	case StealthyConfig:
 		if err := requireEngine(f.Engine, EngineStealthy); err != nil {
 			return nil, err
 		}
+
 		msg.Config = &webcontentpb.FetcherOptions_Stealthy_{Stealthy: &webcontentpb.FetcherOptions_Stealthy{
 			Headless:            cfg.Headless,
 			BlockImages:         cfg.BlockImages,
@@ -231,12 +242,13 @@ func (f *FetcherOptions) toProto() (*webcontentpb.FetcherOptions, error) {
 			Headers:             headersToProto(cfg.Headers),
 			SolveCloudflare:     cfg.SolveCloudflare,
 		}}
-		if msg.Engine == webcontentpb.FetcherOptions_ENGINE_UNSPECIFIED {
+		if msg.GetEngine() == webcontentpb.FetcherOptions_ENGINE_UNSPECIFIED {
 			msg.Engine = webcontentpb.FetcherOptions_ENGINE_STEALTHY
 		}
 	default:
 		return nil, invalidArgument(fmt.Sprintf("unknown engine config type %T", f.Config))
 	}
+
 	return msg, nil
 }
 
@@ -244,5 +256,6 @@ func requireEngine(set, want Engine) error {
 	if set != EngineAuto && set != want {
 		return invalidArgument(fmt.Sprintf("engine %q does not match config for engine %q", set, want))
 	}
+
 	return nil
 }

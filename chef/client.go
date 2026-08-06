@@ -33,6 +33,7 @@ func (c *Client) ProcessText(ctx context.Context, text string) (*TextResult, err
 	if err != nil {
 		return nil, transport.WrapError(err, chefconnect.DocumentProcessingServiceProcessTextProcedure)
 	}
+
 	return &TextResult{
 		Content:  resp.Msg.GetContent(),
 		ID:       resp.Msg.GetId(),
@@ -48,11 +49,14 @@ func (c *Client) ProcessTable(ctx context.Context, content string, sourceType Ta
 	if err != nil {
 		return nil, err
 	}
+
 	msg := &chefpb.ProcessTableRequest{Content: content, SourceType: st}
+
 	resp, err := c.rpc.ProcessTable(ctx, connect.NewRequest(msg))
 	if err != nil {
 		return nil, transport.WrapError(err, chefconnect.DocumentProcessingServiceProcessTableProcedure)
 	}
+
 	return fromProtoTables(resp.Msg.GetTables()), nil
 }
 
@@ -61,10 +65,12 @@ func (c *Client) ProcessTable(ctx context.Context, content string, sourceType Ta
 // text chunks.
 func (c *Client) ProcessMarkdown(ctx context.Context, req *MarkdownRequest) (*MarkdownResult, error) {
 	msg := &chefpb.ProcessMarkdownRequest{Text: req.Text, Tokenizer: req.Tokenizer}
+
 	resp, err := c.rpc.ProcessMarkdown(ctx, connect.NewRequest(msg))
 	if err != nil {
 		return nil, transport.WrapError(err, chefconnect.DocumentProcessingServiceProcessMarkdownProcedure)
 	}
+
 	return &MarkdownResult{
 		Content:    resp.Msg.GetContent(),
 		ID:         resp.Msg.GetId(),
@@ -84,5 +90,6 @@ func (c *Client) ListTokenizers(ctx context.Context) ([]TokenizerInfo, error) {
 	if err != nil {
 		return nil, transport.WrapError(err, chefconnect.DocumentProcessingServiceListTokenizersProcedure)
 	}
+
 	return fromProtoTokenizers(resp.Msg.GetTokenizers()), nil
 }

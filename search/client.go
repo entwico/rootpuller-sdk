@@ -32,14 +32,17 @@ func (c *Client) Search(ctx context.Context, req *Request) (*Response, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	searchType, err := req.Type.toProto()
 	if err != nil {
 		return nil, err
 	}
+
 	freshness, err := req.Freshness.toProto()
 	if err != nil {
 		return nil, err
 	}
+
 	msg := &searchpb.SearchRequest{
 		Provider:   provider,
 		Query:      req.Query,
@@ -49,11 +52,14 @@ func (c *Client) Search(ctx context.Context, req *Request) (*Response, error) {
 		Language:   req.Language,
 		Freshness:  freshness,
 	}
+
 	resp, err := c.rpc.Search(ctx, connect.NewRequest(msg))
 	if err != nil {
 		return nil, transport.WrapError(err, searchconnect.SearchServiceSearchProcedure)
 	}
+
 	results := resp.Msg.GetResults()
+
 	out := &Response{
 		Provider: providerFromProto(resp.Msg.GetProvider()),
 		Results:  make([]Result, len(results)),
@@ -61,5 +67,6 @@ func (c *Client) Search(ctx context.Context, req *Request) (*Response, error) {
 	for i, r := range results {
 		out.Results[i] = resultFromProto(r)
 	}
+
 	return out, nil
 }

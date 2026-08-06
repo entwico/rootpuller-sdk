@@ -27,4 +27,4 @@ func ContextWithBot(ctx context.Context, name string) context.Context {
 
 // Ptr returns a pointer to v — a shorthand for filling the optional
 // (pointer-typed) fields of request structs: rootpuller.Ptr(512).
-func Ptr[T any](v T) *T { return &v }
+func Ptr[T any](v T) *T { return new(v) }

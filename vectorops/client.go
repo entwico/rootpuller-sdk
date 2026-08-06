@@ -36,6 +36,7 @@ func NewFromCore(core *transport.Core) *Client {
 func (c *Client) WithDeployment(name string) *Client {
 	derived := *c
 	derived.deployment = name
+
 	return &derived
 }
 
@@ -59,13 +60,16 @@ func matrixFrames[Req any](m *Matrix, wrap func(*vectoropspb.MatrixChunk) *Req) 
 			if !yield(wrap(&vectoropspb.MatrixChunk{Data: data[:n:n]}), nil) {
 				return
 			}
+
 			data = data[n:]
 		}
+
 		for ids := m.IDs; len(ids) > 0; {
 			n := min(len(ids), maxIDsPerFrame)
 			if !yield(wrap(&vectoropspb.MatrixChunk{Ids: ids[:n:n]}), nil) {
 				return
 			}
+
 			ids = ids[n:]
 		}
 	}
@@ -76,6 +80,7 @@ func labelFrames(labels []int32) iter.Seq2[*vectoropspb.ProjectUmapRequest, erro
 	return func(yield func(*vectoropspb.ProjectUmapRequest, error) bool) {
 		for len(labels) > 0 {
 			n := min(len(labels), maxLabelsPerFrame)
+
 			frame := &vectoropspb.ProjectUmapRequest{
 				Request: &vectoropspb.ProjectUmapRequest_SupervisedLabels{
 					SupervisedLabels: &vectoropspb.SupervisedLabelsChunk{Labels: labels[:n:n]},
@@ -84,6 +89,7 @@ func labelFrames(labels []int32) iter.Seq2[*vectoropspb.ProjectUmapRequest, erro
 			if !yield(frame, nil) {
 				return
 			}
+
 			labels = labels[n:]
 		}
 	}
@@ -96,13 +102,16 @@ func labelFrames(labels []int32) iter.Seq2[*vectoropspb.ProjectUmapRequest, erro
 // row-aligned result chunks. A nil params keeps all server defaults.
 func (c *Client) ClusterHdbscan(ctx context.Context, points Matrix, params *HdbscanParams) (*HdbscanResult, error) {
 	ctx = transport.EnsureDeployment(ctx, c.deployment)
+
 	if err := points.validate(); err != nil {
 		return nil, err
 	}
+
 	header, err := params.toHeader(&points)
 	if err != nil {
 		return nil, err
 	}
+
 	procedure := vectoropsconnect.VectorOpsServiceClusterHdbscanProcedure
 	stream := c.rpc.ClusterHdbscan(ctx)
 
@@ -113,8 +122,11 @@ func (c *Client) ClusterHdbscan(ctx context.Context, points Matrix, params *Hdbs
 		}),
 	)
 
-	var result HdbscanResult
-	var gotMetadata bool
+	var (
+		result      HdbscanResult
+		gotMetadata bool
+	)
+
 	err = streamio.UploadCollect(stream, procedure, frames, func(resp *vectoropspb.ClusterHdbscanResponse) error {
 		switch r := resp.GetResponse().(type) {
 		case *vectoropspb.ClusterHdbscanResponse_Metadata_:
@@ -126,19 +138,23 @@ func (c *Client) ClusterHdbscan(ctx context.Context, points Matrix, params *Hdbs
 			result.OutlierScores = append(result.OutlierScores, r.Chunk.GetOutlierScores()...)
 			result.IDs = append(result.IDs, r.Chunk.GetIds()...)
 		}
+
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
+
 	if !gotMetadata {
 		return nil, apierror.New(connect.CodeInternal, "server sent no metadata frame", procedure, 0, nil)
 	}
+
 	if len(result.Labels) != points.Rows {
 		return nil, apierror.New(connect.CodeInternal,
 			fmt.Sprintf("server streamed %d labels, want %d (one per input row)", len(result.Labels), points.Rows),
 			procedure, 0, nil)
 	}
+
 	return &result, nil
 }
 
@@ -150,20 +166,25 @@ func (c *Client) ClusterHdbscan(ctx context.Context, points Matrix, params *Hdbs
 // chunks. A nil params keeps all server defaults.
 func (c *Client) ProjectUmap(ctx context.Context, points Matrix, params *UmapParams) (*UmapResult, error) {
 	ctx = transport.EnsureDeployment(ctx, c.deployment)
+
 	if err := points.validate(); err != nil {
 		return nil, err
 	}
+
 	var labels []int32
 	if params != nil {
 		labels = params.SupervisedLabels
 	}
+
 	if len(labels) != 0 && len(labels) != points.Rows {
 		return nil, invalidArgument(fmt.Sprintf("got %d supervised labels for %d rows; labels must be empty or one per row", len(labels), points.Rows))
 	}
+
 	header, err := params.toHeader(&points)
 	if err != nil {
 		return nil, err
 	}
+
 	procedure := vectoropsconnect.VectorOpsServiceProjectUmapProcedure
 	stream := c.rpc.ProjectUmap(ctx)
 
@@ -175,8 +196,11 @@ func (c *Client) ProjectUmap(ctx context.Context, points Matrix, params *UmapPar
 		labelFrames(labels),
 	)
 
-	var result UmapResult
-	var gotMetadata bool
+	var (
+		result      UmapResult
+		gotMetadata bool
+	)
+
 	err = streamio.UploadCollect(stream, procedure, frames, func(resp *vectoropspb.ProjectUmapResponse) error {
 		switch r := resp.GetResponse().(type) {
 		case *vectoropspb.ProjectUmapResponse_Metadata_:
@@ -187,19 +211,23 @@ func (c *Client) ProjectUmap(ctx context.Context, points Matrix, params *UmapPar
 			result.Embedding.Data = append(result.Embedding.Data, r.Embedding.GetData()...)
 			result.Embedding.IDs = append(result.Embedding.IDs, r.Embedding.GetIds()...)
 		}
+
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
+
 	if !gotMetadata {
 		return nil, apierror.New(connect.CodeInternal, "server sent no metadata frame", procedure, 0, nil)
 	}
+
 	if want := result.Embedding.Rows * result.Embedding.Cols; len(result.Embedding.Data) != want {
 		return nil, apierror.New(connect.CodeInternal,
 			fmt.Sprintf("server streamed %d embedding values, want %d (declared %d rows x %d cols)",
 				len(result.Embedding.Data), want, result.Embedding.Rows, result.Embedding.Cols),
 			procedure, 0, nil)
 	}
+
 	return &result, nil
 }

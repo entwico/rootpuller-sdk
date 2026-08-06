@@ -34,22 +34,8 @@ func NewFromCore(core *transport.Core) *Client {
 func (c *Client) WithDeployment(name string) *Client {
 	derived := *c
 	derived.deployment = name
-	return &derived
-}
 
-func (c *Client) call(ctx context.Context, procedure string,
-	send func(context.Context) (*connect.Response[chunkerpb.TextChunkResponse], error),
-) ([][]common.TextChunk, error) {
-	resp, err := send(transport.EnsureDeployment(ctx, c.deployment))
-	if err != nil {
-		return nil, transport.WrapError(err, procedure)
-	}
-	results := resp.Msg.GetResults()
-	out := make([][]common.TextChunk, len(results))
-	for i, r := range results {
-		out[i] = protoconv.FromProtoTextChunks(r.GetChunks())
-	}
-	return out, nil
+	return &derived
 }
 
 // ChunkSemantic calls TextChunkerService/ChunkSemantic: embedding-driven
@@ -59,6 +45,7 @@ func (c *Client) ChunkSemantic(ctx context.Context, req *SemanticRequest) ([][]c
 	if err != nil {
 		return nil, err
 	}
+
 	msg := &chunkerpb.ChunkSemanticRequest{
 		Texts:                    req.Texts,
 		Model:                    req.Model,
@@ -76,6 +63,7 @@ func (c *Client) ChunkSemantic(ctx context.Context, req *SemanticRequest) ([][]c
 		Normalize:                protoconv.ToProtoNormalize(req.Normalize),
 		MinCharactersPerChunk:    protoconv.Int32Ptr(req.MinCharactersPerChunk),
 	}
+
 	return c.call(ctx, chunkerconnect.TextChunkerServiceChunkSemanticProcedure,
 		func(ctx context.Context) (*connect.Response[chunkerpb.TextChunkResponse], error) {
 			return c.rpc.ChunkSemantic(ctx, connect.NewRequest(msg))
@@ -89,6 +77,7 @@ func (c *Client) ChunkToken(ctx context.Context, req *TokenRequest) ([][]common.
 	if err != nil {
 		return nil, err
 	}
+
 	msg := &chunkerpb.ChunkTokenRequest{
 		Texts:        req.Texts,
 		Tokenizer:    tokenizer,
@@ -96,6 +85,7 @@ func (c *Client) ChunkToken(ctx context.Context, req *TokenRequest) ([][]common.
 		ChunkOverlap: protoconv.Int32Ptr(req.ChunkOverlap),
 		Normalize:    protoconv.ToProtoNormalize(req.Normalize),
 	}
+
 	return c.call(ctx, chunkerconnect.TextChunkerServiceChunkTokenProcedure,
 		func(ctx context.Context) (*connect.Response[chunkerpb.TextChunkResponse], error) {
 			return c.rpc.ChunkToken(ctx, connect.NewRequest(msg))
@@ -109,10 +99,12 @@ func (c *Client) ChunkSentence(ctx context.Context, req *SentenceRequest) ([][]c
 	if err != nil {
 		return nil, err
 	}
+
 	inclusion, err := req.DelimiterInclusion.toProto()
 	if err != nil {
 		return nil, err
 	}
+
 	msg := &chunkerpb.ChunkSentenceRequest{
 		Texts:                    req.Texts,
 		Tokenizer:                tokenizer,
@@ -125,6 +117,7 @@ func (c *Client) ChunkSentence(ctx context.Context, req *SentenceRequest) ([][]c
 		DelimiterInclusion:       inclusion,
 		Normalize:                protoconv.ToProtoNormalize(req.Normalize),
 	}
+
 	return c.call(ctx, chunkerconnect.TextChunkerServiceChunkSentenceProcedure,
 		func(ctx context.Context) (*connect.Response[chunkerpb.TextChunkResponse], error) {
 			return c.rpc.ChunkSentence(ctx, connect.NewRequest(msg))
@@ -138,12 +131,14 @@ func (c *Client) ChunkCode(ctx context.Context, req *CodeRequest) ([][]common.Te
 	if err != nil {
 		return nil, err
 	}
+
 	msg := &chunkerpb.ChunkCodeRequest{
 		Texts:     req.Texts,
 		Tokenizer: tokenizer,
 		ChunkSize: protoconv.Int32Ptr(req.ChunkSize),
 		Language:  req.Language,
 	}
+
 	return c.call(ctx, chunkerconnect.TextChunkerServiceChunkCodeProcedure,
 		func(ctx context.Context) (*connect.Response[chunkerpb.TextChunkResponse], error) {
 			return c.rpc.ChunkCode(ctx, connect.NewRequest(msg))
@@ -157,6 +152,7 @@ func (c *Client) ChunkRecursive(ctx context.Context, req *RecursiveRequest) ([][
 	if err != nil {
 		return nil, err
 	}
+
 	msg := &chunkerpb.ChunkRecursiveRequest{
 		Texts:                 req.Texts,
 		Tokenizer:             tokenizer,
@@ -166,6 +162,7 @@ func (c *Client) ChunkRecursive(ctx context.Context, req *RecursiveRequest) ([][
 		Lang:                  req.Lang,
 		Normalize:             protoconv.ToProtoNormalize(req.Normalize),
 	}
+
 	return c.call(ctx, chunkerconnect.TextChunkerServiceChunkRecursiveProcedure,
 		func(ctx context.Context) (*connect.Response[chunkerpb.TextChunkResponse], error) {
 			return c.rpc.ChunkRecursive(ctx, connect.NewRequest(msg))
@@ -184,6 +181,7 @@ func (c *Client) ChunkLate(ctx context.Context, req *LateRequest) ([][]common.Te
 		Lang:                  req.Lang,
 		Normalize:             protoconv.ToProtoNormalize(req.Normalize),
 	}
+
 	return c.call(ctx, chunkerconnect.TextChunkerServiceChunkLateProcedure,
 		func(ctx context.Context) (*connect.Response[chunkerpb.TextChunkResponse], error) {
 			return c.rpc.ChunkLate(ctx, connect.NewRequest(msg))
@@ -199,6 +197,7 @@ func (c *Client) ChunkNeural(ctx context.Context, req *NeuralRequest) ([][]commo
 		MinCharactersPerChunk: protoconv.Int32Ptr(req.MinCharactersPerChunk),
 		Normalize:             protoconv.ToProtoNormalize(req.Normalize),
 	}
+
 	return c.call(ctx, chunkerconnect.TextChunkerServiceChunkNeuralProcedure,
 		func(ctx context.Context) (*connect.Response[chunkerpb.TextChunkResponse], error) {
 			return c.rpc.ChunkNeural(ctx, connect.NewRequest(msg))
@@ -212,10 +211,12 @@ func (c *Client) ChunkSlumber(ctx context.Context, req *SlumberRequest) ([][]com
 	if err != nil {
 		return nil, err
 	}
+
 	genie, err := req.Genie.toProto()
 	if err != nil {
 		return nil, err
 	}
+
 	msg := &chunkerpb.ChunkSlumberRequest{
 		Texts:                 req.Texts,
 		Tokenizer:             tokenizer,
@@ -229,8 +230,27 @@ func (c *Client) ChunkSlumber(ctx context.Context, req *SlumberRequest) ([][]com
 		Model:                 req.Model,
 		BaseUrl:               req.BaseURL,
 	}
+
 	return c.call(ctx, chunkerconnect.TextChunkerServiceChunkSlumberProcedure,
 		func(ctx context.Context) (*connect.Response[chunkerpb.TextChunkResponse], error) {
 			return c.rpc.ChunkSlumber(ctx, connect.NewRequest(msg))
 		})
+}
+
+func (c *Client) call(ctx context.Context, procedure string,
+	send func(context.Context) (*connect.Response[chunkerpb.TextChunkResponse], error),
+) ([][]common.TextChunk, error) {
+	resp, err := send(transport.EnsureDeployment(ctx, c.deployment))
+	if err != nil {
+		return nil, transport.WrapError(err, procedure)
+	}
+
+	results := resp.Msg.GetResults()
+
+	out := make([][]common.TextChunk, len(results))
+	for i, r := range results {
+		out[i] = protoconv.FromProtoTextChunks(r.GetChunks())
+	}
+
+	return out, nil
 }

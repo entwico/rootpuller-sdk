@@ -35,6 +35,7 @@ func (c *Client) Generate(ctx context.Context, req *GenerateRequest) (*Result, e
 	if err != nil {
 		return nil, err
 	}
+
 	procedure := painterconnect.ImagePainterServiceGenerateImageProcedure
 	stream := c.rpc.GenerateImage(ctx)
 
@@ -42,8 +43,11 @@ func (c *Client) Generate(ctx context.Context, req *GenerateRequest) (*Result, e
 		&painterpb.GenerateImageRequest{Request: &painterpb.GenerateImageRequest_Params_{Params: params}},
 	)
 
-	var collector streamio.FileCollector
-	var meta Metadata
+	var (
+		collector streamio.FileCollector
+		meta      Metadata
+	)
+
 	err = streamio.UploadCollect(stream, procedure, frames, func(resp *painterpb.GenerateImageResponse) error {
 		switch r := resp.GetResponse().(type) {
 		case *painterpb.GenerateImageResponse_Progress:
@@ -55,11 +59,13 @@ func (c *Client) Generate(ctx context.Context, req *GenerateRequest) (*Result, e
 		case *painterpb.GenerateImageResponse_File:
 			collector.Add(r.File)
 		}
+
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
+
 	return buildResult(&collector, meta)
 }
 
@@ -73,6 +79,7 @@ func (c *Client) Edit(ctx context.Context, req *EditRequest, image common.Upload
 	if err != nil {
 		return nil, err
 	}
+
 	procedure := painterconnect.ImagePainterServiceEditImageProcedure
 	stream := c.rpc.EditImage(ctx)
 
@@ -86,13 +93,17 @@ func (c *Client) Edit(ctx context.Context, req *EditRequest, image common.Upload
 			return &painterpb.EditImageRequest{Request: &painterpb.EditImageRequest_MaskImage{MaskImage: chunk}}
 		}))
 	}
+
 	frames := streamio.Frames(
 		&painterpb.EditImageRequest{Request: &painterpb.EditImageRequest_Params_{Params: params}},
 		tails...,
 	)
 
-	var collector streamio.FileCollector
-	var meta Metadata
+	var (
+		collector streamio.FileCollector
+		meta      Metadata
+	)
+
 	err = streamio.UploadCollect(stream, procedure, frames, func(resp *painterpb.EditImageResponse) error {
 		switch r := resp.GetResponse().(type) {
 		case *painterpb.EditImageResponse_Progress:
@@ -104,11 +115,13 @@ func (c *Client) Edit(ctx context.Context, req *EditRequest, image common.Upload
 		case *painterpb.EditImageResponse_File:
 			collector.Add(r.File)
 		}
+
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
+
 	return buildResult(&collector, meta)
 }
 
@@ -121,6 +134,7 @@ func (c *Client) Outpaint(ctx context.Context, req *OutpaintRequest, image commo
 	if err != nil {
 		return nil, err
 	}
+
 	procedure := painterconnect.ImagePainterServiceOutpaintImageProcedure
 	stream := c.rpc.OutpaintImage(ctx)
 
@@ -131,8 +145,11 @@ func (c *Client) Outpaint(ctx context.Context, req *OutpaintRequest, image commo
 		}),
 	)
 
-	var collector streamio.FileCollector
-	var meta Metadata
+	var (
+		collector streamio.FileCollector
+		meta      Metadata
+	)
+
 	err = streamio.UploadCollect(stream, procedure, frames, func(resp *painterpb.OutpaintImageResponse) error {
 		switch r := resp.GetResponse().(type) {
 		case *painterpb.OutpaintImageResponse_Progress:
@@ -144,11 +161,13 @@ func (c *Client) Outpaint(ctx context.Context, req *OutpaintRequest, image commo
 		case *painterpb.OutpaintImageResponse_File:
 			collector.Add(r.File)
 		}
+
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
+
 	return buildResult(&collector, meta)
 }
 
@@ -157,5 +176,6 @@ func buildResult(collector *streamio.FileCollector, meta Metadata) (*Result, err
 	if err != nil {
 		return nil, err
 	}
+
 	return &Result{Images: files, Metadata: meta}, nil
 }

@@ -27,9 +27,11 @@ func (t TableSourceType) toProto() (*chefpb.TableSourceType, error) {
 		return nil, nil
 	case TableSourceTypeCSV:
 		v := chefpb.TableSourceType_TABLE_SOURCE_TYPE_CSV
+
 		return &v, nil
 	case TableSourceTypeMarkdown:
 		v := chefpb.TableSourceType_TABLE_SOURCE_TYPE_MARKDOWN
+
 		return &v, nil
 	default:
 		return nil, invalidArgument(fmt.Sprintf("unknown table source type %q", t))
@@ -116,6 +118,7 @@ func fromProtoTables(tables []*chefpb.MarkdownTable) []MarkdownTable {
 			TokenCount: int(t.GetTokenCount()),
 		}
 	}
+
 	return out
 }
 
@@ -130,6 +133,7 @@ func fromProtoCodeBlocks(blocks []*chefpb.CodeBlock) []CodeBlock {
 			TokenCount: int(b.GetTokenCount()),
 		}
 	}
+
 	return out
 }
 
@@ -143,6 +147,7 @@ func fromProtoImages(images []*chefpb.ImageRef) []ImageRef {
 			EndIndex:   int(img.GetEndIndex()),
 		}
 	}
+
 	return out
 }
 
@@ -155,6 +160,7 @@ func fromProtoTokenizers(tokenizers []*chefpb.TokenizerInfo) []TokenizerInfo {
 			Description: t.GetDescription(),
 		}
 	}
+
 	return out
 }
 
@@ -164,6 +170,7 @@ func fromProtoMetadata(s *structpb.Struct) map[string]any {
 	if s == nil {
 		return nil
 	}
+
 	return s.AsMap()
 }
 
@@ -172,6 +179,8 @@ func copyPtr[T any](p *T) *T {
 	if p == nil {
 		return nil
 	}
+
 	v := *p
+
 	return &v
 }

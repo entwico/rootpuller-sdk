@@ -43,6 +43,7 @@ func engineFrom(v webcontentpb.FetcherOptions_Engine) Engine {
 	if e, ok := engineFromProto[v]; ok {
 		return e
 	}
+
 	return Engine(v.String())
 }
 
@@ -121,6 +122,7 @@ var artifactKindFromProto = func() map[webcontentpb.Artifact_Kind]ArtifactKind {
 	for k, v := range artifactKindToProto {
 		m[v] = k
 	}
+
 	return m
 }()
 
@@ -128,6 +130,7 @@ func artifactKindFrom(v webcontentpb.Artifact_Kind) ArtifactKind {
 	if k, ok := artifactKindFromProto[v]; ok {
 		return k
 	}
+
 	return ArtifactKind(v.String())
 }
 
@@ -136,6 +139,7 @@ func (k ArtifactKind) toProto() (webcontentpb.Artifact_Kind, error) {
 	if !ok {
 		return 0, invalidArgument(fmt.Sprintf("unknown artifact kind %q", k))
 	}
+
 	return v, nil
 }
 
@@ -143,10 +147,12 @@ func artifactKindsFrom(vs []webcontentpb.Artifact_Kind) []ArtifactKind {
 	if len(vs) == 0 {
 		return nil
 	}
+
 	out := make([]ArtifactKind, len(vs))
 	for i, v := range vs {
 		out[i] = artifactKindFrom(v)
 	}
+
 	return out
 }
 
@@ -187,10 +193,13 @@ func errorCodeFrom(v webcontentpb.ErrorDetail_Code) ErrorCode {
 	if v == webcontentpb.ErrorDetail_CODE_UNSPECIFIED {
 		return ErrorCodeUnspecified
 	}
+
 	name := v.String() // e.g. "CODE_PAYWALL"
+
 	const prefix = "CODE_"
 	if len(name) > len(prefix) && name[:len(prefix)] == prefix {
 		return ErrorCode(name[len(prefix):])
 	}
+
 	return ErrorCode(name)
 }

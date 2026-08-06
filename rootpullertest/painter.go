@@ -46,22 +46,29 @@ type painterHandler struct {
 
 const painterMaxChunk = 2 << 20
 
-func painterInvalid(msg string) error {
-	return connect.NewError(connect.CodeInvalidArgument, errors.New(msg))
-}
+// Painter-specific protocol-violation sentinels.
+var (
+	errInputImageAfterMask  = errors.New("input_image frame after mask_image")
+	errMaskImageBeforeInput = errors.New("mask_image frame before input_image")
+	errMissingInputImage    = errors.New("missing input_image")
+)
 
 // appendChunk validates one incoming FileChunk and folds it into f.
 func appendChunk(f *common.File, chunk *commonpb.FileChunk) error {
 	if len(chunk.GetData()) > painterMaxChunk {
-		return painterInvalid("chunk exceeds 2 MiB")
+		return invalidArgument(errChunkTooLarge)
 	}
+
 	if f.Name == "" {
 		f.Name = chunk.GetName()
 	}
+
 	if f.MIMEType == "" {
 		f.MIMEType = chunk.GetMimeType()
 	}
+
 	f.Data = append(f.Data, chunk.GetData()...)
+
 	return nil
 }
 
@@ -74,30 +81,36 @@ func (h *painterHandler) GenerateImage(_ context.Context, stream *connect.BidiSt
 			if errors.Is(err, io.EOF) {
 				break
 			}
+
 			return err
 		}
+
 		switch r := req.GetRequest().(type) {
 		case *painterpb.GenerateImageRequest_Params_:
 			if params != nil {
-				return painterInvalid("duplicate params frame")
+				return invalidArgument(errDuplicateParamsFrame)
 			}
+
 			params = r.Params
 		default:
-			return painterInvalid("unexpected request variant")
+			return invalidArgument(errUnexpectedVariant)
 		}
 	}
+
 	if params == nil {
-		return painterInvalid("missing params")
+		return invalidArgument(errMissingParams)
 	}
 
 	generate := h.fake.GenerateFunc
 	if generate == nil {
 		generate = func(string) ([]common.File, error) { return cannedPainterImages(), nil }
 	}
+
 	files, err := generate(params.GetPrompt())
 	if err != nil {
 		return err
 	}
+
 	return painterRespond(h.fake, files,
 		func(m *painterpb.GenerationProgress) *painterpb.GenerateImageResponse {
 			return &painterpb.GenerateImageResponse{Response: &painterpb.GenerateImageResponse_Progress{Progress: m}}
@@ -112,66 +125,104 @@ func (h *painterHandler) GenerateImage(_ context.Context, stream *connect.BidiSt
 	)
 }
 
-func (h *painterHandler) EditImage(_ context.Context, stream *connect.BidiStream[painterpb.EditImageRequest, painterpb.EditImageResponse]) error {
-	var params *painterpb.EditImageRequest_Params
-	var input, mask common.File
-	var inputChunks, maskChunks int
+// editImageRequest holds the frames accumulated from one EditImage
+// request stream. mask stays nil when the client sent no mask_image
+// chunks.
+type editImageRequest struct {
+	params      *painterpb.EditImageRequest_Params
+	input       common.File
+	mask        *common.File
+	inputChunks int
+}
+
+// receiveEditImageRequest drains an EditImage request stream, enforcing
+// the params → input_image → mask_image frame ordering.
+func receiveEditImageRequest(stream *connect.BidiStream[painterpb.EditImageRequest, painterpb.EditImageResponse]) (*editImageRequest, error) {
+	acc := &editImageRequest{}
+
+	var (
+		maskFile   common.File
+		maskChunks int
+	)
+
 	for {
 		req, err := stream.Receive()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				break
 			}
-			return err
+
+			return nil, err
 		}
+
 		switch r := req.GetRequest().(type) {
 		case *painterpb.EditImageRequest_Params_:
-			if params != nil {
-				return painterInvalid("duplicate params frame")
+			if acc.params != nil {
+				return nil, invalidArgument(errDuplicateParamsFrame)
 			}
-			params = r.Params
+
+			acc.params = r.Params
 		case *painterpb.EditImageRequest_InputImage:
-			if params == nil {
-				return painterInvalid("input_image frame before params")
+			if acc.params == nil {
+				return nil, errBeforeParams("input_image")
 			}
+
 			if maskChunks > 0 {
-				return painterInvalid("input_image frame after mask_image")
+				return nil, invalidArgument(errInputImageAfterMask)
 			}
-			if err := appendChunk(&input, r.InputImage); err != nil {
-				return err
+
+			if err := appendChunk(&acc.input, r.InputImage); err != nil {
+				return nil, err
 			}
-			inputChunks++
+
+			acc.inputChunks++
 		case *painterpb.EditImageRequest_MaskImage:
-			if inputChunks == 0 {
-				return painterInvalid("mask_image frame before input_image")
+			if acc.inputChunks == 0 {
+				return nil, invalidArgument(errMaskImageBeforeInput)
 			}
-			if err := appendChunk(&mask, r.MaskImage); err != nil {
-				return err
+
+			if err := appendChunk(&maskFile, r.MaskImage); err != nil {
+				return nil, err
 			}
+
 			maskChunks++
 		default:
-			return painterInvalid("unexpected request variant")
+			return nil, invalidArgument(errUnexpectedVariant)
 		}
 	}
-	if params == nil {
-		return painterInvalid("missing params")
+
+	if maskChunks > 0 {
+		acc.mask = &maskFile
 	}
-	if inputChunks == 0 {
-		return painterInvalid("missing input_image")
+
+	return acc, nil
+}
+
+func (h *painterHandler) EditImage(_ context.Context, stream *connect.BidiStream[painterpb.EditImageRequest, painterpb.EditImageResponse]) error {
+	// Like the real server: drain the full request before any work.
+	frames, err := receiveEditImageRequest(stream)
+	if err != nil {
+		return err
+	}
+
+	if frames.params == nil {
+		return invalidArgument(errMissingParams)
+	}
+
+	if frames.inputChunks == 0 {
+		return invalidArgument(errMissingInputImage)
 	}
 
 	edit := h.fake.EditFunc
 	if edit == nil {
 		edit = func(string, common.File, *common.File) ([]common.File, error) { return cannedPainterImages(), nil }
 	}
-	var maskArg *common.File
-	if maskChunks > 0 {
-		maskArg = &mask
-	}
-	files, err := edit(params.GetPrompt(), input, maskArg)
+
+	files, err := edit(frames.params.GetPrompt(), frames.input, frames.mask)
 	if err != nil {
 		return err
 	}
+
 	return painterRespond(h.fake, files,
 		func(m *painterpb.GenerationProgress) *painterpb.EditImageResponse {
 			return &painterpb.EditImageResponse{Response: &painterpb.EditImageResponse_Progress{Progress: m}}
@@ -187,50 +238,62 @@ func (h *painterHandler) EditImage(_ context.Context, stream *connect.BidiStream
 }
 
 func (h *painterHandler) OutpaintImage(_ context.Context, stream *connect.BidiStream[painterpb.OutpaintImageRequest, painterpb.OutpaintImageResponse]) error {
-	var params *painterpb.OutpaintImageRequest_Params
-	var input common.File
-	var inputChunks int
+	var (
+		params      *painterpb.OutpaintImageRequest_Params
+		input       common.File
+		inputChunks int
+	)
+
 	for {
 		req, err := stream.Receive()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				break
 			}
+
 			return err
 		}
+
 		switch r := req.GetRequest().(type) {
 		case *painterpb.OutpaintImageRequest_Params_:
 			if params != nil {
-				return painterInvalid("duplicate params frame")
+				return invalidArgument(errDuplicateParamsFrame)
 			}
+
 			params = r.Params
 		case *painterpb.OutpaintImageRequest_InputImage:
 			if params == nil {
-				return painterInvalid("input_image frame before params")
+				return errBeforeParams("input_image")
 			}
+
 			if err := appendChunk(&input, r.InputImage); err != nil {
 				return err
 			}
+
 			inputChunks++
 		default:
-			return painterInvalid("unexpected request variant")
+			return invalidArgument(errUnexpectedVariant)
 		}
 	}
+
 	if params == nil {
-		return painterInvalid("missing params")
+		return invalidArgument(errMissingParams)
 	}
+
 	if inputChunks == 0 {
-		return painterInvalid("missing input_image")
+		return invalidArgument(errMissingInputImage)
 	}
 
 	outpaint := h.fake.OutpaintFunc
 	if outpaint == nil {
 		outpaint = func(string, common.File) ([]common.File, error) { return cannedPainterImages(), nil }
 	}
+
 	files, err := outpaint(params.GetPrompt(), input)
 	if err != nil {
 		return err
 	}
+
 	return painterRespond(h.fake, files,
 		func(m *painterpb.GenerationProgress) *painterpb.OutpaintImageResponse {
 			return &painterpb.OutpaintImageResponse{Response: &painterpb.OutpaintImageResponse_Progress{Progress: m}}
@@ -261,9 +324,11 @@ func painterRespond[Resp any](
 			return err
 		}
 	}
+
 	if err := send(wrapMetadata(painterMetadataToProto(fake.Metadata, files))); err != nil {
 		return err
 	}
+
 	for i := range files {
 		if err := SendFileChunks(&files[i], func(chunk *commonpb.FileChunk) error {
 			return send(wrapFile(chunk))
@@ -271,6 +336,7 @@ func painterRespond[Resp any](
 			return err
 		}
 	}
+
 	return nil
 }
 
@@ -293,6 +359,7 @@ func painterProgressToProto(p painter.Progress) *painterpb.GenerationProgress {
 		message := p.Message
 		msg.Message = &message
 	}
+
 	return msg
 }
 
@@ -311,35 +378,39 @@ func painterMetadataToProto(m *painter.Metadata, files []common.File) *painterpb
 		for i := range synth.Images {
 			synth.Images[i] = painter.ImageMetadata{Index: i}
 		}
+
 		m = &synth
 	}
+
 	images := make([]*painterpb.PerImageMetadata, len(m.Images))
 	for i, im := range m.Images {
 		pb := &painterpb.PerImageMetadata{
-			Index:         int32(im.Index),
+			Index:         int32(im.Index), //nolint:gosec // test-fixture indexes fit int32
 			Seed:          im.Seed,
 			SafetyBlocked: im.SafetyBlocked,
 			SafetyReason:  im.SafetyReason,
 			RevisedPrompt: im.RevisedPrompt,
 		}
 		if im.Size != (common.ImageSize{}) {
-			pb.Size = &commonpb.ImageSize{Width: int32(im.Size.Width), Height: int32(im.Size.Height)}
+			pb.Size = &commonpb.ImageSize{Width: int32(im.Size.Width), Height: int32(im.Size.Height)} //nolint:gosec // test-fixture image dimensions fit int32
 		}
+
 		images[i] = pb
 	}
+
 	msg := &painterpb.GenerationMetadata{
 		Backend:          painterBackendToProto[m.Backend],
 		Model:            m.Model,
 		ProcessingTimeMs: m.ProcessingTime.Milliseconds(),
-		NumImages:        int32(m.NumImages),
+		NumImages:        int32(m.NumImages), //nolint:gosec // test-fixture counts fit int32
 		Images:           images,
 		Notes:            m.Notes,
 	}
 	if m.Usage != (common.Usage{}) {
 		msg.Usage = &commonpb.Usage{
-			InputTokens:             int32(m.Usage.InputTokens),
-			CachedInputTokens:       int32(m.Usage.CachedInputTokens),
-			OutputTokens:            int32(m.Usage.OutputTokens),
+			InputTokens:             int32(m.Usage.InputTokens),       //nolint:gosec // test-fixture token counts fit int32
+			CachedInputTokens:       int32(m.Usage.CachedInputTokens), //nolint:gosec // test-fixture token counts fit int32
+			OutputTokens:            int32(m.Usage.OutputTokens),      //nolint:gosec // test-fixture token counts fit int32
 			EstimatedCostMicros:     m.Usage.EstimatedCostMicros,
 			CurrencyCode:            m.Usage.CurrencyCode,
 			InputPricePerMtok:       m.Usage.InputPricePerMTok,
@@ -347,5 +418,6 @@ func painterMetadataToProto(m *painter.Metadata, files []common.File) *painterpb
 			CachedInputPricePerMtok: m.Usage.CachedInputPricePerMTok,
 		}
 	}
+
 	return msg
 }

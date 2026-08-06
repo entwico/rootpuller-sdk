@@ -125,6 +125,7 @@ func (m Message) toProto() (*completionpb.Message, error) {
 	if !ok {
 		return nil, invalidArgument(fmt.Sprintf("unknown message role %q", m.Role))
 	}
+
 	msg := &completionpb.Message{Role: role, Content: m.Content}
 	for _, part := range m.Parts {
 		switch p := part.(type) {
@@ -135,20 +136,24 @@ func (m Message) toProto() (*completionpb.Message, error) {
 			if p.Name != "" {
 				file.Name = &p.Name
 			}
+
 			msg.Parts = append(msg.Parts, &completionpb.Part{Part: &completionpb.Part_File_{File: file}})
 		case AttachmentPart:
 			if p.ID == "" {
 				return nil, invalidArgument("attachment part with empty ID")
 			}
+
 			file := &completionpb.Part_File{MimeType: p.MIMEType, Source: &completionpb.Part_File_AttachmentId{AttachmentId: p.ID}}
 			if p.Name != "" {
 				file.Name = &p.Name
 			}
+
 			msg.Parts = append(msg.Parts, &completionpb.Part{Part: &completionpb.Part_File_{File: file}})
 		default:
 			return nil, invalidArgument(fmt.Sprintf("unknown message part type %T", part))
 		}
 	}
+
 	return msg, nil
 }
 
@@ -175,10 +180,12 @@ func (r *Request) toProto() (*completionpb.CompleteRequest, error) {
 	if !ok {
 		return nil, invalidArgument(fmt.Sprintf("unknown provider %q", r.Provider))
 	}
+
 	effort, ok := thinkingEffortToProto[r.ThinkingEffort]
 	if !ok {
 		return nil, invalidArgument(fmt.Sprintf("unknown thinking effort %q", r.ThinkingEffort))
 	}
+
 	msg := &completionpb.CompleteRequest{
 		Provider:             provider,
 		Model:                r.Model,
@@ -191,13 +198,16 @@ func (r *Request) toProto() (*completionpb.CompleteRequest, error) {
 	if effort != completionpb.ThinkingEffort_THINKING_EFFORT_UNSPECIFIED {
 		msg.ThinkingEffort = &effort
 	}
+
 	for _, m := range r.Messages {
 		pm, err := m.toProto()
 		if err != nil {
 			return nil, err
 		}
+
 		msg.Messages = append(msg.Messages, pm)
 	}
+
 	return msg, nil
 }
 

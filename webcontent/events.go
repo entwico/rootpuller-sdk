@@ -19,10 +19,12 @@ func redirectChainFromProto(hops []*webcontentpb.RedirectHop) []RedirectHop {
 	if len(hops) == 0 {
 		return nil
 	}
+
 	out := make([]RedirectHop, len(hops))
 	for i, h := range hops {
 		out[i] = RedirectHop{URL: h.GetUrl(), StatusCode: int(h.GetStatusCode()), Location: h.GetLocation()}
 	}
+
 	return out
 }
 
@@ -46,9 +48,11 @@ func (e *ContentError) Error() string {
 	if e.HTTPStatus != 0 {
 		msg += fmt.Sprintf(" (HTTP %d)", e.HTTPStatus)
 	}
+
 	if e.Message != "" {
 		msg += ": " + e.Message
 	}
+
 	return msg
 }
 
@@ -56,6 +60,7 @@ func contentErrorFromProto(pb *webcontentpb.ErrorDetail) *ContentError {
 	if pb == nil {
 		return nil
 	}
+
 	return &ContentError{
 		Code:               errorCodeFrom(pb.GetCode()),
 		Message:            pb.GetMessage(),
@@ -186,10 +191,12 @@ func pageMetadataFromProto(pb *webcontentpb.PageMetadata) PageMetadata {
 	if pb == nil {
 		return PageMetadata{}
 	}
+
 	attempted := make([]Engine, 0, len(pb.GetEnginesAttempted()))
 	for _, e := range pb.GetEnginesAttempted() {
 		attempted = append(attempted, engineFrom(e))
 	}
+
 	return PageMetadata{
 		RequestedURL:     pb.GetRequestedUrl(),
 		FinalURL:         pb.GetFinalUrl(),
@@ -211,7 +218,9 @@ func extractionMetadataFromProto(pb *webcontentpb.ExtractionMetadata) Extraction
 	if pb == nil {
 		return ExtractionMetadata{}
 	}
+
 	info := pb.GetPageInfo()
+
 	meta := ExtractionMetadata{DetectedLanguage: pb.DetectedLanguage}
 	if info != nil {
 		meta.PageInfo = PageInfo{
@@ -230,6 +239,7 @@ func extractionMetadataFromProto(pb *webcontentpb.ExtractionMetadata) Extraction
 			PageType:    info.Pagetype,
 		}
 	}
+
 	return meta
 }
 
@@ -237,6 +247,7 @@ func summaryFromProto(pb *webcontentpb.Summary) Summary {
 	if pb == nil {
 		return Summary{}
 	}
+
 	return Summary{
 		TotalBytes:      pb.GetTotalBytes(),
 		FetchDuration:   protoconv.MsToDuration(pb.GetFetchDurationMs()),

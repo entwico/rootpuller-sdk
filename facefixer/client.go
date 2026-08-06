@@ -93,6 +93,7 @@ var operationFromProto = map[facefixerpb.Operation]string{
 
 func fromProtoFaceInfo(pb *facefixerpb.FaceInfo) FaceInfo {
 	orig := pb.GetOriginal()
+
 	fi := FaceInfo{
 		OriginalBBox: protoconv.FromProtoBoundingBox(orig.GetBbox()),
 		Confidence:   orig.GetConfidence(),
@@ -106,10 +107,12 @@ func fromProtoFaceInfo(pb *facefixerpb.FaceInfo) FaceInfo {
 			RightMouth: protoconv.FromProtoPoint(lm.GetRightMouth()),
 		}
 	}
+
 	if restored := pb.GetRestored(); restored != nil {
 		box := protoconv.FromProtoBoundingBox(restored.GetBbox())
 		fi.RestoredBBox = &box
 	}
+
 	return fi
 }
 
@@ -132,10 +135,12 @@ func fromProtoMetadata(pb *facefixerpb.RestoreMetadata) Metadata {
 			m.Faces[i] = fromProtoFaceInfo(f)
 		}
 	}
+
 	if pb.MaskProvided != nil {
 		v := pb.GetMaskProvided()
 		m.MaskProvided = &v
 	}
+
 	return m
 }
 
@@ -170,6 +175,7 @@ func (p *RestoreParams) toProto() (*facefixerpb.RestoreFaceRequest_Params, error
 	if err != nil {
 		return nil, err
 	}
+
 	return &facefixerpb.RestoreFaceRequest_Params{
 		Upscale:           protoconv.Int32Ptr(p.Upscale),
 		FidelityWeight:    p.FidelityWeight,
@@ -202,6 +208,7 @@ func (p *ColorizeParams) toProto() (*facefixerpb.ColorizeFaceRequest_Params, err
 	if err != nil {
 		return nil, err
 	}
+
 	return &facefixerpb.ColorizeFaceRequest_Params{
 		Upscale:           protoconv.Int32Ptr(p.Upscale),
 		FidelityWeight:    p.FidelityWeight,
@@ -233,6 +240,7 @@ func (p *InpaintParams) toProto() (*facefixerpb.InpaintFaceRequest_Params, error
 	if err != nil {
 		return nil, err
 	}
+
 	return &facefixerpb.InpaintFaceRequest_Params{
 		Upscale:           protoconv.Int32Ptr(p.Upscale),
 		FidelityWeight:    p.FidelityWeight,
@@ -249,9 +257,11 @@ func toProtoFormat(f common.ImageFormat) (*commonpb.ImageFormat, error) {
 	if !ok {
 		return nil, apierror.New(connect.CodeInvalidArgument, fmt.Sprintf("unknown image format %q", f), "", 0, nil)
 	}
+
 	if format == commonpb.ImageFormat_IMAGE_FORMAT_UNSPECIFIED {
 		return nil, nil
 	}
+
 	return &format, nil
 }
 
@@ -265,8 +275,11 @@ func collectResult[Req, Resp any](
 	frames iter.Seq2[*Req, error],
 	extract func(*Resp) (*facefixerpb.RestoreMetadata, *commonpb.FileChunk),
 ) (*Result, error) {
-	var meta Metadata
-	var collector streamio.FileCollector
+	var (
+		meta      Metadata
+		collector streamio.FileCollector
+	)
+
 	err := streamio.UploadCollect(stream, procedure, frames, func(resp *Resp) error {
 		m, f := extract(resp)
 		switch {
@@ -275,18 +288,22 @@ func collectResult[Req, Resp any](
 		case f != nil:
 			collector.Add(f)
 		}
+
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
+
 	files, err := collector.Files()
 	if err != nil {
 		return nil, err
 	}
+
 	if len(files) == 0 {
 		return nil, apierror.New(connect.CodeInternal, "server returned no image", procedure, 0, nil)
 	}
+
 	return &Result{File: files[0], Metadata: meta}, nil
 }
 
@@ -297,6 +314,7 @@ func (c *Client) RestoreFace(ctx context.Context, params *RestoreParams, image c
 	if err != nil {
 		return nil, err
 	}
+
 	procedure := facefixerconnect.FaceFixerServiceRestoreFaceProcedure
 	stream := c.rpc.RestoreFace(ctx)
 
@@ -319,6 +337,7 @@ func (c *Client) ColorizeFace(ctx context.Context, params *ColorizeParams, image
 	if err != nil {
 		return nil, err
 	}
+
 	procedure := facefixerconnect.FaceFixerServiceColorizeFaceProcedure
 	stream := c.rpc.ColorizeFace(ctx)
 
@@ -342,6 +361,7 @@ func (c *Client) InpaintFace(ctx context.Context, params *InpaintParams, image c
 	if err != nil {
 		return nil, err
 	}
+
 	procedure := facefixerconnect.FaceFixerServiceInpaintFaceProcedure
 	stream := c.rpc.InpaintFace(ctx)
 

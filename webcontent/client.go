@@ -37,6 +37,7 @@ func NewFromCore(core *transport.Core) *Client {
 func (c *Client) WithBot(name string) *Client {
 	derived := *c
 	derived.bot = name
+
 	return &derived
 }
 
@@ -54,14 +55,17 @@ func (r *FetchURLRequest) toProto() (*webcontentpb.FetchUrlRequest, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	jobs, err := jobsToProto(r.Jobs)
 	if err != nil {
 		return nil, err
 	}
+
 	screenshot, err := r.Screenshot.toProto()
 	if err != nil {
 		return nil, err
 	}
+
 	return &webcontentpb.FetchUrlRequest{Url: r.URL, Fetcher: fetcher, Jobs: jobs, Screenshot: screenshot}, nil
 }
 
@@ -80,15 +84,18 @@ func errSeq[E any](err error) iter.Seq2[E, error] {
 // form use Fetch.
 func (c *Client) FetchURL(ctx context.Context, req *FetchURLRequest) iter.Seq2[Event, error] {
 	ctx = transport.EnsureBot(ctx, c.bot)
+
 	msg, err := req.toProto()
 	if err != nil {
 		return errSeq[Event](err)
 	}
+
 	stream, serr := c.rpc.FetchUrl(ctx, connect.NewRequest(msg))
 	if serr != nil {
 		return errSeq[Event](transport.WrapError(serr, webcontentconnect.WebContentServiceFetchUrlProcedure))
 	}
-	return streamio.EventSeq(stream, webcontentconnect.WebContentServiceFetchUrlProcedure, true,
+
+	return streamio.EventSeq(stream, webcontentconnect.WebContentServiceFetchUrlProcedure, apierror.ErrMissingTerminal,
 		func(pb *webcontentpb.FetchUrlResponse) (Event, bool, error) {
 			switch m := pb.GetMessage().(type) {
 			case *webcontentpb.FetchUrlResponse_FetchProgress:
@@ -136,14 +143,17 @@ func (r *FetchResult) Apply(event Event) {
 		if r.Artifacts == nil {
 			r.Artifacts = map[ArtifactKind][]byte{}
 		}
+
 		if _, ok := r.Artifacts[e.Kind]; !ok {
 			r.Artifacts[e.Kind] = []byte{}
 		}
+
 		r.Artifacts[e.Kind] = append(r.Artifacts[e.Kind], e.Data...)
 	case KindErrorEvent:
 		if r.KindErrors == nil {
 			r.KindErrors = map[ArtifactKind]*ContentError{}
 		}
+
 		r.KindErrors[e.Kind] = e.Err
 	case DoneEvent:
 		r.Summary = e.Summary
@@ -154,12 +164,15 @@ func (r *FetchResult) Apply(event Event) {
 // shared accumulator behind Fetch and the scrape helpers.
 func CollectEvents(events iter.Seq2[Event, error]) (*FetchResult, error) {
 	result := &FetchResult{}
+
 	for event, err := range events {
 		if err != nil {
 			return nil, err
 		}
+
 		result.Apply(event)
 	}
+
 	return result, nil
 }
 
@@ -200,19 +213,28 @@ type ExtractResult struct {
 func (c *Client) ExtractContent(ctx context.Context, req *ExtractRequest) (*ExtractResult, error) {
 	ctx = transport.EnsureBot(ctx, c.bot)
 	procedure := webcontentconnect.WebContentServiceExtractContentProcedure
+
 	kind := req.Document.Kind
 	if kind == ArtifactKindUnspecified {
 		kind = ArtifactKindHTMLRaw
 	}
+
 	switch kind {
 	case ArtifactKindHTMLRaw, ArtifactKindHTMLPrerender, ArtifactKindHTMLRendered:
-	default:
+	case ArtifactKindUnspecified,
+		ArtifactKindExtractedText, ArtifactKindExtractedMarkdown, ArtifactKindExtractedJSON,
+		ArtifactKindExtractedXML, ArtifactKindExtractedCSV,
+		ArtifactKindScreenshotPNG, ArtifactKindScreenshotJPEG, ArtifactKindScreenshotWebP:
 		return nil, invalidArgument("document kind must be an HTML kind")
+	default:
+		return nil, invalidArgument("unknown document kind " + string(kind) + "; document kind must be an HTML kind")
 	}
+
 	kindPb, err := kind.toProto()
 	if err != nil {
 		return nil, err
 	}
+
 	jobs, err := jobsToProto(req.Jobs)
 	if err != nil {
 		return nil, err
@@ -222,8 +244,11 @@ func (c *Client) ExtractContent(ctx context.Context, req *ExtractRequest) (*Extr
 	frames := extractFrames(jobs, req.SourceURL, kindPb, req.Document.Content)
 
 	result := &ExtractResult{}
+
 	var terminalErr *ContentError
+
 	sawTerminal := false
+
 	err = streamio.UploadCollect(stream, procedure, frames, func(pb *webcontentpb.ExtractContentResponse) error {
 		switch m := pb.GetMessage().(type) {
 		case *webcontentpb.ExtractContentResponse_ExtractionMetadata:
@@ -233,15 +258,18 @@ func (c *Client) ExtractContent(ctx context.Context, req *ExtractRequest) (*Extr
 			if result.Artifacts == nil {
 				result.Artifacts = map[ArtifactKind][]byte{}
 			}
+
 			k := artifactKindFrom(m.Artifact.GetKind())
 			if _, ok := result.Artifacts[k]; !ok {
 				result.Artifacts[k] = []byte{}
 			}
+
 			result.Artifacts[k] = append(result.Artifacts[k], m.Artifact.GetChunk()...)
 		case *webcontentpb.ExtractContentResponse_KindError:
 			if result.KindErrors == nil {
 				result.KindErrors = map[ArtifactKind]*ContentError{}
 			}
+
 			e := kindErrorFromProto(m.KindError)
 			result.KindErrors[e.Kind] = e.Err
 		case *webcontentpb.ExtractContentResponse_Error:
@@ -251,17 +279,21 @@ func (c *Client) ExtractContent(ctx context.Context, req *ExtractRequest) (*Extr
 			result.Summary = summaryFromProto(m.Done)
 			sawTerminal = true
 		}
+
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
+
 	if terminalErr != nil {
 		return nil, terminalErr
 	}
+
 	if !sawTerminal {
 		return nil, apierror.ErrMissingTerminal
 	}
+
 	return result, nil
 }
 
@@ -279,6 +311,7 @@ func extractFrames(jobs []*webcontentpb.ExtractionJob, sourceURL *string, kind w
 		}, nil) {
 			return
 		}
+
 		wrap := func(data []byte, last bool) *webcontentpb.ExtractContentRequest {
 			return &webcontentpb.ExtractContentRequest{
 				Message: &webcontentpb.ExtractContentRequest_Artifact{Artifact: &webcontentpb.Artifact{
@@ -290,7 +323,9 @@ func extractFrames(jobs []*webcontentpb.ExtractionJob, sourceURL *string, kind w
 		}
 		// One-chunk lookahead so the final chunk carries last_chunk.
 		var pending []byte
+
 		havePending := false
+
 		buf := make([]byte, streamio.MaxChunkBytes)
 		for {
 			n, rerr := content.Read(buf)
@@ -300,20 +335,26 @@ func extractFrames(jobs []*webcontentpb.ExtractionJob, sourceURL *string, kind w
 						return
 					}
 				}
+
 				pending = append(pending[:0], buf[:n]...)
 				havePending = true
 			}
+
 			if rerr != nil {
 				if errors.Is(rerr, io.EOF) {
 					break
 				}
+
 				yield(nil, invalidArgument("reading HTML document: "+rerr.Error()))
+
 				return
 			}
 		}
+
 		if !havePending {
 			pending = nil
 		}
+
 		yield(wrap(pending, true), nil)
 	}
 }

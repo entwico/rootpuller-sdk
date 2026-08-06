@@ -49,10 +49,12 @@ func (c *Client) Complete(ctx context.Context, req *Request) (*Response, error) 
 	if err != nil {
 		return nil, err
 	}
+
 	resp, err := c.rpc.Complete(ctx, connect.NewRequest(msg))
 	if err != nil {
 		return nil, transport.WrapError(err, completionconnect.CompletionServiceCompleteProcedure)
 	}
+
 	return responseFromProto(resp.Msg), nil
 }
 
@@ -66,11 +68,13 @@ func (c *Client) CompleteWithAttachments(ctx context.Context, req *Request, atta
 	if err != nil {
 		return nil, err
 	}
+
 	if err := checkAttachments(req, attachments); err != nil {
 		return nil, err
 	}
 
 	procedure := completionconnect.CompletionServiceCompleteUploadProcedure
+
 	stream := c.rpc.CompleteUpload(ctx)
 	if err := stream.Send(&completion.CompleteUploadRequest{
 		Frame: &completion.CompleteUploadRequest_Request{Request: msg},
@@ -79,8 +83,10 @@ func (c *Client) CompleteWithAttachments(ctx context.Context, req *Request, atta
 	}
 
 	var total int64
+
 	for _, att := range attachments {
 		sentAny := false
+
 		buf := make([]byte, streamio.MaxChunkBytes)
 		for {
 			n, rerr := att.Content.Read(buf)
@@ -88,8 +94,10 @@ func (c *Client) CompleteWithAttachments(ctx context.Context, req *Request, atta
 				total += int64(n)
 				if total > MaxUploadBytes {
 					_, _ = stream.CloseAndReceive()
+
 					return nil, invalidArgument(fmt.Sprintf("attachments exceed the %d byte upload limit", MaxUploadBytes))
 				}
+
 				chunk := &completion.CompleteUploadRequest_AttachmentChunk{
 					AttachmentId: att.ID,
 					Data:         buf[:n:n],
@@ -100,15 +108,19 @@ func (c *Client) CompleteWithAttachments(ctx context.Context, req *Request, atta
 				}); serr != nil {
 					return nil, closeAndWrap(stream, serr, procedure)
 				}
+
 				sentAny = true
 			}
+
 			if rerr != nil {
 				if errors.Is(rerr, io.EOF) {
 					break
 				}
+
 				return nil, invalidArgument(fmt.Sprintf("reading attachment %q: %v", att.ID, rerr))
 			}
 		}
+
 		if !sentAny {
 			// The server requires at least one (possibly empty) chunk
 			// per declared attachment.
@@ -124,6 +136,7 @@ func (c *Client) CompleteWithAttachments(ctx context.Context, req *Request, atta
 	if err != nil {
 		return nil, transport.WrapError(err, procedure)
 	}
+
 	return responseFromProto(resp.Msg.GetResponse()), nil
 }
 
@@ -132,6 +145,7 @@ func (c *Client) CompleteWithAttachments(ctx context.Context, req *Request, atta
 // server-side stream errors.
 func checkAttachments(req *Request, attachments []Attachment) error {
 	declared := map[string]bool{}
+
 	for _, m := range req.Messages {
 		for _, part := range m.Parts {
 			if ap, ok := part.(AttachmentPart); ok {
@@ -139,21 +153,27 @@ func checkAttachments(req *Request, attachments []Attachment) error {
 			}
 		}
 	}
+
 	provided := map[string]bool{}
+
 	for _, att := range attachments {
 		if att.ID == "" {
 			return invalidArgument("attachment with empty ID")
 		}
+
 		if !declared[att.ID] {
 			return invalidArgument(fmt.Sprintf("attachment %q has no matching AttachmentPart in the request", att.ID))
 		}
+
 		provided[att.ID] = true
 	}
+
 	for id := range declared {
 		if !provided[id] {
 			return invalidArgument(fmt.Sprintf("AttachmentPart %q has no matching attachment", id))
 		}
 	}
+
 	return nil
 }
 
@@ -163,6 +183,7 @@ func closeAndWrap(stream *connect.ClientStreamForClient[completion.CompleteUploa
 	if _, cerr := stream.CloseAndReceive(); cerr != nil {
 		return transport.WrapError(cerr, procedure)
 	}
+
 	return transport.WrapError(err, procedure)
 }
 
@@ -170,6 +191,7 @@ func responseFromProto(pb *completion.CompleteResponse) *Response {
 	if pb == nil {
 		return &Response{}
 	}
+
 	return &Response{
 		Content:  pb.GetContent(),
 		Model:    pb.GetModel(),

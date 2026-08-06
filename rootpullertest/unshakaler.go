@@ -34,43 +34,44 @@ type unshakalerHandler struct {
 }
 
 func (h *unshakalerHandler) UpscaleImage(_ context.Context, stream *connect.BidiStream[unshakalerpb.UpscaleImageRequest, unshakalerpb.UpscaleImageResponse]) error {
-	var params *unshakalerpb.UpscaleImageRequest_Params
-	var input common.File
+	var (
+		params *unshakalerpb.UpscaleImageRequest_Params
+		input  common.File
+	)
 	// Like the real server: drain the full request before any work.
+
 	for {
 		req, err := stream.Receive()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				break
 			}
+
 			return err
 		}
+
 		switch r := req.GetRequest().(type) {
 		case *unshakalerpb.UpscaleImageRequest_Params_:
 			if params != nil {
-				return connect.NewError(connect.CodeInvalidArgument, errors.New("duplicate params frame"))
+				return invalidArgument(errDuplicateParamsFrame)
 			}
+
 			params = r.Params
 		case *unshakalerpb.UpscaleImageRequest_File:
 			if params == nil {
-				return connect.NewError(connect.CodeInvalidArgument, errors.New("file frame before params"))
+				return errBeforeParams("file")
 			}
-			if len(r.File.GetData()) > 2<<20 {
-				return connect.NewError(connect.CodeInvalidArgument, errors.New("chunk exceeds 2 MiB"))
+
+			if err := appendChunk(&input, r.File); err != nil {
+				return err
 			}
-			if input.Name == "" {
-				input.Name = r.File.GetName()
-			}
-			if input.MIMEType == "" {
-				input.MIMEType = r.File.GetMimeType()
-			}
-			input.Data = append(input.Data, r.File.GetData()...)
 		default:
-			return connect.NewError(connect.CodeInvalidArgument, errors.New("unexpected request variant"))
+			return invalidArgument(errUnexpectedVariant)
 		}
 	}
+
 	if params == nil {
-		return connect.NewError(connect.CodeInvalidArgument, errors.New("missing params"))
+		return invalidArgument(errMissingParams)
 	}
 
 	upscale := h.fake.UpscaleFunc
@@ -79,10 +80,12 @@ func (h *unshakalerHandler) UpscaleImage(_ context.Context, stream *connect.Bidi
 			return &common.File{Name: "upscaled-" + image.Name, MIMEType: image.MIMEType, Data: image.Data}, nil
 		}
 	}
+
 	result, err := upscale(params.GetModelName(), input)
 	if err != nil {
 		return err
 	}
+
 	for _, p := range h.fake.Progress {
 		if err := stream.Send(&unshakalerpb.UpscaleImageResponse{
 			Response: &unshakalerpb.UpscaleImageResponse_ProgressPercentage{ProgressPercentage: p},
@@ -90,6 +93,7 @@ func (h *unshakalerHandler) UpscaleImage(_ context.Context, stream *connect.Bidi
 			return err
 		}
 	}
+
 	return SendFileChunks(result, func(chunk *commonpb.FileChunk) error {
 		return stream.Send(&unshakalerpb.UpscaleImageResponse{
 			Response: &unshakalerpb.UpscaleImageResponse_File{File: chunk},
@@ -102,10 +106,13 @@ func (h *unshakalerHandler) UpscaleImage(_ context.Context, stream *connect.Bidi
 // total content length. Exported for use by hand-built test handlers.
 func SendFileChunks(f *common.File, send func(*commonpb.FileChunk) error) error {
 	const chunkSize = 2 << 20
+
 	data := f.Data
-	total := int32(len(data))
+
+	total := int32(len(data)) //nolint:gosec // test-fixture file sizes fit int32
 	for first := true; first || len(data) > 0; first = false {
 		n := min(len(data), chunkSize)
+
 		chunk := &commonpb.FileChunk{
 			Name:          f.Name,
 			MimeType:      f.MIMEType,
@@ -115,7 +122,9 @@ func SendFileChunks(f *common.File, send func(*commonpb.FileChunk) error) error 
 		if err := send(chunk); err != nil {
 			return err
 		}
+
 		data = data[n:]
 	}
+
 	return nil
 }

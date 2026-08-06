@@ -34,6 +34,7 @@ func (c *Client) Rerank(ctx context.Context, req *Request) (*Response, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	msg := &rerankpb.RerankRequest{
 		Query:     req.Query,
 		Documents: req.Documents,
@@ -46,11 +47,14 @@ func (c *Client) Rerank(ctx context.Context, req *Request) (*Response, error) {
 			ReturnDocuments: req.ReturnDocuments,
 		}
 	}
+
 	resp, err := c.rpc.Rerank(ctx, connect.NewRequest(msg))
 	if err != nil {
 		return nil, transport.WrapError(err, rerankconnect.RerankServiceRerankProcedure)
 	}
+
 	results := resp.Msg.GetResults()
+
 	out := &Response{
 		Results: make([]Result, len(results)),
 		Model:   modelRefFromProto(resp.Msg.GetModel()),
@@ -62,6 +66,7 @@ func (c *Client) Rerank(ctx context.Context, req *Request) (*Response, error) {
 			Document:       r.GetDocument(),
 		}
 	}
+
 	return out, nil
 }
 
@@ -72,7 +77,9 @@ func (c *Client) ListModels(ctx context.Context) ([]ModelInfo, error) {
 	if err != nil {
 		return nil, transport.WrapError(err, rerankconnect.RerankServiceListModelsProcedure)
 	}
+
 	models := resp.Msg.GetModels()
+
 	out := make([]ModelInfo, len(models))
 	for i, m := range models {
 		out[i] = ModelInfo{
@@ -82,5 +89,6 @@ func (c *Client) ListModels(ctx context.Context) ([]ModelInfo, error) {
 			Description: m.GetDescription(),
 		}
 	}
+
 	return out, nil
 }

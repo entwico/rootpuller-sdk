@@ -37,6 +37,7 @@ func NewScrapeFromCore(core *transport.Core) *ScrapeClient {
 func (c *ScrapeClient) WithBot(name string) *ScrapeClient {
 	derived := *c
 	derived.bot = name
+
 	return &derived
 }
 
@@ -53,6 +54,7 @@ func (l *LinkExtraction) toProto() *webcontentpb.LinkExtraction {
 	if l == nil {
 		return nil
 	}
+
 	return &webcontentpb.LinkExtraction{
 		CssSelectors:   l.CSSSelectors,
 		XpathSelectors: l.XPathSelectors,
@@ -113,15 +115,19 @@ func (r *CrawlRequest) toProto() (*webcontentpb.CrawlRequest, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	jobs, err := jobsToProto(r.Jobs)
 	if err != nil {
 		return nil, err
 	}
+
 	screenshot, err := r.Screenshot.toProto()
 	if err != nil {
 		return nil, err
 	}
+
 	msg := &webcontentpb.CrawlRequest{Fetcher: fetcher, Jobs: jobs, Screenshot: screenshot}
+
 	switch seed := r.Seed.(type) {
 	case PageSeeds:
 		msg.Seed = &webcontentpb.CrawlRequest_Pages{Pages: &webcontentpb.CrawlRequest_PageSeeds{Urls: seed.URLs}}
@@ -137,6 +143,7 @@ func (r *CrawlRequest) toProto() (*webcontentpb.CrawlRequest, error) {
 	default:
 		return nil, invalidArgument("unknown seed type")
 	}
+
 	if rules := r.Rules; rules != nil {
 		msg.Rules = &webcontentpb.CrawlRequest_Rules{
 			AllowedDomains:       rules.AllowedDomains,
@@ -151,6 +158,7 @@ func (r *CrawlRequest) toProto() (*webcontentpb.CrawlRequest, error) {
 			PathPrefixes:         rules.PathPrefixes,
 		}
 	}
+
 	return msg, nil
 }
 
@@ -186,15 +194,18 @@ func (CrawlProgressEvent) isCrawlEvent() {}
 // results use CrawlPages.
 func (c *ScrapeClient) Crawl(ctx context.Context, req *CrawlRequest) iter.Seq2[CrawlEvent, error] {
 	ctx = transport.EnsureBot(ctx, c.bot)
+
 	msg, err := req.toProto()
 	if err != nil {
 		return errSeq[CrawlEvent](err)
 	}
+
 	stream, serr := c.rpc.Crawl(ctx, connect.NewRequest(msg))
 	if serr != nil {
 		return errSeq[CrawlEvent](transport.WrapError(serr, webcontentconnect.ScrapeServiceCrawlProcedure))
 	}
-	return streamio.EventSeq(stream, webcontentconnect.ScrapeServiceCrawlProcedure, false,
+
+	return streamio.EventSeq(stream, webcontentconnect.ScrapeServiceCrawlProcedure, nil,
 		func(pb *webcontentpb.CrawlResponse) (CrawlEvent, bool, error) {
 			switch m := pb.GetMessage().(type) {
 			case *webcontentpb.CrawlResponse_Page:
@@ -232,6 +243,7 @@ func pageEventFromProto(pb *webcontentpb.CrawlResponse_PageEvent) PageEvent {
 	case *webcontentpb.CrawlResponse_PageEvent_Done:
 		event.Event = DoneEvent{Summary: summaryFromProto(e.Done)}
 	}
+
 	return event
 }
 
@@ -249,30 +261,40 @@ type CrawlPage struct {
 func (c *ScrapeClient) CrawlPages(ctx context.Context, req *CrawlRequest) iter.Seq2[CrawlPage, error] {
 	return func(yield func(CrawlPage, error) bool) {
 		pending := map[int64]*FetchResult{}
+
 		for event, err := range c.Crawl(ctx, req) {
 			if err != nil {
 				yield(CrawlPage{}, err)
+
 				return
 			}
+
 			page, ok := event.(PageEvent)
 			if !ok {
 				continue
 			}
+
 			if page.Err != nil {
 				delete(pending, page.PageID)
+
 				if !yield(CrawlPage{PageID: page.PageID, Err: page.Err}, nil) {
 					return
 				}
+
 				continue
 			}
+
 			result, ok := pending[page.PageID]
 			if !ok {
 				result = &FetchResult{}
 				pending[page.PageID] = result
 			}
+
 			result.Apply(page.Event)
+
 			if _, done := page.Event.(DoneEvent); done {
 				delete(pending, page.PageID)
+
 				if !yield(CrawlPage{PageID: page.PageID, Result: result}, nil) {
 					return
 				}
@@ -303,6 +325,7 @@ type MapSummary struct {
 func (c *ScrapeClient) MapURLs(ctx context.Context, req *MapRequest) ([]string, *MapSummary, error) {
 	ctx = transport.EnsureBot(ctx, c.bot)
 	procedure := webcontentconnect.ScrapeServiceMapProcedure
+
 	stream, err := c.rpc.Map(ctx, connect.NewRequest(&webcontentpb.MapRequest{
 		Url:               req.URL,
 		Limit:             protoconv.Int32Ptr(req.Limit),
@@ -313,9 +336,13 @@ func (c *ScrapeClient) MapURLs(ctx context.Context, req *MapRequest) ([]string, 
 	if err != nil {
 		return nil, nil, transport.WrapError(err, procedure)
 	}
-	var urls []string
-	var summary *MapSummary
-	seq := streamio.EventSeq(stream, procedure, true,
+
+	var (
+		urls    []string
+		summary *MapSummary
+	)
+
+	seq := streamio.EventSeq(stream, procedure, apierror.ErrMissingTerminal,
 		func(pb *webcontentpb.MapResponse) ([]string, bool, error) {
 			switch m := pb.GetMessage().(type) {
 			case *webcontentpb.MapResponse_Batch:
@@ -325,6 +352,7 @@ func (c *ScrapeClient) MapURLs(ctx context.Context, req *MapRequest) ([]string, 
 					SitemapsProcessed: int(m.Done.GetSitemapsProcessed()),
 					Warning:           m.Done.Warning,
 				}
+
 				return nil, true, nil
 			default:
 				return nil, false, apierror.New(connect.CodeInternal, "unknown Map response frame", procedure, 0, nil)
@@ -334,7 +362,9 @@ func (c *ScrapeClient) MapURLs(ctx context.Context, req *MapRequest) ([]string, 
 		if err != nil {
 			return nil, nil, err
 		}
+
 		urls = append(urls, batch...)
 	}
+
 	return urls, summary, nil
 }

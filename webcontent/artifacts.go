@@ -36,6 +36,7 @@ func (j ExtractionJob) toProto() (*webcontentpb.ExtractionJob, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	msg := &webcontentpb.ExtractionJob{Kind: kind}
 	if o := j.Options; o != nil {
 		msg.Options = &webcontentpb.ExtractionJob_Options{
@@ -53,6 +54,7 @@ func (j ExtractionJob) toProto() (*webcontentpb.ExtractionJob, error) {
 			OnlyWithMetadata:  o.OnlyWithMetadata,
 		}
 	}
+
 	return msg, nil
 }
 
@@ -60,14 +62,17 @@ func jobsToProto(jobs []ExtractionJob) ([]*webcontentpb.ExtractionJob, error) {
 	if len(jobs) == 0 {
 		return nil, nil
 	}
+
 	out := make([]*webcontentpb.ExtractionJob, len(jobs))
 	for i, j := range jobs {
 		msg, err := j.toProto()
 		if err != nil {
 			return nil, err
 		}
+
 		out[i] = msg
 	}
+
 	return out, nil
 }
 
@@ -83,10 +88,12 @@ func (s *ScreenshotOptions) toProto() (*webcontentpb.ScreenshotOptions, error) {
 	if s == nil {
 		return nil, nil
 	}
+
 	format, ok := screenshotFormatToProto[s.Format]
 	if !ok {
 		return nil, invalidArgument(fmt.Sprintf("unknown screenshot format %q", s.Format))
 	}
+
 	return &webcontentpb.ScreenshotOptions{
 		Format:       format,
 		FullPage:     s.FullPage,

@@ -31,6 +31,7 @@ func (p Provider) toProto() (searchpb.Provider, error) {
 	if !ok {
 		return 0, invalidArgument(fmt.Sprintf("unknown provider %q", p))
 	}
+
 	return v, nil
 }
 
@@ -46,6 +47,7 @@ func providerFromProto(v searchpb.Provider) Provider {
 		// Unknown value from a newer server: preserve it in the same
 		// style as the constants above.
 		name := strings.TrimPrefix(v.String(), "PROVIDER_")
+
 		return Provider(strings.ReplaceAll(strings.ToLower(name), "_", "-"))
 	}
 }
@@ -68,15 +70,19 @@ func (t Type) toProto() (*searchpb.SearchType, error) {
 		return nil, nil
 	case TypeWeb:
 		v := searchpb.SearchType_SEARCH_TYPE_WEB
+
 		return &v, nil
 	case TypeNews:
 		v := searchpb.SearchType_SEARCH_TYPE_NEWS
+
 		return &v, nil
 	case TypeImages:
 		v := searchpb.SearchType_SEARCH_TYPE_IMAGES
+
 		return &v, nil
 	case TypeVideos:
 		v := searchpb.SearchType_SEARCH_TYPE_VIDEOS
+
 		return &v, nil
 	default:
 		return nil, invalidArgument(fmt.Sprintf("unknown search type %q", t))
@@ -101,15 +107,19 @@ func (f Freshness) toProto() (*searchpb.Freshness, error) {
 		return nil, nil
 	case FreshnessDay:
 		v := searchpb.Freshness_FRESHNESS_DAY
+
 		return &v, nil
 	case FreshnessWeek:
 		v := searchpb.Freshness_FRESHNESS_WEEK
+
 		return &v, nil
 	case FreshnessMonth:
 		v := searchpb.Freshness_FRESHNESS_MONTH
+
 		return &v, nil
 	case FreshnessYear:
 		v := searchpb.Freshness_FRESHNESS_YEAR
+
 		return &v, nil
 	default:
 		return nil, invalidArgument(fmt.Sprintf("unknown freshness %q", f))
@@ -164,6 +174,7 @@ func resultFromProto(r *searchpb.SearchResult) Result {
 	if r == nil {
 		return Result{}
 	}
+
 	return Result{
 		Title:        r.GetTitle(),
 		URL:          r.GetUrl(),

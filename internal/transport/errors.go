@@ -18,10 +18,13 @@ func WrapError(err error, procedure string) error {
 	if err == nil {
 		return nil
 	}
+
 	if _, ok := errors.AsType[*apierror.Error](err); ok {
 		return err // already wrapped (e.g. local validation error)
 	}
+
 	var retryAfter time.Duration
+
 	message := err.Error()
 	if ce, ok := errors.AsType[*connect.Error](err); ok {
 		message = ce.Message()
@@ -30,10 +33,12 @@ func WrapError(err error, procedure string) error {
 			if verr != nil {
 				continue
 			}
+
 			if info, ok := value.(*errdetails.RetryInfo); ok && info.GetRetryDelay() != nil {
 				retryAfter = info.GetRetryDelay().AsDuration()
 			}
 		}
 	}
+
 	return apierror.New(connect.CodeOf(err), message, procedure, retryAfter, err)
 }

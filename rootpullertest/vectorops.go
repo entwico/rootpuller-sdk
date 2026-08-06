@@ -38,6 +38,16 @@ type vectorOpsHandler struct {
 // enough that realistic tests span several chunks.
 const vectorOpsRowsPerChunk = 1000
 
+// VectorOps-specific protocol-violation sentinels.
+var (
+	errClusterResultMismatch = errors.New("clustering result arrays disagree with input row count")
+	errUmapResultMismatch    = errors.New("umap embedding dimensions disagree with input row count")
+	errMatrixDims            = errors.New("points matrix must have rows > 0 and cols > 0")
+	errMatrixDataLength      = errors.New("points data length must equal rows * cols")
+	errMatrixIDsLength       = errors.New("points ids length must equal rows when set")
+	errLabelsLength          = errors.New("supervised_labels length must equal rows when set")
+)
+
 func (h *vectorOpsHandler) ClusterHdbscan(_ context.Context, stream *connect.BidiStream[vectoropspb.ClusterHdbscanRequest, vectoropspb.ClusterHdbscanResponse]) error {
 	var (
 		header *vectoropspb.ClusterHdbscanRequest_Header
@@ -51,27 +61,33 @@ func (h *vectorOpsHandler) ClusterHdbscan(_ context.Context, stream *connect.Bid
 			if errors.Is(err, io.EOF) {
 				break
 			}
+
 			return err
 		}
+
 		switch r := req.GetRequest().(type) {
 		case *vectoropspb.ClusterHdbscanRequest_Header_:
 			if header != nil {
-				return connect.NewError(connect.CodeInvalidArgument, errors.New("duplicate header frame"))
+				return invalidArgument(errDuplicateHeaderFrame)
 			}
+
 			header = r.Header
 		case *vectoropspb.ClusterHdbscanRequest_Points:
 			if header == nil {
-				return connect.NewError(connect.CodeInvalidArgument, errors.New("points frame before header"))
+				return errBeforeHeader("points")
 			}
+
 			data = append(data, r.Points.GetData()...)
 			ids = append(ids, r.Points.GetIds()...)
 		default:
-			return connect.NewError(connect.CodeInvalidArgument, errors.New("unexpected request variant"))
+			return invalidArgument(errUnexpectedVariant)
 		}
 	}
+
 	if header == nil {
-		return connect.NewError(connect.CodeInvalidArgument, errors.New("missing header"))
+		return invalidArgument(errMissingHeader)
 	}
+
 	points, err := buildFacadeMatrix(header.GetRows(), header.GetCols(), data, ids)
 	if err != nil {
 		return err
@@ -90,28 +106,33 @@ func (h *vectorOpsHandler) ClusterHdbscan(_ context.Context, stream *connect.Bid
 			for i := range result.Probabilities {
 				result.Probabilities[i] = 1
 			}
+
 			return result, nil
 		}
 	}
+
 	result, err := cluster(points, hdbscanParamsFromProto(header))
 	if err != nil {
 		return err
 	}
+
 	rows := len(result.Labels)
 	if rows != points.Rows || len(result.Probabilities) != rows || len(result.OutlierScores) != rows ||
 		(len(result.IDs) != 0 && len(result.IDs) != rows) {
-		return connect.NewError(connect.CodeInternal, errors.New("clustering result arrays disagree with input row count"))
+		return connect.NewError(connect.CodeInternal, errClusterResultMismatch)
 	}
 
 	if err := stream.Send(&vectoropspb.ClusterHdbscanResponse{
 		Response: &vectoropspb.ClusterHdbscanResponse_Metadata_{
-			Metadata: &vectoropspb.ClusterHdbscanResponse_Metadata{NumClusters: int32(result.NumClusters)},
+			Metadata: &vectoropspb.ClusterHdbscanResponse_Metadata{NumClusters: int32(result.NumClusters)}, //nolint:gosec // test-fixture counts fit int32
 		},
 	}); err != nil {
 		return err
 	}
+
 	for offset := 0; offset < rows; offset += vectorOpsRowsPerChunk {
 		end := min(offset+vectorOpsRowsPerChunk, rows)
+
 		chunk := &vectoropspb.ClusterHdbscanResponse_ResultChunk{
 			Labels:        result.Labels[offset:end],
 			Probabilities: result.Probabilities[offset:end],
@@ -120,60 +141,86 @@ func (h *vectorOpsHandler) ClusterHdbscan(_ context.Context, stream *connect.Bid
 		if len(result.IDs) != 0 {
 			chunk.Ids = result.IDs[offset:end]
 		}
+
 		if err := stream.Send(&vectoropspb.ClusterHdbscanResponse{
 			Response: &vectoropspb.ClusterHdbscanResponse_Chunk{Chunk: chunk},
 		}); err != nil {
 			return err
 		}
 	}
+
 	return nil
 }
 
-func (h *vectorOpsHandler) ProjectUmap(_ context.Context, stream *connect.BidiStream[vectoropspb.ProjectUmapRequest, vectoropspb.ProjectUmapResponse]) error {
-	var (
-		header *vectoropspb.ProjectUmapRequest_Header
-		data   []float32
-		ids    []string
-		labels []int32
-	)
+// umapRequest holds the frames accumulated from one ProjectUmap request
+// stream.
+type umapRequest struct {
+	header *vectoropspb.ProjectUmapRequest_Header
+	data   []float32
+	ids    []string
+	labels []int32
+}
+
+// receiveProjectUmapRequest drains a ProjectUmap request stream, enforcing
+// the header-first frame ordering, and returns the accumulated frames.
+func receiveProjectUmapRequest(stream *connect.BidiStream[vectoropspb.ProjectUmapRequest, vectoropspb.ProjectUmapResponse]) (*umapRequest, error) {
+	acc := &umapRequest{}
+
 	for {
 		req, err := stream.Receive()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				break
+				return acc, nil
 			}
-			return err
+
+			return nil, err
 		}
+
 		switch r := req.GetRequest().(type) {
 		case *vectoropspb.ProjectUmapRequest_Header_:
-			if header != nil {
-				return connect.NewError(connect.CodeInvalidArgument, errors.New("duplicate header frame"))
+			if acc.header != nil {
+				return nil, invalidArgument(errDuplicateHeaderFrame)
 			}
-			header = r.Header
+
+			acc.header = r.Header
 		case *vectoropspb.ProjectUmapRequest_Points:
-			if header == nil {
-				return connect.NewError(connect.CodeInvalidArgument, errors.New("points frame before header"))
+			if acc.header == nil {
+				return nil, errBeforeHeader("points")
 			}
-			data = append(data, r.Points.GetData()...)
-			ids = append(ids, r.Points.GetIds()...)
+
+			acc.data = append(acc.data, r.Points.GetData()...)
+			acc.ids = append(acc.ids, r.Points.GetIds()...)
 		case *vectoropspb.ProjectUmapRequest_SupervisedLabels:
-			if header == nil {
-				return connect.NewError(connect.CodeInvalidArgument, errors.New("supervised_labels frame before header"))
+			if acc.header == nil {
+				return nil, errBeforeHeader("supervised_labels")
 			}
-			labels = append(labels, r.SupervisedLabels.GetLabels()...)
+
+			acc.labels = append(acc.labels, r.SupervisedLabels.GetLabels()...)
 		default:
-			return connect.NewError(connect.CodeInvalidArgument, errors.New("unexpected request variant"))
+			return nil, invalidArgument(errUnexpectedVariant)
 		}
 	}
-	if header == nil {
-		return connect.NewError(connect.CodeInvalidArgument, errors.New("missing header"))
-	}
-	points, err := buildFacadeMatrix(header.GetRows(), header.GetCols(), data, ids)
+}
+
+func (h *vectorOpsHandler) ProjectUmap(_ context.Context, stream *connect.BidiStream[vectoropspb.ProjectUmapRequest, vectoropspb.ProjectUmapResponse]) error {
+	// Like the real server: drain the full request before any work.
+	frames, err := receiveProjectUmapRequest(stream)
 	if err != nil {
 		return err
 	}
+
+	if frames.header == nil {
+		return invalidArgument(errMissingHeader)
+	}
+
+	points, err := buildFacadeMatrix(frames.header.GetRows(), frames.header.GetCols(), frames.data, frames.ids)
+	if err != nil {
+		return err
+	}
+
+	labels := frames.labels
 	if len(labels) != 0 && len(labels) != points.Rows {
-		return connect.NewError(connect.CodeInvalidArgument, errors.New("supervised_labels length must equal rows when set"))
+		return invalidArgument(errLabelsLength)
 	}
 
 	umap := h.fake.UmapFunc
@@ -182,44 +229,52 @@ func (h *vectorOpsHandler) ProjectUmap(_ context.Context, stream *connect.BidiSt
 			// Identity-ish 2D projection: the first two input columns
 			// (zero-padded when the input has fewer).
 			out := vectorops.Matrix{Rows: points.Rows, Cols: 2, IDs: points.IDs}
+
 			out.Data = make([]float32, out.Rows*out.Cols)
 			for i := range points.Rows {
 				for j := range min(points.Cols, 2) {
 					out.Data[i*2+j] = points.Data[i*points.Cols+j]
 				}
 			}
+
 			return &vectorops.UmapResult{Embedding: out}, nil
 		}
 	}
+
 	result, err := umap(points, labels)
 	if err != nil {
 		return err
 	}
+
 	emb := result.Embedding
 	if emb.Rows != points.Rows || emb.Cols <= 0 || len(emb.Data) != emb.Rows*emb.Cols ||
 		(len(emb.IDs) != 0 && len(emb.IDs) != emb.Rows) {
-		return connect.NewError(connect.CodeInternal, errors.New("umap embedding dimensions disagree with input row count"))
+		return connect.NewError(connect.CodeInternal, errUmapResultMismatch)
 	}
 
 	if err := stream.Send(&vectoropspb.ProjectUmapResponse{
 		Response: &vectoropspb.ProjectUmapResponse_Metadata_{
-			Metadata: &vectoropspb.ProjectUmapResponse_Metadata{Rows: int32(emb.Rows), Cols: int32(emb.Cols)},
+			Metadata: &vectoropspb.ProjectUmapResponse_Metadata{Rows: int32(emb.Rows), Cols: int32(emb.Cols)}, //nolint:gosec // test-fixture dimensions fit int32
 		},
 	}); err != nil {
 		return err
 	}
+
 	for offset := 0; offset < emb.Rows; offset += vectorOpsRowsPerChunk {
 		end := min(offset+vectorOpsRowsPerChunk, emb.Rows)
+
 		chunk := &vectoropspb.MatrixChunk{Data: emb.Data[offset*emb.Cols : end*emb.Cols]}
 		if len(emb.IDs) != 0 {
 			chunk.Ids = emb.IDs[offset:end]
 		}
+
 		if err := stream.Send(&vectoropspb.ProjectUmapResponse{
 			Response: &vectoropspb.ProjectUmapResponse_Embedding{Embedding: chunk},
 		}); err != nil {
 			return err
 		}
 	}
+
 	return nil
 }
 
@@ -228,14 +283,17 @@ func (h *vectorOpsHandler) ProjectUmap(_ context.Context, stream *connect.BidiSt
 // the way the real server does.
 func buildFacadeMatrix(rows, cols int32, data []float32, ids []string) (vectorops.Matrix, error) {
 	if rows <= 0 || cols <= 0 {
-		return vectorops.Matrix{}, connect.NewError(connect.CodeInvalidArgument, errors.New("points matrix must have rows > 0 and cols > 0"))
+		return vectorops.Matrix{}, invalidArgument(errMatrixDims)
 	}
+
 	if int64(len(data)) != int64(rows)*int64(cols) {
-		return vectorops.Matrix{}, connect.NewError(connect.CodeInvalidArgument, errors.New("points data length must equal rows * cols"))
+		return vectorops.Matrix{}, invalidArgument(errMatrixDataLength)
 	}
+
 	if len(ids) != 0 && int64(len(ids)) != int64(rows) {
-		return vectorops.Matrix{}, connect.NewError(connect.CodeInvalidArgument, errors.New("points ids length must equal rows when set"))
+		return vectorops.Matrix{}, invalidArgument(errMatrixIDsLength)
 	}
+
 	return vectorops.Matrix{Data: data, Rows: int(rows), Cols: int(cols), IDs: ids}, nil
 }
 
@@ -253,7 +311,9 @@ func intPtrFromInt32(p *int32) *int {
 	if p == nil {
 		return nil
 	}
+
 	v := int(*p)
+
 	return &v
 }
 
@@ -265,9 +325,11 @@ func distanceMetricFromProto(m vectoropspb.DistanceMetric) vectorops.DistanceMet
 		return vectorops.DistanceMetricCosine
 	case vectoropspb.DistanceMetric_DISTANCE_METRIC_MANHATTAN:
 		return vectorops.DistanceMetricManhattan
-	default:
+	case vectoropspb.DistanceMetric_DISTANCE_METRIC_UNSPECIFIED:
 		return vectorops.DistanceMetricDefault
 	}
+
+	return vectorops.DistanceMetricDefault
 }
 
 func clusterSelectionMethodFromProto(m vectoropspb.ClusterSelectionMethod) vectorops.ClusterSelectionMethod {
@@ -276,7 +338,9 @@ func clusterSelectionMethodFromProto(m vectoropspb.ClusterSelectionMethod) vecto
 		return vectorops.ClusterSelectionMethodEOM
 	case vectoropspb.ClusterSelectionMethod_CLUSTER_SELECTION_METHOD_LEAF:
 		return vectorops.ClusterSelectionMethodLeaf
-	default:
+	case vectoropspb.ClusterSelectionMethod_CLUSTER_SELECTION_METHOD_UNSPECIFIED:
 		return vectorops.ClusterSelectionMethodDefault
 	}
+
+	return vectorops.ClusterSelectionMethodDefault
 }

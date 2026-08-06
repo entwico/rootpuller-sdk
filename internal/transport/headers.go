@@ -7,10 +7,12 @@ import (
 	"connectrpc.com/connect"
 )
 
-// Metadata header names understood by rootpuller-api.
+// Metadata header names understood by rootpuller-api, in canonical MIME
+// form ("rootpuller-deployment" / "rootpuller-bot" on the wire — gRPC
+// metadata keys are case-insensitive).
 const (
-	DeploymentHeader = "rootpuller-deployment"
-	BotHeader        = "rootpuller-bot"
+	DeploymentHeader = "Rootpuller-Deployment"
+	BotHeader        = "Rootpuller-Bot"
 )
 
 type ctxKey int
@@ -39,9 +41,11 @@ func EnsureDeployment(ctx context.Context, name string) context.Context {
 	if name == "" {
 		return ctx
 	}
+
 	if _, ok := ctx.Value(deploymentCtxKey).(string); ok {
 		return ctx
 	}
+
 	return ContextWithDeployment(ctx, name)
 }
 
@@ -51,9 +55,11 @@ func EnsureBot(ctx context.Context, name string) context.Context {
 	if name == "" {
 		return ctx
 	}
+
 	if _, ok := ctx.Value(botCtxKey).(string); ok {
 		return ctx
 	}
+
 	return ContextWithBot(ctx, name)
 }
 
@@ -68,18 +74,10 @@ func NewHeadersInterceptor() connect.Interceptor {
 
 type headersInterceptor struct{}
 
-func (i *headersInterceptor) apply(ctx context.Context, h http.Header) {
-	if v, ok := ctx.Value(deploymentCtxKey).(string); ok && v != "" {
-		h.Set(DeploymentHeader, v)
-	}
-	if v, ok := ctx.Value(botCtxKey).(string); ok && v != "" {
-		h.Set(BotHeader, v)
-	}
-}
-
 func (i *headersInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 	return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
 		i.apply(ctx, req.Header())
+
 		return next(ctx, req)
 	}
 }
@@ -88,10 +86,21 @@ func (i *headersInterceptor) WrapStreamingClient(next connect.StreamingClientFun
 	return func(ctx context.Context, spec connect.Spec) connect.StreamingClientConn {
 		conn := next(ctx, spec)
 		i.apply(ctx, conn.RequestHeader())
+
 		return conn
 	}
 }
 
-func (i *headersInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
+func (*headersInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
 	return next
+}
+
+func (*headersInterceptor) apply(ctx context.Context, h http.Header) {
+	if v, ok := ctx.Value(deploymentCtxKey).(string); ok && v != "" {
+		h.Set(DeploymentHeader, v)
+	}
+
+	if v, ok := ctx.Value(botCtxKey).(string); ok && v != "" {
+		h.Set(BotHeader, v)
+	}
 }

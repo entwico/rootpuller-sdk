@@ -36,43 +36,44 @@ type bgRemoverHandler struct {
 }
 
 func (h *bgRemoverHandler) RemoveBackground(_ context.Context, stream *connect.BidiStream[bgremoverpb.RemoveBackgroundRequest, bgremoverpb.RemoveBackgroundResponse]) error {
-	var params *bgremoverpb.RemoveBackgroundRequest_Params
-	var input common.File
+	var (
+		params *bgremoverpb.RemoveBackgroundRequest_Params
+		input  common.File
+	)
 	// Like the real server: drain the full request before any work.
+
 	for {
 		req, err := stream.Receive()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				break
 			}
+
 			return err
 		}
+
 		switch r := req.GetRequest().(type) {
 		case *bgremoverpb.RemoveBackgroundRequest_Params_:
 			if params != nil {
-				return connect.NewError(connect.CodeInvalidArgument, errors.New("duplicate params frame"))
+				return invalidArgument(errDuplicateParamsFrame)
 			}
+
 			params = r.Params
 		case *bgremoverpb.RemoveBackgroundRequest_File:
 			if params == nil {
-				return connect.NewError(connect.CodeInvalidArgument, errors.New("file frame before params"))
+				return errBeforeParams("file")
 			}
-			if len(r.File.GetData()) > 2<<20 {
-				return connect.NewError(connect.CodeInvalidArgument, errors.New("chunk exceeds 2 MiB"))
+
+			if err := appendChunk(&input, r.File); err != nil {
+				return err
 			}
-			if input.Name == "" {
-				input.Name = r.File.GetName()
-			}
-			if input.MIMEType == "" {
-				input.MIMEType = r.File.GetMimeType()
-			}
-			input.Data = append(input.Data, r.File.GetData()...)
 		default:
-			return connect.NewError(connect.CodeInvalidArgument, errors.New("unexpected request variant"))
+			return invalidArgument(errUnexpectedVariant)
 		}
 	}
+
 	if params == nil {
-		return connect.NewError(connect.CodeInvalidArgument, errors.New("missing params"))
+		return invalidArgument(errMissingParams)
 	}
 
 	remove := h.fake.RemoveFunc
@@ -81,10 +82,12 @@ func (h *bgRemoverHandler) RemoveBackground(_ context.Context, stream *connect.B
 			return &common.File{Name: "nobg-" + image.Name, MIMEType: image.MIMEType, Data: image.Data}, nil
 		}
 	}
+
 	result, err := remove(input)
 	if err != nil {
 		return err
 	}
+
 	if m := h.fake.Metadata; m != nil {
 		if err := stream.Send(&bgremoverpb.RemoveBackgroundResponse{
 			Response: &bgremoverpb.RemoveBackgroundResponse_Metadata{Metadata: toProtoBgRemoverMetadata(m)},
@@ -92,6 +95,7 @@ func (h *bgRemoverHandler) RemoveBackground(_ context.Context, stream *connect.B
 			return err
 		}
 	}
+
 	return SendFileChunks(result, func(chunk *commonpb.FileChunk) error {
 		return stream.Send(&bgremoverpb.RemoveBackgroundResponse{
 			Response: &bgremoverpb.RemoveBackgroundResponse_File{File: chunk},
@@ -110,11 +114,12 @@ func toProtoBgRemoverMetadata(m *bgremover.Metadata) *bgremoverpb.RemoveBackgrou
 	if m.BoundingBox != nil {
 		pb.BoundingBox = toProtoBoundingBox(*m.BoundingBox)
 	}
+
 	return pb
 }
 
 func toProtoImageSize(s common.ImageSize) *commonpb.ImageSize {
-	return &commonpb.ImageSize{Width: int32(s.Width), Height: int32(s.Height)}
+	return &commonpb.ImageSize{Width: int32(s.Width), Height: int32(s.Height)} //nolint:gosec // test-fixture image dimensions fit int32
 }
 
 func toProtoPoint(p common.Point) *commonpb.Point {

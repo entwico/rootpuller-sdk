@@ -36,6 +36,7 @@ func (t Tokenizer) toProto() (chunkerpb.TextTokenizer, error) {
 	if !ok {
 		return 0, invalidArgument(fmt.Sprintf("unknown tokenizer %q", t))
 	}
+
 	return v, nil
 }
 
@@ -55,9 +56,11 @@ func (d DelimiterInclusion) toProto() (*chunkerpb.SentenceDelimiterInclusion, er
 		return nil, nil
 	case DelimiterInclusionPrev:
 		v := chunkerpb.SentenceDelimiterInclusion_SENTENCE_DELIMITER_INCLUSION_PREV
+
 		return &v, nil
 	case DelimiterInclusionNext:
 		v := chunkerpb.SentenceDelimiterInclusion_SENTENCE_DELIMITER_INCLUSION_NEXT
+
 		return &v, nil
 	default:
 		return nil, invalidArgument(fmt.Sprintf("unknown delimiter inclusion %q", d))
@@ -80,9 +83,11 @@ func (g Genie) toProto() (*chunkerpb.ChunkSlumberRequest_Genie, error) {
 		return nil, nil
 	case GenieGemini:
 		v := chunkerpb.ChunkSlumberRequest_GENIE_GEMINI
+
 		return &v, nil
 	case GenieOpenAI:
 		v := chunkerpb.ChunkSlumberRequest_GENIE_OPENAI
+
 		return &v, nil
 	default:
 		return nil, invalidArgument(fmt.Sprintf("unknown genie %q", g))

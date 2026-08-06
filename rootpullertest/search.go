@@ -39,10 +39,12 @@ func (h *searchHandler) Search(_ context.Context, req *connect.Request[searchpb.
 			}}, nil
 		}
 	}
+
 	results, err := searchFunc(req.Msg.GetQuery())
 	if err != nil {
 		return nil, err
 	}
+
 	resp := &searchpb.SearchResponse{Provider: req.Msg.GetProvider()}
 	for _, r := range results {
 		resp.Results = append(resp.Results, &searchpb.SearchResult{
@@ -54,5 +56,6 @@ func (h *searchHandler) Search(_ context.Context, req *connect.Request[searchpb.
 			SourceUrl:    r.SourceURL,
 		})
 	}
+
 	return connect.NewResponse(resp), nil
 }

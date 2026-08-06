@@ -32,6 +32,7 @@ func (b InferenceBackend) toProto() (rerankpb.RerankInferenceBackend, error) {
 	if !ok {
 		return 0, invalidArgument(fmt.Sprintf("unknown inference backend %q", b))
 	}
+
 	return v, nil
 }
 
@@ -47,6 +48,7 @@ func inferenceBackendFromProto(v rerankpb.RerankInferenceBackend) InferenceBacke
 		// Unknown value from a newer server: preserve it in the same style
 		// as the constants above.
 		name := strings.TrimPrefix(v.String(), "RERANK_INFERENCE_BACKEND_")
+
 		return InferenceBackend(strings.ReplaceAll(strings.ToLower(name), "_", "-"))
 	}
 }
@@ -68,6 +70,7 @@ func (m ModelRef) toProto() (*rerankpb.RerankModelRef, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return &rerankpb.RerankModelRef{ModelId: m.ModelID, InferenceBackend: backend}, nil
 }
 
@@ -75,6 +78,7 @@ func modelRefFromProto(m *rerankpb.RerankModelRef) ModelRef {
 	if m == nil {
 		return ModelRef{}
 	}
+
 	return ModelRef{
 		ModelID:          m.GetModelId(),
 		InferenceBackend: inferenceBackendFromProto(m.GetInferenceBackend()),

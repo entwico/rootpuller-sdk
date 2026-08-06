@@ -76,6 +76,7 @@ func (p *Params) toProto() (*bgremoverpb.RemoveBackgroundRequest_Params, error) 
 	if !ok {
 		return nil, apierror.New(connect.CodeInvalidArgument, fmt.Sprintf("unknown morphology mode %q", p.MorphologyMode), "", 0, nil)
 	}
+
 	msg := &bgremoverpb.RemoveBackgroundRequest_Params{
 		Threshold: p.Threshold,
 		Feather:   p.Feather,
@@ -85,6 +86,7 @@ func (p *Params) toProto() (*bgremoverpb.RemoveBackgroundRequest_Params, error) 
 	if mode != bgremoverpb.MorphologyMode_MORPHOLOGY_MODE_UNSPECIFIED {
 		msg.MorphologyMode = &mode
 	}
+
 	return msg, nil
 }
 
@@ -115,10 +117,11 @@ func fromProtoMetadata(pb *bgremoverpb.RemoveBackgroundMetadata) Metadata {
 		MaskConfidence:    pb.GetMaskConfidence(),
 		ForegroundPercent: pb.GetForegroundPercent(),
 	}
-	if pb.BoundingBox != nil {
+	if pb.GetBoundingBox() != nil {
 		box := protoconv.FromProtoBoundingBox(pb.GetBoundingBox())
 		m.BoundingBox = &box
 	}
+
 	return m
 }
 
@@ -137,6 +140,7 @@ func (c *Client) RemoveBackground(ctx context.Context, params *Params, image com
 	if err != nil {
 		return nil, err
 	}
+
 	procedure := bgremoverconnect.BackgroundRemoverServiceRemoveBackgroundProcedure
 	stream := c.rpc.RemoveBackground(ctx)
 
@@ -147,8 +151,11 @@ func (c *Client) RemoveBackground(ctx context.Context, params *Params, image com
 		}),
 	)
 
-	var meta Metadata
-	var collector streamio.FileCollector
+	var (
+		meta      Metadata
+		collector streamio.FileCollector
+	)
+
 	err = streamio.UploadCollect(stream, procedure, frames, func(resp *bgremoverpb.RemoveBackgroundResponse) error {
 		switch r := resp.GetResponse().(type) {
 		case *bgremoverpb.RemoveBackgroundResponse_Metadata:
@@ -156,17 +163,21 @@ func (c *Client) RemoveBackground(ctx context.Context, params *Params, image com
 		case *bgremoverpb.RemoveBackgroundResponse_File:
 			collector.Add(r.File)
 		}
+
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
+
 	files, err := collector.Files()
 	if err != nil {
 		return nil, err
 	}
+
 	if len(files) == 0 {
 		return nil, apierror.New(connect.CodeInternal, "server returned no image", procedure, 0, nil)
 	}
+
 	return &Result{File: files[0], Metadata: meta}, nil
 }

@@ -25,9 +25,11 @@ func enumToProto[F ~string, P ~int32](m map[F]P, v F, what string) (*P, error) {
 	if !ok {
 		return nil, invalidArgument(fmt.Sprintf("unknown %s %q", what, v))
 	}
+
 	if p == 0 {
 		return nil, nil
 	}
+
 	return &p, nil
 }
 
@@ -40,6 +42,7 @@ func enumFromProto[P interface {
 	if f, ok := m[v]; ok {
 		return f
 	}
+
 	return F(v.String())
 }
 
@@ -275,18 +278,22 @@ func (b GenerateGoogle) toProto() (*painterpb.GenerateImageRequest_Google, error
 	if err != nil {
 		return nil, err
 	}
+
 	safety, err := enumToProto(googleSafetyFilterLevelToProto, b.SafetyFilterLevel, "safety filter level")
 	if err != nil {
 		return nil, err
 	}
+
 	person, err := enumToProto(googlePersonGenerationToProto, b.PersonGeneration, "person generation")
 	if err != nil {
 		return nil, err
 	}
+
 	mime, err := enumToProto(googleOutputMIMETypeToProto, b.OutputMIMEType, "output MIME type")
 	if err != nil {
 		return nil, err
 	}
+
 	return &painterpb.GenerateImageRequest_Google{
 		Model:                    b.Model,
 		NumberOfImages:           protoconv.Int32Ptr(b.NumberOfImages),
@@ -328,22 +335,27 @@ func (b GenerateOpenAI) toProto() (*painterpb.GenerateImageRequest_OpenAI, error
 	if err != nil {
 		return nil, err
 	}
+
 	quality, err := enumToProto(openAIQualityToProto, b.Quality, "quality")
 	if err != nil {
 		return nil, err
 	}
+
 	background, err := enumToProto(openAIBackgroundToProto, b.Background, "background")
 	if err != nil {
 		return nil, err
 	}
+
 	format, err := enumToProto(openAIOutputFormatToProto, b.OutputFormat, "output format")
 	if err != nil {
 		return nil, err
 	}
+
 	moderation, err := enumToProto(openAIModerationToProto, b.Moderation, "moderation")
 	if err != nil {
 		return nil, err
 	}
+
 	return &painterpb.GenerateImageRequest_OpenAI{
 		Model:             b.Model,
 		N:                 protoconv.Int32Ptr(b.N),
@@ -387,18 +399,22 @@ func (b EditGoogle) toProto() (*painterpb.EditImageRequest_Google, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	safety, err := enumToProto(googleSafetyFilterLevelToProto, b.SafetyFilterLevel, "safety filter level")
 	if err != nil {
 		return nil, err
 	}
+
 	person, err := enumToProto(googlePersonGenerationToProto, b.PersonGeneration, "person generation")
 	if err != nil {
 		return nil, err
 	}
+
 	mime, err := enumToProto(googleOutputMIMETypeToProto, b.OutputMIMEType, "output MIME type")
 	if err != nil {
 		return nil, err
 	}
+
 	return &painterpb.EditImageRequest_Google{
 		Model:                    b.Model,
 		NumberOfImages:           protoconv.Int32Ptr(b.NumberOfImages),
@@ -438,18 +454,22 @@ func (b EditOpenAI) toProto() (*painterpb.EditImageRequest_OpenAI, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	quality, err := enumToProto(openAIQualityToProto, b.Quality, "quality")
 	if err != nil {
 		return nil, err
 	}
+
 	background, err := enumToProto(openAIBackgroundToProto, b.Background, "background")
 	if err != nil {
 		return nil, err
 	}
+
 	format, err := enumToProto(openAIOutputFormatToProto, b.OutputFormat, "output format")
 	if err != nil {
 		return nil, err
 	}
+
 	return &painterpb.EditImageRequest_OpenAI{
 		Model:             b.Model,
 		N:                 protoconv.Int32Ptr(b.N),
@@ -491,14 +511,17 @@ func (b OutpaintGoogle) toProto() (*painterpb.OutpaintImageRequest_Google, error
 	if err != nil {
 		return nil, err
 	}
+
 	person, err := enumToProto(googlePersonGenerationToProto, b.PersonGeneration, "person generation")
 	if err != nil {
 		return nil, err
 	}
+
 	mime, err := enumToProto(googleOutputMIMETypeToProto, b.OutputMIMEType, "output MIME type")
 	if err != nil {
 		return nil, err
 	}
+
 	return &painterpb.OutpaintImageRequest_Google{
 		Model:                    b.Model,
 		NumberOfImages:           protoconv.Int32Ptr(b.NumberOfImages),
@@ -537,18 +560,22 @@ func (b OutpaintOpenAI) toProto() (*painterpb.OutpaintImageRequest_OpenAI, error
 	if err != nil {
 		return nil, err
 	}
+
 	quality, err := enumToProto(openAIQualityToProto, b.Quality, "quality")
 	if err != nil {
 		return nil, err
 	}
+
 	background, err := enumToProto(openAIBackgroundToProto, b.Background, "background")
 	if err != nil {
 		return nil, err
 	}
+
 	format, err := enumToProto(openAIOutputFormatToProto, b.OutputFormat, "output format")
 	if err != nil {
 		return nil, err
 	}
+
 	return &painterpb.OutpaintImageRequest_OpenAI{
 		Model:             b.Model,
 		N:                 protoconv.Int32Ptr(b.N),
@@ -583,16 +610,19 @@ func (r *GenerateRequest) toProto() (*painterpb.GenerateImageRequest_Params, err
 		if err != nil {
 			return nil, err
 		}
+
 		msg.Backend = &painterpb.GenerateImageRequest_Params_Google{Google: google}
 	case GenerateOpenAI:
 		openai, err := b.toProto()
 		if err != nil {
 			return nil, err
 		}
+
 		msg.Backend = &painterpb.GenerateImageRequest_Params_Openai{Openai: openai}
 	default:
 		return nil, invalidArgument(fmt.Sprintf("GenerateRequest.Backend must be GenerateGoogle or GenerateOpenAI, got %T", r.Backend))
 	}
+
 	return msg, nil
 }
 
@@ -618,16 +648,19 @@ func (r *EditRequest) toProto() (*painterpb.EditImageRequest_Params, error) {
 		if err != nil {
 			return nil, err
 		}
+
 		msg.Backend = &painterpb.EditImageRequest_Params_Google{Google: google}
 	case EditOpenAI:
 		openai, err := b.toProto()
 		if err != nil {
 			return nil, err
 		}
+
 		msg.Backend = &painterpb.EditImageRequest_Params_Openai{Openai: openai}
 	default:
 		return nil, invalidArgument(fmt.Sprintf("EditRequest.Backend must be EditGoogle or EditOpenAI, got %T", r.Backend))
 	}
+
 	return msg, nil
 }
 
@@ -651,11 +684,13 @@ type OutpaintRequest struct {
 
 func (r *OutpaintRequest) toProto() (*painterpb.OutpaintImageRequest_Params, error) {
 	msg := &painterpb.OutpaintImageRequest_Params{
-		Prompt:       r.Prompt,
-		ExtendTop:    int32(r.ExtendTop),
-		ExtendBottom: int32(r.ExtendBottom),
-		ExtendLeft:   int32(r.ExtendLeft),
-		ExtendRight:  int32(r.ExtendRight),
+		Prompt: r.Prompt,
+		// Pixel counts clamp to the int32 range; any real extend value is
+		// far below it, and the server rejects out-of-range sizes anyway.
+		ExtendTop:    protoconv.ClampInt32(int64(r.ExtendTop)),
+		ExtendBottom: protoconv.ClampInt32(int64(r.ExtendBottom)),
+		ExtendLeft:   protoconv.ClampInt32(int64(r.ExtendLeft)),
+		ExtendRight:  protoconv.ClampInt32(int64(r.ExtendRight)),
 	}
 	switch b := r.Backend.(type) {
 	case nil:
@@ -664,16 +699,19 @@ func (r *OutpaintRequest) toProto() (*painterpb.OutpaintImageRequest_Params, err
 		if err != nil {
 			return nil, err
 		}
+
 		msg.Backend = &painterpb.OutpaintImageRequest_Params_Google{Google: google}
 	case OutpaintOpenAI:
 		openai, err := b.toProto()
 		if err != nil {
 			return nil, err
 		}
+
 		msg.Backend = &painterpb.OutpaintImageRequest_Params_Openai{Openai: openai}
 	default:
 		return nil, invalidArgument(fmt.Sprintf("OutpaintRequest.Backend must be OutpaintGoogle or OutpaintOpenAI, got %T", r.Backend))
 	}
+
 	return msg, nil
 }
 
@@ -777,6 +815,7 @@ func metadataFromProto(m *painterpb.GenerationMetadata) Metadata {
 			RevisedPrompt: im.RevisedPrompt,
 		}
 	}
+
 	return Metadata{
 		Backend:        enumFromProto(metadataBackendFromProto, m.GetBackend()),
 		Model:          m.GetModel(),

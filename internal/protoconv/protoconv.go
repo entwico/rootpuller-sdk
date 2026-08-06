@@ -5,6 +5,7 @@
 package protoconv
 
 import (
+	"math"
 	"time"
 
 	commonpb "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/common"
@@ -12,32 +13,53 @@ import (
 	"github.com/entwico/rootpuller-sdk/common"
 )
 
-// Int32Ptr narrows a facade *int to the proto *int32 optional form.
+// ClampInt32 narrows v to int32, clamping to the int32 range instead of
+// wrapping on overflow.
+func ClampInt32(v int64) int32 {
+	if v > math.MaxInt32 {
+		return math.MaxInt32
+	}
+
+	if v < math.MinInt32 {
+		return math.MinInt32
+	}
+
+	return int32(v)
+}
+
+// Int32Ptr narrows a facade *int to the proto *int32 optional form,
+// clamping to the int32 range.
 func Int32Ptr(p *int) *int32 {
 	if p == nil {
 		return nil
 	}
-	v := int32(*p)
+
+	v := ClampInt32(int64(*p))
+
 	return &v
 }
 
 // DurationToMsPtr converts an optional duration to proto optional
-// milliseconds.
+// milliseconds, clamping to the int32 range.
 func DurationToMsPtr(p *time.Duration) *int32 {
 	if p == nil {
 		return nil
 	}
-	v := int32(p.Milliseconds())
+
+	v := ClampInt32(p.Milliseconds())
+
 	return &v
 }
 
 // DurationToSecondsPtr converts an optional duration to proto optional
-// whole seconds.
+// whole seconds, clamping to the int32 range.
 func DurationToSecondsPtr(p *time.Duration) *int32 {
 	if p == nil {
 		return nil
 	}
-	v := int32(*p / time.Second)
+
+	v := ClampInt32(int64(*p / time.Second))
+
 	return &v
 }
 
@@ -51,6 +73,7 @@ func ToProtoNormalize(n *common.NormalizeOptions) *commonpb.NormalizeOptions {
 	if n == nil {
 		return nil
 	}
+
 	return &commonpb.NormalizeOptions{
 		NormalizeWhitespace: n.NormalizeWhitespace,
 		NoLineBreaks:        n.NoLineBreaks,
@@ -71,6 +94,7 @@ func FromProtoTextChunk(c *commonpb.TextChunk) common.TextChunk {
 	if c == nil {
 		return common.TextChunk{}
 	}
+
 	return common.TextChunk{
 		Text:       c.GetText(),
 		StartIndex: int(c.GetStartIndex()),
@@ -84,6 +108,7 @@ func FromProtoTextChunks(chunks []*commonpb.TextChunk) []common.TextChunk {
 	for i, c := range chunks {
 		out[i] = FromProtoTextChunk(c)
 	}
+
 	return out
 }
 
@@ -91,6 +116,7 @@ func FromProtoUsage(u *commonpb.Usage) common.Usage {
 	if u == nil {
 		return common.Usage{}
 	}
+
 	return common.Usage{
 		InputTokens:             int(u.GetInputTokens()),
 		CachedInputTokens:       int(u.GetCachedInputTokens()),
@@ -107,6 +133,7 @@ func FromProtoPoint(p *commonpb.Point) common.Point {
 	if p == nil {
 		return common.Point{}
 	}
+
 	return common.Point{X: p.GetX(), Y: p.GetY()}
 }
 
@@ -114,6 +141,7 @@ func FromProtoImageSize(s *commonpb.ImageSize) common.ImageSize {
 	if s == nil {
 		return common.ImageSize{}
 	}
+
 	return common.ImageSize{Width: int(s.GetWidth()), Height: int(s.GetHeight())}
 }
 
@@ -121,6 +149,7 @@ func FromProtoBoundingBox(b *commonpb.BoundingBox) common.BoundingBox {
 	if b == nil {
 		return common.BoundingBox{}
 	}
+
 	return common.BoundingBox{
 		Position: FromProtoPoint(b.GetPosition()),
 		Size:     FromProtoImageSize(b.GetSize()),
@@ -139,5 +168,6 @@ var imageFormatToProto = map[common.ImageFormat]commonpb.ImageFormat{
 // before any RPC.
 func ToProtoImageFormat(f common.ImageFormat) (commonpb.ImageFormat, bool) {
 	v, ok := imageFormatToProto[f]
+
 	return v, ok
 }

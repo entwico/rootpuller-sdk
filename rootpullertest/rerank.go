@@ -43,21 +43,25 @@ func (h *rerankHandler) Rerank(_ context.Context, req *connect.Request[rerankpb.
 					Document:       d,
 				}
 			}
+
 			return out, nil
 		}
 	}
+
 	results, err := rerankFunc(req.Msg.GetQuery(), req.Msg.GetDocuments())
 	if err != nil {
 		return nil, err
 	}
+
 	resp := &rerankpb.RerankResponse{Model: req.Msg.GetModel()}
 	for _, r := range results {
 		resp.Results = append(resp.Results, &rerankpb.RerankResult{
-			Index:          int32(r.Index),
+			Index:          int32(r.Index), //nolint:gosec // test-fixture indexes fit int32
 			RelevanceScore: r.RelevanceScore,
 			Document:       r.Document,
 		})
 	}
+
 	return connect.NewResponse(resp), nil
 }
 
@@ -71,6 +75,7 @@ func (h *rerankHandler) ListModels(_ context.Context, _ *connect.Request[emptypb
 			Description: "BGE Reranker v2-m3 (multilingual)",
 		}}
 	}
+
 	resp := &rerankpb.ListRerankModelsResponse{}
 	for _, m := range models {
 		resp.Models = append(resp.Models, &rerankpb.RerankModelInfo{
@@ -78,11 +83,12 @@ func (h *rerankHandler) ListModels(_ context.Context, _ *connect.Request[emptypb
 				ModelId:          m.Model.ModelID,
 				InferenceBackend: rerankBackendToProto(m.Model.InferenceBackend),
 			},
-			MaxTokens:   int32(m.MaxTokens),
+			MaxTokens:   int32(m.MaxTokens), //nolint:gosec // test-fixture limits fit int32
 			Loaded:      m.Loaded,
 			Description: m.Description,
 		})
 	}
+
 	return connect.NewResponse(resp), nil
 }
 
@@ -92,7 +98,9 @@ func rerankBackendToProto(b rerank.InferenceBackend) rerankpb.RerankInferenceBac
 		return rerankpb.RerankInferenceBackend_RERANK_INFERENCE_BACKEND_FLAG_RERANKER
 	case rerank.InferenceBackendSentenceTransformers:
 		return rerankpb.RerankInferenceBackend_RERANK_INFERENCE_BACKEND_SENTENCE_TRANSFORMERS
-	default:
+	case rerank.InferenceBackendDefault:
 		return rerankpb.RerankInferenceBackend_RERANK_INFERENCE_BACKEND_UNSPECIFIED
 	}
+
+	return rerankpb.RerankInferenceBackend_RERANK_INFERENCE_BACKEND_UNSPECIFIED
 }

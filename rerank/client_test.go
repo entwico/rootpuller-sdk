@@ -8,7 +8,6 @@ import (
 
 	"connectrpc.com/connect"
 
-	rootpuller "github.com/entwico/rootpuller-sdk"
 	"github.com/entwico/rootpuller-sdk/apierror"
 	rerankpb "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/rerank"
 	"github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/rerank/rerankconnect"
@@ -22,10 +21,12 @@ import (
 // tests construct the service client directly from a transport.Core.
 func newClient(t *testing.T, baseURL string) *rerank.Client {
 	t.Helper()
+
 	httpClient, err := transport.NewHTTPClient(baseURL, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	return rerank.NewFromCore(&transport.Core{
 		HTTPClient: httpClient,
 		BaseURL:    baseURL,
@@ -34,12 +35,18 @@ func newClient(t *testing.T, baseURL string) *rerank.Client {
 }
 
 func TestRerankRoundTrip(t *testing.T) {
-	var gotQuery string
-	var gotDocuments []string
+	t.Parallel()
+
+	var (
+		gotQuery     string
+		gotDocuments []string
+	)
+
 	srv := rootpullertest.NewServer(t, &rootpullertest.Rerank{
 		RerankFunc: func(query string, documents []string) ([]rerank.Result, error) {
 			gotQuery = query
 			gotDocuments = documents
+
 			return []rerank.Result{
 				{Index: 1, RelevanceScore: 0.9, Document: documents[1]},
 				{Index: 0, RelevanceScore: 0.2},
@@ -48,6 +55,7 @@ func TestRerankRoundTrip(t *testing.T) {
 	})
 
 	c := newClient(t, srv.URL)
+
 	resp, err := c.Rerank(t.Context(), &rerank.Request{
 		Query:     "what is chunking",
 		Documents: []string{"unrelated", "chunking splits text"},
@@ -59,18 +67,23 @@ func TestRerankRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if gotQuery != "what is chunking" {
 		t.Errorf("server saw query %q, want %q", gotQuery, "what is chunking")
 	}
+
 	if len(gotDocuments) != 2 || gotDocuments[0] != "unrelated" {
 		t.Errorf("server saw documents %v", gotDocuments)
 	}
+
 	if len(resp.Results) != 2 {
 		t.Fatalf("got %d results, want 2", len(resp.Results))
 	}
+
 	if resp.Results[0].Index != 1 || resp.Results[0].RelevanceScore != 0.9 || resp.Results[0].Document != "chunking splits text" {
 		t.Errorf("unexpected first result: %+v", resp.Results[0])
 	}
+
 	if resp.Results[1].Index != 0 || resp.Results[1].RelevanceScore != 0.2 {
 		t.Errorf("unexpected second result: %+v", resp.Results[1])
 	}
@@ -91,10 +104,13 @@ type capturingRerank struct {
 
 func (h *capturingRerank) Rerank(_ context.Context, req *connect.Request[rerankpb.RerankRequest]) (*connect.Response[rerankpb.RerankResponse], error) {
 	h.requests <- req.Msg
+
 	return connect.NewResponse(&rerankpb.RerankResponse{}), nil
 }
 
 func TestRerankOptionsRoundTrip(t *testing.T) {
+	t.Parallel()
+
 	handler := &capturingRerank{requests: make(chan *rerankpb.RerankRequest, 1)}
 	mux := http.NewServeMux()
 	mux.Handle(rerankconnect.NewRerankServiceHandler(handler))
@@ -106,24 +122,29 @@ func TestRerankOptionsRoundTrip(t *testing.T) {
 		Query:           "q",
 		Documents:       []string{"d"},
 		Model:           rerank.ModelRef{ModelID: "m"},
-		TopN:            rootpuller.Ptr(5),
-		MaxTokens:       rootpuller.Ptr(1024),
+		TopN:            new(5),
+		MaxTokens:       new(1024),
 		ReturnDocuments: true,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	msg := <-handler.requests
+
 	opts := msg.GetOptions()
 	if opts == nil {
 		t.Fatal("Options = nil, want populated message")
 	}
-	if opts.TopN == nil || *opts.TopN != 5 {
+
+	if opts.TopN == nil || opts.GetTopN() != 5 {
 		t.Errorf("TopN = %v, want 5", opts.TopN)
 	}
-	if opts.MaxTokens == nil || *opts.MaxTokens != 1024 {
+
+	if opts.MaxTokens == nil || opts.GetMaxTokens() != 1024 {
 		t.Errorf("MaxTokens = %v, want 1024", opts.MaxTokens)
 	}
+
 	if !opts.GetReturnDocuments() {
 		t.Error("ReturnDocuments = false, want true")
 	}
@@ -137,13 +158,16 @@ func TestRerankOptionsRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	msg = <-handler.requests
-	if msg.Options != nil {
-		t.Errorf("Options = %v, want nil when no optional field is set", msg.Options)
+	if msg.GetOptions() != nil {
+		t.Errorf("Options = %v, want nil when no optional field is set", msg.GetOptions())
 	}
 }
 
 func TestListModelsRoundTrip(t *testing.T) {
+	t.Parallel()
+
 	srv := rootpullertest.NewServer(t, &rootpullertest.Rerank{
 		Models: []rerank.ModelInfo{
 			{
@@ -163,13 +187,16 @@ func TestListModelsRoundTrip(t *testing.T) {
 	})
 
 	c := newClient(t, srv.URL)
+
 	models, err := c.ListModels(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if len(models) != 2 {
 		t.Fatalf("got %d models, want 2", len(models))
 	}
+
 	want := rerank.ModelInfo{
 		Model: rerank.ModelRef{
 			ModelID:          "Qwen/Qwen3-Reranker-0.6B",
@@ -182,14 +209,18 @@ func TestListModelsRoundTrip(t *testing.T) {
 	if models[0] != want {
 		t.Errorf("models[0] = %+v, want %+v", models[0], want)
 	}
+
 	if models[1].Model.InferenceBackend != rerank.InferenceBackendDefault || models[1].Loaded {
 		t.Errorf("models[1] = %+v", models[1])
 	}
 }
 
 func TestInvalidBackendFailsLocally(t *testing.T) {
+	t.Parallel()
+
 	// No server: local validation must fail before any dial.
 	c := newClient(t, "http://127.0.0.1:1")
+
 	_, err := c.Rerank(t.Context(), &rerank.Request{
 		Query:     "q",
 		Documents: []string{"d"},

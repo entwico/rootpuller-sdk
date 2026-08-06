@@ -1,0 +1,82 @@
+version: "2"
+
+run:
+  #  concurrency: 1
+  timeout: 5m
+
+linters:
+  default: all
+  disable:
+    - cyclop
+    - depguard
+    - dupl
+    - errchkjson
+    - exhaustruct
+    - forbidigo
+    - funlen
+    - gochecknoglobals
+    - gochecknoinits
+    - ireturn
+    - lll
+    - mnd
+    - nilnil
+    - noinlineerr
+    - tagliatelle
+    - varnamelen
+    - wrapcheck
+    - wsl
+  settings:
+    revive:
+      severity: warning
+      enable-all-rules: true
+      rules:
+        - name: cyclomatic
+          disabled: true
+        - name: max-public-structs
+          disabled: true
+        - name: line-length-limit
+          disabled: true
+        - name: cognitive-complexity
+          disabled: true
+        - name: function-length
+          disabled: true
+        - name: add-constant
+          disabled: true
+        - name: unhandled-error
+          disabled: true
+        - name: deep-exit
+          disabled: true
+        - name: nested-structs
+          disabled: true
+        - name: enforce-switch-style
+          disabled: true
+        - name: var-naming
+          arguments:
+            - [ ]
+            - [ ]
+            - [ { "skipPackageNameChecks": true } ]
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+
+issues:
+  fix: true

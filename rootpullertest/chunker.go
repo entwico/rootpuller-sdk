@@ -30,37 +30,6 @@ type chunkerHandler struct {
 	fake *Chunker
 }
 
-func (h *chunkerHandler) respond(method string, texts []string) (*connect.Response[chunkerpb.TextChunkResponse], error) {
-	chunkFunc := h.fake.ChunkFunc
-	if chunkFunc == nil {
-		chunkFunc = func(_ string, texts []string) ([][]common.TextChunk, error) {
-			out := make([][]common.TextChunk, len(texts))
-			for i, t := range texts {
-				out[i] = []common.TextChunk{{Text: t, EndIndex: len(t), TokenCount: len(t)}}
-			}
-			return out, nil
-		}
-	}
-	rows, err := chunkFunc(method, texts)
-	if err != nil {
-		return nil, err
-	}
-	resp := &chunkerpb.TextChunkResponse{}
-	for _, row := range rows {
-		result := &chunkerpb.TextChunkResponse_Result{}
-		for _, c := range row {
-			result.Chunks = append(result.Chunks, &commonpb.TextChunk{
-				Text:       c.Text,
-				StartIndex: int32(c.StartIndex),
-				EndIndex:   int32(c.EndIndex),
-				TokenCount: int32(c.TokenCount),
-			})
-		}
-		resp.Results = append(resp.Results, result)
-	}
-	return connect.NewResponse(resp), nil
-}
-
 func (h *chunkerHandler) ChunkSemantic(_ context.Context, req *connect.Request[chunkerpb.ChunkSemanticRequest]) (*connect.Response[chunkerpb.TextChunkResponse], error) {
 	return h.respond("ChunkSemantic", req.Msg.GetTexts())
 }
@@ -91,4 +60,43 @@ func (h *chunkerHandler) ChunkNeural(_ context.Context, req *connect.Request[chu
 
 func (h *chunkerHandler) ChunkSlumber(_ context.Context, req *connect.Request[chunkerpb.ChunkSlumberRequest]) (*connect.Response[chunkerpb.TextChunkResponse], error) {
 	return h.respond("ChunkSlumber", req.Msg.GetTexts())
+}
+
+// respond runs the hook for one chunking RPC and converts the result to
+// the wire response.
+func (h *chunkerHandler) respond(method string, texts []string) (*connect.Response[chunkerpb.TextChunkResponse], error) {
+	chunkFunc := h.fake.ChunkFunc
+	if chunkFunc == nil {
+		chunkFunc = func(_ string, texts []string) ([][]common.TextChunk, error) {
+			out := make([][]common.TextChunk, len(texts))
+			for i, t := range texts {
+				out[i] = []common.TextChunk{{Text: t, EndIndex: len(t), TokenCount: len(t)}}
+			}
+
+			return out, nil
+		}
+	}
+
+	rows, err := chunkFunc(method, texts)
+	if err != nil {
+		return nil, err
+	}
+
+	resp := &chunkerpb.TextChunkResponse{}
+
+	for _, row := range rows {
+		result := &chunkerpb.TextChunkResponse_Result{}
+		for _, c := range row {
+			result.Chunks = append(result.Chunks, &commonpb.TextChunk{
+				Text:       c.Text,
+				StartIndex: int32(c.StartIndex), //nolint:gosec // test-fixture indexes fit int32
+				EndIndex:   int32(c.EndIndex),   //nolint:gosec // test-fixture indexes fit int32
+				TokenCount: int32(c.TokenCount), //nolint:gosec // test-fixture counts fit int32
+			})
+		}
+
+		resp.Results = append(resp.Results, result)
+	}
+
+	return connect.NewResponse(resp), nil
 }
