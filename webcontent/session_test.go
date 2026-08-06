@@ -1,0 +1,112 @@
+package webcontent_test
+
+import (
+	"errors"
+	"fmt"
+	"strings"
+	"sync"
+	"testing"
+
+	"github.com/entwico/rootpuller-sdk/rootpullertest"
+	"github.com/entwico/rootpuller-sdk/webcontent"
+)
+
+func TestSessionConcurrentFetches(t *testing.T) {
+	// The fake handles instructions concurrently and interleaves their
+	// response frames, so correct results prove correlation-ID demuxing.
+	c := newScrapeClient(t, &rootpullertest.Scrape{
+		SessionFunc: func(url string) (map[webcontent.ArtifactKind][]byte, *webcontent.ContentError) {
+			return map[webcontent.ArtifactKind][]byte{
+				webcontent.ArtifactKindExtractedMarkdown: []byte(strings.Repeat(url+"|", 200_000)), // ~multi-chunk
+			}, nil
+		},
+	})
+
+	session, err := c.Scrape().OpenSession(t.Context(), &webcontent.SessionInit{
+		Jobs: []webcontent.ExtractionJob{{Kind: webcontent.ArtifactKindExtractedMarkdown}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := session.Close(); err != nil {
+			t.Errorf("Close: %v", err)
+		}
+	}()
+
+	const workers = 4
+	var wg sync.WaitGroup
+	errs := make([]error, workers)
+	for i := range workers {
+		wg.Go(func() {
+			url := fmt.Sprintf("https://example.com/page-%d", i)
+			result, ferr := session.Fetch(t.Context(), &webcontent.Instruction{URL: url})
+			if ferr != nil {
+				errs[i] = ferr
+				return
+			}
+			markdown := string(result.Artifacts[webcontent.ArtifactKindExtractedMarkdown])
+			if !strings.HasPrefix(markdown, url+"|") || strings.Contains(markdown, "page-"+fmt.Sprint((i+1)%workers)+"|") {
+				errs[i] = fmt.Errorf("page %d got foreign or corrupted content", i)
+				return
+			}
+			if result.Page.FinalURL != url {
+				errs[i] = fmt.Errorf("page %d metadata URL = %q", i, result.Page.FinalURL)
+			}
+		})
+	}
+	wg.Wait()
+	for i, err := range errs {
+		if err != nil {
+			t.Errorf("worker %d: %v", i, err)
+		}
+	}
+}
+
+func TestSessionInstructionError(t *testing.T) {
+	c := newScrapeClient(t, &rootpullertest.Scrape{
+		SessionFunc: func(url string) (map[webcontent.ArtifactKind][]byte, *webcontent.ContentError) {
+			if strings.Contains(url, "blocked") {
+				return nil, &webcontent.ContentError{Code: webcontent.ErrorCodeBlockedCloudflare, Retryable: false}
+			}
+			return map[webcontent.ArtifactKind][]byte{webcontent.ArtifactKindExtractedText: []byte("ok")}, nil
+		},
+	})
+
+	session, err := c.Scrape().OpenSession(t.Context(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = session.Close() }()
+
+	// The failing instruction errors...
+	_, err = session.Fetch(t.Context(), &webcontent.Instruction{URL: "https://example.com/blocked"})
+	var ce *webcontent.ContentError
+	if !errors.As(err, &ce) || ce.Code != webcontent.ErrorCodeBlockedCloudflare {
+		t.Fatalf("err = %#v, want ContentError BLOCKED_CLOUDFLARE", err)
+	}
+	// ...while the session stays usable.
+	result, err := session.Fetch(t.Context(), &webcontent.Instruction{URL: "https://example.com/fine"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(result.Artifacts[webcontent.ArtifactKindExtractedText]) != "ok" {
+		t.Errorf("unexpected artifacts: %v", result.Artifacts)
+	}
+}
+
+func TestSessionFetchAfterClose(t *testing.T) {
+	c := newScrapeClient(t, &rootpullertest.Scrape{})
+
+	session, err := c.Scrape().OpenSession(t.Context(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := session.Close(); err != nil {
+		t.Fatal(err)
+	}
+	_, err = session.Fetch(t.Context(), &webcontent.Instruction{URL: "https://example.com"})
+	if !errors.Is(err, webcontent.ErrSessionClosed) {
+		t.Fatalf("err = %v, want ErrSessionClosed", err)
+	}
+}

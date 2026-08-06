@@ -1,0 +1,18 @@
+version: v2
+managed:
+  enabled: true
+  override:
+    - file_option: go_package_prefix
+      value: github.com/entwico/rootpuller-sdk/internal/gen/proto
+inputs:
+  - git_repo: ssh://git@github.com/entwico/rootpuller-proto.git
+    branch: main
+plugins:
+  - local: ["go", "run", "google.golang.org/protobuf/cmd/protoc-gen-go@v1.36.10"]
+    out: internal/gen/proto
+    opt:
+      - paths=source_relative
+  - local: ["go", "run", "connectrpc.com/connect/cmd/protoc-gen-connect-go@v1.19.1"]
+    out: internal/gen/proto
+    opt:
+      - paths=source_relative

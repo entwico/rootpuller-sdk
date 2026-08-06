@@ -1,0 +1,273 @@
+package rootpullertest
+
+import (
+	"context"
+	"errors"
+	"io"
+	"net/http"
+
+	"connectrpc.com/connect"
+
+	"github.com/entwico/rootpuller-sdk/common"
+	"github.com/entwico/rootpuller-sdk/facefixer"
+	commonpb "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/common"
+	facefixerpb "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/facefixer"
+	"github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/facefixer/facefixerconnect"
+)
+
+// FaceFixer is a facade-typed fake FaceFixerService. It enforces the wire
+// protocol strictly (params frame first, chunks ≤2 MiB, no work before
+// the client half-closes) so SDK regressions surface as test failures.
+// FixFunc receives the operation name ("restore", "colorize", or
+// "inpaint"), the reassembled input image, and — for inpaint — the
+// reassembled mask; a nil FixFunc echoes the input with an "<op>-" name
+// prefix. When Metadata is set it is streamed as the metadata frame ahead
+// of the file chunks, like the real server.
+type FaceFixer struct {
+	FixFunc  func(op string, image common.File, mask *common.File) (*common.File, error)
+	Metadata *facefixer.Metadata
+}
+
+func (f *FaceFixer) register(mux *http.ServeMux) {
+	mux.Handle(facefixerconnect.NewFaceFixerServiceHandler(&faceFixerHandler{fake: f}))
+}
+
+type faceFixerHandler struct {
+	fake *FaceFixer
+}
+
+// appendFaceFixerChunk validates one file chunk and appends it to f.
+func appendFaceFixerChunk(f *common.File, chunk *commonpb.FileChunk, paramsSeen bool, arm string) error {
+	if !paramsSeen {
+		return connect.NewError(connect.CodeInvalidArgument, errors.New(arm+" frame before params"))
+	}
+	if len(chunk.GetData()) > 2<<20 {
+		return connect.NewError(connect.CodeInvalidArgument, errors.New("chunk exceeds 2 MiB"))
+	}
+	if f.Name == "" {
+		f.Name = chunk.GetName()
+	}
+	if f.MIMEType == "" {
+		f.MIMEType = chunk.GetMimeType()
+	}
+	f.Data = append(f.Data, chunk.GetData()...)
+	return nil
+}
+
+// respond runs the hook and streams the metadata frame (when configured)
+// followed by the result file, using the given per-RPC senders.
+func (h *faceFixerHandler) respond(
+	op string,
+	image common.File,
+	mask *common.File,
+	sendMetadata func(*facefixerpb.RestoreMetadata) error,
+	sendFile func(*commonpb.FileChunk) error,
+) error {
+	fix := h.fake.FixFunc
+	if fix == nil {
+		fix = func(op string, image common.File, _ *common.File) (*common.File, error) {
+			return &common.File{Name: op + "-" + image.Name, MIMEType: image.MIMEType, Data: image.Data}, nil
+		}
+	}
+	result, err := fix(op, image, mask)
+	if err != nil {
+		return err
+	}
+	if m := h.fake.Metadata; m != nil {
+		if err := sendMetadata(toProtoFaceFixerMetadata(m)); err != nil {
+			return err
+		}
+	}
+	return SendFileChunks(result, sendFile)
+}
+
+func (h *faceFixerHandler) RestoreFace(_ context.Context, stream *connect.BidiStream[facefixerpb.RestoreFaceRequest, facefixerpb.RestoreFaceResponse]) error {
+	var params *facefixerpb.RestoreFaceRequest_Params
+	var input common.File
+	// Like the real server: drain the full request before any work.
+	for {
+		req, err := stream.Receive()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return err
+		}
+		switch r := req.GetRequest().(type) {
+		case *facefixerpb.RestoreFaceRequest_Params_:
+			if params != nil {
+				return connect.NewError(connect.CodeInvalidArgument, errors.New("duplicate params frame"))
+			}
+			params = r.Params
+		case *facefixerpb.RestoreFaceRequest_File:
+			if err := appendFaceFixerChunk(&input, r.File, params != nil, "file"); err != nil {
+				return err
+			}
+		default:
+			return connect.NewError(connect.CodeInvalidArgument, errors.New("unexpected request variant"))
+		}
+	}
+	if params == nil {
+		return connect.NewError(connect.CodeInvalidArgument, errors.New("missing params"))
+	}
+	return h.respond("restore", input, nil,
+		func(m *facefixerpb.RestoreMetadata) error {
+			return stream.Send(&facefixerpb.RestoreFaceResponse{
+				Response: &facefixerpb.RestoreFaceResponse_Metadata{Metadata: m},
+			})
+		},
+		func(chunk *commonpb.FileChunk) error {
+			return stream.Send(&facefixerpb.RestoreFaceResponse{
+				Response: &facefixerpb.RestoreFaceResponse_File{File: chunk},
+			})
+		},
+	)
+}
+
+func (h *faceFixerHandler) ColorizeFace(_ context.Context, stream *connect.BidiStream[facefixerpb.ColorizeFaceRequest, facefixerpb.ColorizeFaceResponse]) error {
+	var params *facefixerpb.ColorizeFaceRequest_Params
+	var input common.File
+	// Like the real server: drain the full request before any work.
+	for {
+		req, err := stream.Receive()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return err
+		}
+		switch r := req.GetRequest().(type) {
+		case *facefixerpb.ColorizeFaceRequest_Params_:
+			if params != nil {
+				return connect.NewError(connect.CodeInvalidArgument, errors.New("duplicate params frame"))
+			}
+			params = r.Params
+		case *facefixerpb.ColorizeFaceRequest_File:
+			if err := appendFaceFixerChunk(&input, r.File, params != nil, "file"); err != nil {
+				return err
+			}
+		default:
+			return connect.NewError(connect.CodeInvalidArgument, errors.New("unexpected request variant"))
+		}
+	}
+	if params == nil {
+		return connect.NewError(connect.CodeInvalidArgument, errors.New("missing params"))
+	}
+	return h.respond("colorize", input, nil,
+		func(m *facefixerpb.RestoreMetadata) error {
+			return stream.Send(&facefixerpb.ColorizeFaceResponse{
+				Response: &facefixerpb.ColorizeFaceResponse_Metadata{Metadata: m},
+			})
+		},
+		func(chunk *commonpb.FileChunk) error {
+			return stream.Send(&facefixerpb.ColorizeFaceResponse{
+				Response: &facefixerpb.ColorizeFaceResponse_File{File: chunk},
+			})
+		},
+	)
+}
+
+func (h *faceFixerHandler) InpaintFace(_ context.Context, stream *connect.BidiStream[facefixerpb.InpaintFaceRequest, facefixerpb.InpaintFaceResponse]) error {
+	var params *facefixerpb.InpaintFaceRequest_Params
+	var input, mask common.File
+	maskSeen := false
+	// Like the real server: drain the full request before any work.
+	for {
+		req, err := stream.Receive()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return err
+		}
+		switch r := req.GetRequest().(type) {
+		case *facefixerpb.InpaintFaceRequest_Params_:
+			if params != nil {
+				return connect.NewError(connect.CodeInvalidArgument, errors.New("duplicate params frame"))
+			}
+			params = r.Params
+		case *facefixerpb.InpaintFaceRequest_File:
+			if err := appendFaceFixerChunk(&input, r.File, params != nil, "file"); err != nil {
+				return err
+			}
+		case *facefixerpb.InpaintFaceRequest_MaskFile:
+			if err := appendFaceFixerChunk(&mask, r.MaskFile, params != nil, "mask_file"); err != nil {
+				return err
+			}
+			maskSeen = true
+		default:
+			return connect.NewError(connect.CodeInvalidArgument, errors.New("unexpected request variant"))
+		}
+	}
+	if params == nil {
+		return connect.NewError(connect.CodeInvalidArgument, errors.New("missing params"))
+	}
+	var maskFile *common.File
+	if maskSeen {
+		maskFile = &mask
+	}
+	return h.respond("inpaint", input, maskFile,
+		func(m *facefixerpb.RestoreMetadata) error {
+			return stream.Send(&facefixerpb.InpaintFaceResponse{
+				Response: &facefixerpb.InpaintFaceResponse_Metadata{Metadata: m},
+			})
+		},
+		func(chunk *commonpb.FileChunk) error {
+			return stream.Send(&facefixerpb.InpaintFaceResponse{
+				Response: &facefixerpb.InpaintFaceResponse_File{File: chunk},
+			})
+		},
+	)
+}
+
+var faceFixerOperationToProto = map[string]facefixerpb.Operation{
+	"":         facefixerpb.Operation_OPERATION_UNSPECIFIED,
+	"restore":  facefixerpb.Operation_OPERATION_RESTORE,
+	"colorize": facefixerpb.Operation_OPERATION_COLORIZE,
+	"inpaint":  facefixerpb.Operation_OPERATION_INPAINT,
+}
+
+func toProtoFaceFixerMetadata(m *facefixer.Metadata) *facefixerpb.RestoreMetadata {
+	pb := &facefixerpb.RestoreMetadata{
+		FacesDetectedTotal: int32(m.FacesDetected),
+		UpscaleFactor:      int32(m.UpscaleFactor),
+		FidelityWeight:     m.FidelityWeight,
+		OnlyCenterFace:     m.OnlyCenterFace,
+		EnhanceBackground:  m.EnhanceBackground,
+		ProcessingTimeMs:   m.ProcessingTime.Milliseconds(),
+		InputSize:          toProtoImageSize(m.InputSize),
+		OutputSize:         toProtoImageSize(m.OutputSize),
+		Model:              m.Model,
+		Operation:          faceFixerOperationToProto[m.Operation],
+	}
+	for _, face := range m.Faces {
+		pb.Faces = append(pb.Faces, toProtoFaceInfo(face))
+	}
+	if m.MaskProvided != nil {
+		v := *m.MaskProvided
+		pb.MaskProvided = &v
+	}
+	return pb
+}
+
+func toProtoFaceInfo(f facefixer.FaceInfo) *facefixerpb.FaceInfo {
+	pb := &facefixerpb.FaceInfo{
+		Original: &facefixerpb.FaceInfo_Original{
+			Bbox:       toProtoBoundingBox(f.OriginalBBox),
+			Confidence: f.Confidence,
+		},
+	}
+	if lm := f.Landmarks; lm != nil {
+		pb.Original.Landmarks = &facefixerpb.Landmarks{
+			LeftEye:    toProtoPoint(lm.LeftEye),
+			RightEye:   toProtoPoint(lm.RightEye),
+			Nose:       toProtoPoint(lm.Nose),
+			LeftMouth:  toProtoPoint(lm.LeftMouth),
+			RightMouth: toProtoPoint(lm.RightMouth),
+		}
+	}
+	if f.RestoredBBox != nil {
+		pb.Restored = &facefixerpb.FaceInfo_Restored{Bbox: toProtoBoundingBox(*f.RestoredBBox)}
+	}
+	return pb
+}

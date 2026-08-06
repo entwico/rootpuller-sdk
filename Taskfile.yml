@@ -1,0 +1,59 @@
+version: "3"
+
+output: "group"
+
+vars:
+  BUILD_DIR: dist
+  BUF: github.com/bufbuild/buf/cmd/buf@v1.66.0
+
+tasks:
+  default:
+    cmds:
+      - task: build
+
+  build:
+    cmds:
+      - echo "==> Compiling..."
+      - go build ./...
+
+  generate:
+    cmds:
+      - echo "==> Generating code..."
+      - task: generate-protobuf
+
+  generate-protobuf:
+    cmds:
+      - mkdir -p internal/gen/proto
+      - rm -rf internal/gen/proto/*
+      - go run {{.BUF}} generate --template buf.gen.yaml
+
+  test:
+    cmds:
+      - echo "==> Testing code..."
+      - mkdir -p {{.BUILD_DIR}}
+      - go test -race -coverprofile=./{{.BUILD_DIR}}/coverage.out ./...
+      - go tool cover -html=./{{.BUILD_DIR}}/coverage.out -o ./{{.BUILD_DIR}}/coverage.html
+
+  lint:
+    cmds:
+      - golangci-lint version
+      - golangci-lint run
+      - task: lint-no-gen-leak
+
+  # The facade contract: generated proto types must never appear in the
+  # exported API of any public package.
+  lint-no-gen-leak:
+    cmds:
+      - |
+        fail=0
+        for pkg in $(go list ./... | grep -v '/internal/'); do
+          if go doc -all "$pkg" 2>/dev/null | grep -q 'internal/gen'; then
+            echo "generated proto types leak into exported API of $pkg"; fail=1
+          fi
+        done
+        exit $fail
+
+  check-drift:
+    cmds:
+      - task: generate-protobuf
+      - git diff --exit-code internal/gen
