@@ -10,25 +10,34 @@ import (
 
 	"connectrpc.com/connect"
 
-	"github.com/entwico/rootpuller-sdk/apierror"
-	"github.com/entwico/rootpuller-sdk/common"
+	rootpullersdk "github.com/entwico/rootpuller-sdk"
+	"github.com/entwico/rootpuller-sdk/internal/apierr"
 	bgremoverpb "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/bgremover"
 	"github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/bgremover/bgremoverconnect"
 	commonpb "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/common"
 	"github.com/entwico/rootpuller-sdk/internal/protoconv"
 	"github.com/entwico/rootpuller-sdk/internal/streamio"
-	"github.com/entwico/rootpuller-sdk/internal/transport"
 )
 
-// Client calls the BackgroundRemoverService. Obtain one from
-// rootpuller.Client.
-type Client struct {
+// Service calls the BackgroundRemoverService.
+type Service struct {
 	rpc bgremoverconnect.BackgroundRemoverServiceClient
 }
 
-// NewFromCore is the internal constructor used by rootpuller.New.
-func NewFromCore(core *transport.Core) *Client {
-	return &Client{rpc: bgremoverconnect.NewBackgroundRemoverServiceClient(core.HTTPClient, core.BaseURL, core.ClientOpts...)}
+// Option configures a Service at construction.
+type Option func(*Service)
+
+// NewService builds a BackgroundRemoverService client on the sdk
+// connection.
+func NewService(sdk *rootpullersdk.Client, opts ...Option) *Service {
+	core := sdk.TransportCore()
+
+	s := &Service{rpc: bgremoverconnect.NewBackgroundRemoverServiceClient(core.HTTPClient, core.BaseURL, core.ClientOpts...)}
+	for _, opt := range opts {
+		opt(s)
+	}
+
+	return s
 }
 
 // MorphologyMode selects the order of morphological operations when both
@@ -53,36 +62,43 @@ var morphologyModeToProto = map[MorphologyMode]bgremoverpb.MorphologyMode{
 	MorphologyModeClosing:     bgremoverpb.MorphologyMode_MORPHOLOGY_MODE_CLOSING,
 }
 
-// Params configures RemoveBackground. Nil pointer fields keep the server
-// defaults.
-type Params struct {
+// Options tunes a RemoveBackground call. Nil keeps all defaults.
+type Options struct {
 	// Threshold is the mask threshold, 0.0-1.0 (default 0.5); lower keeps
-	// more edges.
+	// more edges. Nil keeps the server default.
 	Threshold *float32
 	// Feather is the feathering radius for softer edges, 0-20 pixels
-	// (default 0).
+	// (default 0). Nil keeps the server default.
 	Feather *float32
-	// Erode shrinks the foreground by N pixels, 0-20 (default 0).
-	Erode *int
-	// Dilate expands the foreground by N pixels, 0-20 (default 0).
-	Dilate *int
+	// Erode shrinks the foreground by N pixels, 1-20 (0 = server
+	// default).
+	Erode int
+	// Dilate expands the foreground by N pixels, 1-20 (0 = server
+	// default).
+	Dilate int
 	// MorphologyMode orders the operations when both Erode and Dilate are
 	// set (default opening).
 	MorphologyMode MorphologyMode
 }
 
-func (p *Params) toProto() (*bgremoverpb.RemoveBackgroundRequest_Params, error) {
-	mode, ok := morphologyModeToProto[p.MorphologyMode]
+func (o *Options) toProto() (*bgremoverpb.RemoveBackgroundRequest_Params, error) {
+	mode, ok := morphologyModeToProto[o.MorphologyMode]
 	if !ok {
-		return nil, apierror.New(connect.CodeInvalidArgument, fmt.Sprintf("unknown morphology mode %q", p.MorphologyMode), "", 0, nil)
+		return nil, apierr.New(connect.CodeInvalidArgument, fmt.Sprintf("unknown morphology mode %q", o.MorphologyMode), "", 0, nil)
 	}
 
 	msg := &bgremoverpb.RemoveBackgroundRequest_Params{
-		Threshold: p.Threshold,
-		Feather:   p.Feather,
-		Erode:     protoconv.Int32Ptr(p.Erode),
-		Dilate:    protoconv.Int32Ptr(p.Dilate),
+		Threshold: o.Threshold,
+		Feather:   o.Feather,
 	}
+	if o.Erode > 0 {
+		msg.Erode = protoconv.Int32Ptr(&o.Erode)
+	}
+
+	if o.Dilate > 0 {
+		msg.Dilate = protoconv.Int32Ptr(&o.Dilate)
+	}
+
 	if mode != bgremoverpb.MorphologyMode_MORPHOLOGY_MODE_UNSPECIFIED {
 		msg.MorphologyMode = &mode
 	}
@@ -95,7 +111,7 @@ type Metadata struct {
 	// ProcessingTime is the server-side processing duration.
 	ProcessingTime time.Duration
 	// Size is the output image size.
-	Size common.ImageSize
+	Size rootpullersdk.ImageSize
 	// Device is the compute device used: cuda, mps, or cpu.
 	Device string
 	// MaskConfidence is the average mask probability before thresholding
@@ -106,7 +122,7 @@ type Metadata struct {
 	ForegroundPercent float32
 	// BoundingBox is the foreground bounding box, nil when no foreground
 	// was detected.
-	BoundingBox *common.BoundingBox
+	BoundingBox *rootpullersdk.BoundingBox
 }
 
 func fromProtoMetadata(pb *bgremoverpb.RemoveBackgroundMetadata) Metadata {
@@ -128,21 +144,26 @@ func fromProtoMetadata(pb *bgremoverpb.RemoveBackgroundMetadata) Metadata {
 // Result is the outcome of RemoveBackground: the cut-out image and the
 // metadata the server reported for it.
 type Result struct {
-	File     common.File
+	File     rootpullersdk.File
 	Metadata Metadata
 }
 
-// RemoveBackground calls BackgroundRemoverService/RemoveBackground:
-// streams the image up, then returns the image with its background
-// removed alongside the removal metadata.
-func (c *Client) RemoveBackground(ctx context.Context, params *Params, image common.Upload) (*Result, error) {
-	pb, err := params.toProto()
+// RemoveBackground calls BackgroundRemoverService/RemoveBackground: it
+// sends the params frame first, then the image chunks, in that order, and
+// half-closes. It returns the image with its background removed alongside
+// the removal metadata.
+func (s *Service) RemoveBackground(ctx context.Context, image rootpullersdk.Upload, opts *Options) (*Result, error) {
+	if opts == nil {
+		opts = &Options{}
+	}
+
+	pb, err := opts.toProto()
 	if err != nil {
 		return nil, err
 	}
 
 	procedure := bgremoverconnect.BackgroundRemoverServiceRemoveBackgroundProcedure
-	stream := c.rpc.RemoveBackground(ctx)
+	stream := s.rpc.RemoveBackground(ctx)
 
 	frames := streamio.Frames(
 		&bgremoverpb.RemoveBackgroundRequest{Request: &bgremoverpb.RemoveBackgroundRequest_Params_{Params: pb}},
@@ -176,7 +197,7 @@ func (c *Client) RemoveBackground(ctx context.Context, params *Params, image com
 	}
 
 	if len(files) == 0 {
-		return nil, apierror.New(connect.CodeInternal, "server returned no image", procedure, 0, nil)
+		return nil, apierr.New(connect.CodeInternal, "server returned no image", procedure, 0, nil)
 	}
 
 	return &Result{File: files[0], Metadata: meta}, nil

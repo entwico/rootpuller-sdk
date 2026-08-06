@@ -12,31 +12,34 @@ import (
 
 	"connectrpc.com/connect"
 
-	"github.com/entwico/rootpuller-sdk/apierror"
+	"github.com/entwico/rootpuller-sdk/internal/apierr"
 	webcontentpb "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/webcontent"
 	"github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/webcontent/webcontentconnect"
 	"github.com/entwico/rootpuller-sdk/internal/protoconv"
 	"github.com/entwico/rootpuller-sdk/internal/transport"
 )
 
-// SessionInit configures OpenSession. The fetcher (engine, proxy,
+// SessionOptions tunes OpenSession. The fetcher (engine, proxy,
 // fingerprint) is fixed for the whole session; jobs and screenshot apply
-// to every instruction.
-type SessionInit struct {
+// to every instruction. Nil keeps all defaults.
+type SessionOptions struct {
 	Fetcher *FetcherOptions
-	// IdleTimeout closes the session server-side after inactivity.
-	IdleTimeout *time.Duration
+	// IdleTimeout closes the session server-side after inactivity; 0
+	// keeps the server default.
+	IdleTimeout time.Duration
 	Jobs        []ExtractionJob
 	Screenshot  *ScreenshotOptions
 }
 
-// Instruction navigates the session to one URL.
-type Instruction struct {
-	URL             string
-	Headers         []Header
-	Cookies         map[string]string
-	WaitForSelector *string
-	Wait            *time.Duration
+// InstructionOptions tunes one session fetch. Nil keeps all defaults.
+type InstructionOptions struct {
+	Headers []Header
+	Cookies map[string]string
+	// WaitForSelector waits for the CSS selector before returning; empty
+	// leaves it unset.
+	WaitForSelector string
+	// Wait is a fixed wait after load; 0 leaves it unset.
+	Wait time.Duration
 }
 
 // ErrSessionClosed reports a Fetch on a session that was closed by
@@ -73,42 +76,46 @@ type sessionCall struct {
 }
 
 // OpenSession calls ScrapeService/FetchSession: sends the init frame and
-// starts the response demultiplexer. A nil init keeps all server
+// starts the response demultiplexer. A nil opts keeps all server
 // defaults.
-func (c *ScrapeClient) OpenSession(ctx context.Context, init *SessionInit) (*Session, error) {
+func (s *ScrapeService) OpenSession(ctx context.Context, opts *SessionOptions) (*Session, error) {
 	// The bot identity is fixed at stream creation; it applies to every
 	// instruction of the session.
-	ctx = transport.EnsureBot(ctx, c.bot)
+	ctx = transport.EnsureBot(ctx, s.bot)
 
-	if init == nil {
-		init = &SessionInit{}
+	if opts == nil {
+		opts = &SessionOptions{}
 	}
 
-	fetcher, err := init.Fetcher.toProto()
+	fetcher, err := opts.Fetcher.toProto()
 	if err != nil {
 		return nil, err
 	}
 
-	jobs, err := jobsToProto(init.Jobs)
+	jobs, err := jobsToProto(opts.Jobs)
 	if err != nil {
 		return nil, err
 	}
 
-	screenshot, err := init.Screenshot.toProto()
+	screenshot, err := opts.Screenshot.toProto()
 	if err != nil {
 		return nil, err
+	}
+
+	init := &webcontentpb.FetchSessionRequest_Init{
+		Fetcher:    fetcher,
+		Jobs:       jobs,
+		Screenshot: screenshot,
+	}
+	if opts.IdleTimeout > 0 {
+		init.IdleTimeoutSeconds = protoconv.DurationToSecondsPtr(&opts.IdleTimeout)
 	}
 
 	procedure := webcontentconnect.ScrapeServiceFetchSessionProcedure
 
-	stream := c.rpc.FetchSession(ctx)
+	stream := s.rpc.FetchSession(ctx)
 	if err := stream.Send(&webcontentpb.FetchSessionRequest{
-		Message: &webcontentpb.FetchSessionRequest_Init_{Init: &webcontentpb.FetchSessionRequest_Init{
-			Fetcher:            fetcher,
-			IdleTimeoutSeconds: protoconv.DurationToSecondsPtr(init.IdleTimeout),
-			Jobs:               jobs,
-			Screenshot:         screenshot,
-		}},
+		Message: &webcontentpb.FetchSessionRequest_Init_{Init: init},
 	}); err != nil {
 		_ = stream.CloseRequest()
 		_ = stream.CloseResponse()
@@ -116,16 +123,16 @@ func (c *ScrapeClient) OpenSession(ctx context.Context, init *SessionInit) (*Ses
 		return nil, transport.WrapError(err, procedure)
 	}
 
-	s := &Session{
+	session := &Session{
 		stream:    stream,
 		procedure: procedure,
 		calls:     map[string]*sessionCall{},
 		closed:    make(chan struct{}),
 		recvDone:  make(chan struct{}),
 	}
-	go s.recvLoop()
+	go session.recvLoop()
 
-	return s, nil
+	return session, nil
 }
 
 func sessionFrameFromProto(pb *webcontentpb.FetchSessionResponse) (sessionFrame, bool) {
@@ -154,8 +161,8 @@ func sessionFrameFromProto(pb *webcontentpb.FetchSessionResponse) (sessionFrame,
 // FetchEvents sends one instruction and yields its event frames as they
 // arrive, ending with a DoneEvent (or the page's *ContentError as the
 // iteration error). Concurrent FetchEvents/Fetch calls on one session
-// are pipelined server-side.
-func (s *Session) FetchEvents(ctx context.Context, instr *Instruction) iter.Seq2[Event, error] {
+// are pipelined server-side. A nil opts keeps all defaults.
+func (s *Session) FetchEvents(ctx context.Context, url string, opts *InstructionOptions) iter.Seq2[Event, error] {
 	s.mu.Lock()
 	sessionErr := s.err
 	s.mu.Unlock()
@@ -164,17 +171,29 @@ func (s *Session) FetchEvents(ctx context.Context, instr *Instruction) iter.Seq2
 		return errSeq[Event](sessionErr)
 	}
 
+	if opts == nil {
+		opts = &InstructionOptions{}
+	}
+
+	instruction := &webcontentpb.FetchSessionRequest_Instruction{
+		Url:     url,
+		Headers: headersToProto(opts.Headers),
+		Cookies: opts.Cookies,
+	}
+	if opts.WaitForSelector != "" {
+		instruction.WaitForSelector = &opts.WaitForSelector
+	}
+
+	if opts.Wait > 0 {
+		instruction.WaitMilliseconds = protoconv.DurationToMsPtr(&opts.Wait)
+	}
+
 	id, call := s.register()
+	instruction.CorrelationId = &id
+
 	s.sendMu.Lock()
 	err := s.stream.Send(&webcontentpb.FetchSessionRequest{
-		Message: &webcontentpb.FetchSessionRequest_Instruction_{Instruction: &webcontentpb.FetchSessionRequest_Instruction{
-			CorrelationId:    &id,
-			Url:              instr.URL,
-			Headers:          headersToProto(instr.Headers),
-			Cookies:          instr.Cookies,
-			WaitForSelector:  instr.WaitForSelector,
-			WaitMilliseconds: protoconv.DurationToMsPtr(instr.Wait),
-		}},
+		Message: &webcontentpb.FetchSessionRequest_Instruction_{Instruction: instruction},
 	})
 	s.sendMu.Unlock()
 
@@ -198,7 +217,7 @@ func (s *Session) FetchEvents(ctx context.Context, instr *Instruction) iter.Seq2
 
 				return
 			case <-ctx.Done():
-				yield(nil, apierror.New(connect.CodeCanceled, ctx.Err().Error(), s.procedure, 0, ctx.Err()))
+				yield(nil, apierr.New(connect.CodeCanceled, ctx.Err().Error(), s.procedure, 0, ctx.Err()))
 
 				return
 			}
@@ -207,9 +226,9 @@ func (s *Session) FetchEvents(ctx context.Context, instr *Instruction) iter.Seq2
 }
 
 // Fetch sends one instruction and blocks until its terminal frame,
-// returning the buffered result.
-func (s *Session) Fetch(ctx context.Context, instr *Instruction) (*FetchResult, error) {
-	return CollectEvents(s.FetchEvents(ctx, instr))
+// returning the buffered result. A nil opts keeps all defaults.
+func (s *Session) Fetch(ctx context.Context, url string, opts *InstructionOptions) (*FetchResult, error) {
+	return CollectEvents(s.FetchEvents(ctx, url, opts))
 }
 
 // Close half-closes the session; the server drains in-flight

@@ -6,8 +6,8 @@ import (
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/structpb"
 
-	"github.com/entwico/rootpuller-sdk/apierror"
-	"github.com/entwico/rootpuller-sdk/common"
+	rootpullersdk "github.com/entwico/rootpuller-sdk"
+	"github.com/entwico/rootpuller-sdk/internal/apierr"
 	chefpb "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/chef"
 )
 
@@ -39,7 +39,7 @@ func (t TableSourceType) toProto() (*chefpb.TableSourceType, error) {
 }
 
 func invalidArgument(msg string) error {
-	return apierror.New(connect.CodeInvalidArgument, msg, "", 0, nil)
+	return apierr.New(connect.CodeInvalidArgument, msg, "", 0, nil)
 }
 
 // MarkdownTable is one table extracted from a document, rendered as
@@ -70,7 +70,7 @@ type ImageRef struct {
 }
 
 // TokenizerInfo describes one tokenizer available for markdown chunk
-// token counting; pass ID as MarkdownRequest.Tokenizer.
+// token counting; pass ID as MarkdownOptions.Tokenizer.
 type TokenizerInfo struct {
 	ID          string // chonkie tokenizer name, e.g. "character" or "word"
 	Type        string // tokenizer category, currently "builtin"
@@ -86,14 +86,6 @@ type TextResult struct {
 	Metadata map[string]any
 }
 
-// MarkdownRequest configures ProcessMarkdown.
-type MarkdownRequest struct {
-	Text string
-	// Tokenizer selects the tokenizer for chunk token counting; nil keeps
-	// the server default (character). See Client.ListTokenizers.
-	Tokenizer *string
-}
-
 // MarkdownResult is the outcome of ProcessMarkdown.
 type MarkdownResult struct {
 	Content    string
@@ -101,7 +93,7 @@ type MarkdownResult struct {
 	Tables     []MarkdownTable
 	CodeBlocks []CodeBlock
 	Images     []ImageRef
-	Chunks     []common.TextChunk
+	Chunks     []rootpullersdk.TextChunk
 	// Metadata carries server-side processing details; nil when the
 	// server attached none.
 	Metadata map[string]any

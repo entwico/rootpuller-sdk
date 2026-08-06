@@ -1,4 +1,4 @@
-package common
+package rootpullersdk
 
 // ImageFormat selects the encoding of an output image. The zero value
 // leaves the choice to the server.

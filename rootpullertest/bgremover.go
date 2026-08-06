@@ -8,8 +8,8 @@ import (
 
 	"connectrpc.com/connect"
 
+	rootpullersdk "github.com/entwico/rootpuller-sdk"
 	"github.com/entwico/rootpuller-sdk/bgremover"
-	"github.com/entwico/rootpuller-sdk/common"
 	bgremoverpb "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/bgremover"
 	"github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/bgremover/bgremoverconnect"
 	commonpb "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/common"
@@ -23,7 +23,7 @@ import (
 // streamed as the metadata frame ahead of the file chunks, like the real
 // server.
 type BgRemover struct {
-	RemoveFunc func(image common.File) (*common.File, error)
+	RemoveFunc func(image rootpullersdk.File) (*rootpullersdk.File, error)
 	Metadata   *bgremover.Metadata
 }
 
@@ -38,7 +38,7 @@ type bgRemoverHandler struct {
 func (h *bgRemoverHandler) RemoveBackground(_ context.Context, stream *connect.BidiStream[bgremoverpb.RemoveBackgroundRequest, bgremoverpb.RemoveBackgroundResponse]) error {
 	var (
 		params *bgremoverpb.RemoveBackgroundRequest_Params
-		input  common.File
+		input  rootpullersdk.File
 	)
 	// Like the real server: drain the full request before any work.
 
@@ -78,8 +78,8 @@ func (h *bgRemoverHandler) RemoveBackground(_ context.Context, stream *connect.B
 
 	remove := h.fake.RemoveFunc
 	if remove == nil {
-		remove = func(image common.File) (*common.File, error) {
-			return &common.File{Name: "nobg-" + image.Name, MIMEType: image.MIMEType, Data: image.Data}, nil
+		remove = func(image rootpullersdk.File) (*rootpullersdk.File, error) {
+			return &rootpullersdk.File{Name: "nobg-" + image.Name, MIMEType: image.MIMEType, Data: image.Data}, nil
 		}
 	}
 
@@ -118,14 +118,14 @@ func toProtoBgRemoverMetadata(m *bgremover.Metadata) *bgremoverpb.RemoveBackgrou
 	return pb
 }
 
-func toProtoImageSize(s common.ImageSize) *commonpb.ImageSize {
+func toProtoImageSize(s rootpullersdk.ImageSize) *commonpb.ImageSize {
 	return &commonpb.ImageSize{Width: int32(s.Width), Height: int32(s.Height)} //nolint:gosec // test-fixture image dimensions fit int32
 }
 
-func toProtoPoint(p common.Point) *commonpb.Point {
+func toProtoPoint(p rootpullersdk.Point) *commonpb.Point {
 	return &commonpb.Point{X: p.X, Y: p.Y}
 }
 
-func toProtoBoundingBox(b common.BoundingBox) *commonpb.BoundingBox {
+func toProtoBoundingBox(b rootpullersdk.BoundingBox) *commonpb.BoundingBox {
 	return &commonpb.BoundingBox{Position: toProtoPoint(b.Position), Size: toProtoImageSize(b.Size)}
 }

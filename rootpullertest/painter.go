@@ -8,7 +8,7 @@ import (
 
 	"connectrpc.com/connect"
 
-	"github.com/entwico/rootpuller-sdk/common"
+	rootpullersdk "github.com/entwico/rootpuller-sdk"
 	commonpb "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/common"
 	painterpb "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/painter"
 	"github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/painter/painterconnect"
@@ -29,9 +29,9 @@ import (
 // Metadata, or synthesized from the result files when nil), then the
 // files, chunked like the real server.
 type Painter struct {
-	GenerateFunc func(prompt string) ([]common.File, error)
-	EditFunc     func(prompt string, image common.File, mask *common.File) ([]common.File, error)
-	OutpaintFunc func(prompt string, image common.File) ([]common.File, error)
+	GenerateFunc func(prompt string) ([]rootpullersdk.File, error)
+	EditFunc     func(prompt string, image rootpullersdk.File, mask *rootpullersdk.File) ([]rootpullersdk.File, error)
+	OutpaintFunc func(prompt string, image rootpullersdk.File) ([]rootpullersdk.File, error)
 	Metadata     *painter.Metadata
 	Progress     []painter.Progress
 }
@@ -54,7 +54,7 @@ var (
 )
 
 // appendChunk validates one incoming FileChunk and folds it into f.
-func appendChunk(f *common.File, chunk *commonpb.FileChunk) error {
+func appendChunk(f *rootpullersdk.File, chunk *commonpb.FileChunk) error {
 	if len(chunk.GetData()) > painterMaxChunk {
 		return invalidArgument(errChunkTooLarge)
 	}
@@ -103,7 +103,7 @@ func (h *painterHandler) GenerateImage(_ context.Context, stream *connect.BidiSt
 
 	generate := h.fake.GenerateFunc
 	if generate == nil {
-		generate = func(string) ([]common.File, error) { return cannedPainterImages(), nil }
+		generate = func(string) ([]rootpullersdk.File, error) { return cannedPainterImages(), nil }
 	}
 
 	files, err := generate(params.GetPrompt())
@@ -130,8 +130,8 @@ func (h *painterHandler) GenerateImage(_ context.Context, stream *connect.BidiSt
 // chunks.
 type editImageRequest struct {
 	params      *painterpb.EditImageRequest_Params
-	input       common.File
-	mask        *common.File
+	input       rootpullersdk.File
+	mask        *rootpullersdk.File
 	inputChunks int
 }
 
@@ -141,7 +141,7 @@ func receiveEditImageRequest(stream *connect.BidiStream[painterpb.EditImageReque
 	acc := &editImageRequest{}
 
 	var (
-		maskFile   common.File
+		maskFile   rootpullersdk.File
 		maskChunks int
 	)
 
@@ -215,7 +215,9 @@ func (h *painterHandler) EditImage(_ context.Context, stream *connect.BidiStream
 
 	edit := h.fake.EditFunc
 	if edit == nil {
-		edit = func(string, common.File, *common.File) ([]common.File, error) { return cannedPainterImages(), nil }
+		edit = func(string, rootpullersdk.File, *rootpullersdk.File) ([]rootpullersdk.File, error) {
+			return cannedPainterImages(), nil
+		}
 	}
 
 	files, err := edit(frames.params.GetPrompt(), frames.input, frames.mask)
@@ -240,7 +242,7 @@ func (h *painterHandler) EditImage(_ context.Context, stream *connect.BidiStream
 func (h *painterHandler) OutpaintImage(_ context.Context, stream *connect.BidiStream[painterpb.OutpaintImageRequest, painterpb.OutpaintImageResponse]) error {
 	var (
 		params      *painterpb.OutpaintImageRequest_Params
-		input       common.File
+		input       rootpullersdk.File
 		inputChunks int
 	)
 
@@ -286,7 +288,7 @@ func (h *painterHandler) OutpaintImage(_ context.Context, stream *connect.BidiSt
 
 	outpaint := h.fake.OutpaintFunc
 	if outpaint == nil {
-		outpaint = func(string, common.File) ([]common.File, error) { return cannedPainterImages(), nil }
+		outpaint = func(string, rootpullersdk.File) ([]rootpullersdk.File, error) { return cannedPainterImages(), nil }
 	}
 
 	files, err := outpaint(params.GetPrompt(), input)
@@ -313,7 +315,7 @@ func (h *painterHandler) OutpaintImage(_ context.Context, stream *connect.BidiSt
 // stream per output image.
 func painterRespond[Resp any](
 	fake *Painter,
-	files []common.File,
+	files []rootpullersdk.File,
 	wrapProgress func(*painterpb.GenerationProgress) *Resp,
 	wrapMetadata func(*painterpb.GenerationMetadata) *Resp,
 	wrapFile func(*commonpb.FileChunk) *Resp,
@@ -341,8 +343,8 @@ func painterRespond[Resp any](
 }
 
 // cannedPainterImages is the default result of nil hooks.
-func cannedPainterImages() []common.File {
-	return []common.File{{Name: "image_0.png", MIMEType: "image/png", Data: []byte{0x89}}}
+func cannedPainterImages() []rootpullersdk.File {
+	return []rootpullersdk.File{{Name: "image_0.png", MIMEType: "image/png", Data: []byte{0x89}}}
 }
 
 var painterStageToProto = map[painter.Stage]painterpb.GenerationProgress_Stage{
@@ -372,7 +374,7 @@ var painterBackendToProto = map[string]painterpb.GenerationMetadata_Backend{
 // painterMetadataToProto converts the fake's facade metadata; when m is
 // nil it synthesizes a minimal metadata frame from the result files, so
 // the response always carries the protocol's mandatory metadata.
-func painterMetadataToProto(m *painter.Metadata, files []common.File) *painterpb.GenerationMetadata {
+func painterMetadataToProto(m *painter.Metadata, files []rootpullersdk.File) *painterpb.GenerationMetadata {
 	if m == nil {
 		synth := painter.Metadata{NumImages: len(files), Images: make([]painter.ImageMetadata, len(files))}
 		for i := range synth.Images {
@@ -391,7 +393,7 @@ func painterMetadataToProto(m *painter.Metadata, files []common.File) *painterpb
 			SafetyReason:  im.SafetyReason,
 			RevisedPrompt: im.RevisedPrompt,
 		}
-		if im.Size != (common.ImageSize{}) {
+		if im.Size != (rootpullersdk.ImageSize{}) {
 			pb.Size = &commonpb.ImageSize{Width: int32(im.Size.Width), Height: int32(im.Size.Height)} //nolint:gosec // test-fixture image dimensions fit int32
 		}
 
@@ -406,7 +408,7 @@ func painterMetadataToProto(m *painter.Metadata, files []common.File) *painterpb
 		Images:           images,
 		Notes:            m.Notes,
 	}
-	if m.Usage != (common.Usage{}) {
+	if m.Usage != (rootpullersdk.Usage{}) {
 		msg.Usage = &commonpb.Usage{
 			InputTokens:             int32(m.Usage.InputTokens),       //nolint:gosec // test-fixture token counts fit int32
 			CachedInputTokens:       int32(m.Usage.CachedInputTokens), //nolint:gosec // test-fixture token counts fit int32

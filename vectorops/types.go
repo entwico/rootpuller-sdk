@@ -6,7 +6,7 @@ import (
 
 	"connectrpc.com/connect"
 
-	"github.com/entwico/rootpuller-sdk/apierror"
+	"github.com/entwico/rootpuller-sdk/internal/apierr"
 	vectoropspb "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/vectorops"
 	"github.com/entwico/rootpuller-sdk/internal/protoconv"
 )
@@ -95,21 +95,22 @@ func (m ClusterSelectionMethod) toProto() (vectoropspb.ClusterSelectionMethod, e
 }
 
 func invalidArgument(msg string) error {
-	return apierror.New(connect.CodeInvalidArgument, msg, "", 0, nil)
+	return apierr.New(connect.CodeInvalidArgument, msg, "", 0, nil)
 }
 
-// HdbscanParams tunes ClusterHdbscan. Nil pointer and zero-value fields
-// keep the server defaults noted per field.
-type HdbscanParams struct {
+// HdbscanOptions tunes ClusterHdbscan. Nil and zero-value fields keep
+// the server defaults noted per field.
+type HdbscanOptions struct {
 	// MinClusterSize is the smallest grouping that counts as a cluster
-	// (default 5). For topic clustering over article embeddings 10-25 tends
-	// to suppress micro-topics.
-	MinClusterSize *int
+	// (0 keeps the server default, 5). For topic clustering over article
+	// embeddings 10-25 tends to suppress micro-topics.
+	MinClusterSize int
 	// MinSamples sets how conservative the clustering is: larger values
-	// push more points into noise. Defaults to MinClusterSize.
-	MinSamples *int
+	// push more points into noise. 0 keeps the server default
+	// (MinClusterSize).
+	MinSamples int
 	// ClusterSelectionEpsilon merges clusters closer than this threshold;
-	// 0 (default) disables the merge.
+	// nil keeps the server default (0, no merge).
 	ClusterSelectionEpsilon *float32
 	// Metric is the distance used to build the tree; Cosine is rejected
 	// for HDBSCAN (see DistanceMetric).
@@ -118,9 +119,9 @@ type HdbscanParams struct {
 	ClusterSelectionMethod ClusterSelectionMethod
 }
 
-func (p *HdbscanParams) toHeader(points *Matrix) (*vectoropspb.ClusterHdbscanRequest_Header, error) {
+func (p *HdbscanOptions) toHeader(points *Matrix) (*vectoropspb.ClusterHdbscanRequest_Header, error) {
 	if p == nil {
-		p = &HdbscanParams{}
+		p = &HdbscanOptions{}
 	}
 
 	metric, err := p.Metric.toProto()
@@ -133,16 +134,23 @@ func (p *HdbscanParams) toHeader(points *Matrix) (*vectoropspb.ClusterHdbscanReq
 		return nil, err
 	}
 
-	return &vectoropspb.ClusterHdbscanRequest_Header{
+	header := &vectoropspb.ClusterHdbscanRequest_Header{
 		// The dimensions were bounds-checked against int32 in validate().
 		Rows:                    protoconv.ClampInt32(int64(points.Rows)),
 		Cols:                    protoconv.ClampInt32(int64(points.Cols)),
-		MinClusterSize:          protoconv.Int32Ptr(p.MinClusterSize),
-		MinSamples:              protoconv.Int32Ptr(p.MinSamples),
 		ClusterSelectionEpsilon: p.ClusterSelectionEpsilon,
 		Metric:                  metric,
 		ClusterSelectionMethod:  method,
-	}, nil
+	}
+	if p.MinClusterSize > 0 {
+		header.MinClusterSize = protoconv.Int32Ptr(&p.MinClusterSize)
+	}
+
+	if p.MinSamples > 0 {
+		header.MinSamples = protoconv.Int32Ptr(&p.MinSamples)
+	}
+
+	return header, nil
 }
 
 // HdbscanResult is the per-point clustering output. All slices have one
@@ -164,29 +172,33 @@ type HdbscanResult struct {
 	IDs []string
 }
 
-// UmapParams tunes ProjectUmap. Nil pointer and zero-value fields keep
-// the server defaults noted per field.
-type UmapParams struct {
-	// NNeighbors balances local against global structure (default 15).
-	NNeighbors *int
-	// MinDist is the minimum spacing between output points (default 0.1).
+// UmapOptions tunes ProjectUmap. Nil and zero-value fields keep the
+// server defaults noted per field.
+type UmapOptions struct {
+	// NNeighbors balances local against global structure (0 keeps the
+	// server default, 15).
+	NNeighbors int
+	// MinDist is the minimum spacing between output points; nil keeps the
+	// server default (0.1).
 	MinDist *float32
-	// NComponents is the target dimensionality (default 2).
-	NComponents *int
+	// NComponents is the target dimensionality (0 keeps the server
+	// default, 2).
+	NComponents int
 	// Metric is the input-space distance; Cosine is supported natively and
 	// preferred for raw un-normalised embeddings.
 	Metric DistanceMetric
-	// RandomState seeds the layout for reproducible output; setting it
-	// disables UMAP's internal parallelism.
+	// RandomState seeds the layout for reproducible output (0 is a valid
+	// seed); setting it disables UMAP's internal parallelism. Nil keeps
+	// the unseeded server default.
 	RandomState *int
 	// SupervisedLabels optionally guides the projection (supervised UMAP);
 	// when set, its length must equal the points row count.
 	SupervisedLabels []int32
 }
 
-func (p *UmapParams) toHeader(points *Matrix) (*vectoropspb.ProjectUmapRequest_Header, error) {
+func (p *UmapOptions) toHeader(points *Matrix) (*vectoropspb.ProjectUmapRequest_Header, error) {
 	if p == nil {
-		p = &UmapParams{}
+		p = &UmapOptions{}
 	}
 
 	metric, err := p.Metric.toProto()
@@ -194,16 +206,23 @@ func (p *UmapParams) toHeader(points *Matrix) (*vectoropspb.ProjectUmapRequest_H
 		return nil, err
 	}
 
-	return &vectoropspb.ProjectUmapRequest_Header{
+	header := &vectoropspb.ProjectUmapRequest_Header{
 		// The dimensions were bounds-checked against int32 in validate().
 		Rows:        protoconv.ClampInt32(int64(points.Rows)),
 		Cols:        protoconv.ClampInt32(int64(points.Cols)),
-		NNeighbors:  protoconv.Int32Ptr(p.NNeighbors),
 		MinDist:     p.MinDist,
-		NComponents: protoconv.Int32Ptr(p.NComponents),
 		Metric:      metric,
 		RandomState: protoconv.Int32Ptr(p.RandomState),
-	}, nil
+	}
+	if p.NNeighbors > 0 {
+		header.NNeighbors = protoconv.Int32Ptr(&p.NNeighbors)
+	}
+
+	if p.NComponents > 0 {
+		header.NComponents = protoconv.Int32Ptr(&p.NComponents)
+	}
+
+	return header, nil
 }
 
 // UmapResult is the projection output.

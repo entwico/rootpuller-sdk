@@ -10,7 +10,7 @@ import (
 
 	commonpb "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/common"
 
-	"github.com/entwico/rootpuller-sdk/common"
+	rootpullersdk "github.com/entwico/rootpuller-sdk"
 )
 
 // ClampInt32 narrows v to int32, clamping to the int32 range instead of
@@ -69,7 +69,7 @@ func MsToDuration(ms int64) time.Duration { return time.Duration(ms) * time.Mill
 // IntFromInt32 widens a proto int32 to a facade int.
 func IntFromInt32(v int32) int { return int(v) }
 
-func ToProtoNormalize(n *common.NormalizeOptions) *commonpb.NormalizeOptions {
+func ToProtoNormalize(n *rootpullersdk.NormalizeOptions) *commonpb.NormalizeOptions {
 	if n == nil {
 		return nil
 	}
@@ -90,12 +90,12 @@ func ToProtoNormalize(n *common.NormalizeOptions) *commonpb.NormalizeOptions {
 	}
 }
 
-func FromProtoTextChunk(c *commonpb.TextChunk) common.TextChunk {
+func FromProtoTextChunk(c *commonpb.TextChunk) rootpullersdk.TextChunk {
 	if c == nil {
-		return common.TextChunk{}
+		return rootpullersdk.TextChunk{}
 	}
 
-	return common.TextChunk{
+	return rootpullersdk.TextChunk{
 		Text:       c.GetText(),
 		StartIndex: int(c.GetStartIndex()),
 		EndIndex:   int(c.GetEndIndex()),
@@ -103,8 +103,8 @@ func FromProtoTextChunk(c *commonpb.TextChunk) common.TextChunk {
 	}
 }
 
-func FromProtoTextChunks(chunks []*commonpb.TextChunk) []common.TextChunk {
-	out := make([]common.TextChunk, len(chunks))
+func FromProtoTextChunks(chunks []*commonpb.TextChunk) []rootpullersdk.TextChunk {
+	out := make([]rootpullersdk.TextChunk, len(chunks))
 	for i, c := range chunks {
 		out[i] = FromProtoTextChunk(c)
 	}
@@ -112,12 +112,12 @@ func FromProtoTextChunks(chunks []*commonpb.TextChunk) []common.TextChunk {
 	return out
 }
 
-func FromProtoUsage(u *commonpb.Usage) common.Usage {
+func FromProtoUsage(u *commonpb.Usage) rootpullersdk.Usage {
 	if u == nil {
-		return common.Usage{}
+		return rootpullersdk.Usage{}
 	}
 
-	return common.Usage{
+	return rootpullersdk.Usage{
 		InputTokens:             int(u.GetInputTokens()),
 		CachedInputTokens:       int(u.GetCachedInputTokens()),
 		OutputTokens:            int(u.GetOutputTokens()),
@@ -129,44 +129,44 @@ func FromProtoUsage(u *commonpb.Usage) common.Usage {
 	}
 }
 
-func FromProtoPoint(p *commonpb.Point) common.Point {
+func FromProtoPoint(p *commonpb.Point) rootpullersdk.Point {
 	if p == nil {
-		return common.Point{}
+		return rootpullersdk.Point{}
 	}
 
-	return common.Point{X: p.GetX(), Y: p.GetY()}
+	return rootpullersdk.Point{X: p.GetX(), Y: p.GetY()}
 }
 
-func FromProtoImageSize(s *commonpb.ImageSize) common.ImageSize {
+func FromProtoImageSize(s *commonpb.ImageSize) rootpullersdk.ImageSize {
 	if s == nil {
-		return common.ImageSize{}
+		return rootpullersdk.ImageSize{}
 	}
 
-	return common.ImageSize{Width: int(s.GetWidth()), Height: int(s.GetHeight())}
+	return rootpullersdk.ImageSize{Width: int(s.GetWidth()), Height: int(s.GetHeight())}
 }
 
-func FromProtoBoundingBox(b *commonpb.BoundingBox) common.BoundingBox {
+func FromProtoBoundingBox(b *commonpb.BoundingBox) rootpullersdk.BoundingBox {
 	if b == nil {
-		return common.BoundingBox{}
+		return rootpullersdk.BoundingBox{}
 	}
 
-	return common.BoundingBox{
+	return rootpullersdk.BoundingBox{
 		Position: FromProtoPoint(b.GetPosition()),
 		Size:     FromProtoImageSize(b.GetSize()),
 	}
 }
 
-var imageFormatToProto = map[common.ImageFormat]commonpb.ImageFormat{
-	common.ImageFormatUnspecified: commonpb.ImageFormat_IMAGE_FORMAT_UNSPECIFIED,
-	common.ImageFormatJPG:         commonpb.ImageFormat_IMAGE_FORMAT_JPG,
-	common.ImageFormatPNG:         commonpb.ImageFormat_IMAGE_FORMAT_PNG,
-	common.ImageFormatWebP:        commonpb.ImageFormat_IMAGE_FORMAT_WEBP,
+var imageFormatToProto = map[rootpullersdk.ImageFormat]commonpb.ImageFormat{
+	rootpullersdk.ImageFormatUnspecified: commonpb.ImageFormat_IMAGE_FORMAT_UNSPECIFIED,
+	rootpullersdk.ImageFormatJPG:         commonpb.ImageFormat_IMAGE_FORMAT_JPG,
+	rootpullersdk.ImageFormatPNG:         commonpb.ImageFormat_IMAGE_FORMAT_PNG,
+	rootpullersdk.ImageFormatWebP:        commonpb.ImageFormat_IMAGE_FORMAT_WEBP,
 }
 
 // ToProtoImageFormat maps a facade format to the proto enum; unknown
 // values report ok=false so the caller can fail with InvalidArgument
 // before any RPC.
-func ToProtoImageFormat(f common.ImageFormat) (commonpb.ImageFormat, bool) {
+func ToProtoImageFormat(f rootpullersdk.ImageFormat) (commonpb.ImageFormat, bool) {
 	v, ok := imageFormatToProto[f]
 
 	return v, ok

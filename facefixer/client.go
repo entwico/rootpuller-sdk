@@ -11,39 +11,48 @@ import (
 
 	"connectrpc.com/connect"
 
-	"github.com/entwico/rootpuller-sdk/apierror"
-	"github.com/entwico/rootpuller-sdk/common"
+	rootpullersdk "github.com/entwico/rootpuller-sdk"
+	"github.com/entwico/rootpuller-sdk/internal/apierr"
 	commonpb "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/common"
 	facefixerpb "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/facefixer"
 	"github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/facefixer/facefixerconnect"
 	"github.com/entwico/rootpuller-sdk/internal/protoconv"
 	"github.com/entwico/rootpuller-sdk/internal/streamio"
-	"github.com/entwico/rootpuller-sdk/internal/transport"
 )
 
-// Client calls the FaceFixerService. Obtain one from rootpuller.Client.
-type Client struct {
+// Service calls the FaceFixerService.
+type Service struct {
 	rpc facefixerconnect.FaceFixerServiceClient
 }
 
-// NewFromCore is the internal constructor used by rootpuller.New.
-func NewFromCore(core *transport.Core) *Client {
-	return &Client{rpc: facefixerconnect.NewFaceFixerServiceClient(core.HTTPClient, core.BaseURL, core.ClientOpts...)}
+// Option configures a Service at construction.
+type Option func(*Service)
+
+// NewService builds a FaceFixerService client on the sdk connection.
+func NewService(sdk *rootpullersdk.Client, opts ...Option) *Service {
+	core := sdk.TransportCore()
+
+	s := &Service{rpc: facefixerconnect.NewFaceFixerServiceClient(core.HTTPClient, core.BaseURL, core.ClientOpts...)}
+	for _, opt := range opts {
+		opt(s)
+	}
+
+	return s
 }
 
 // Landmarks are the five facial keypoints detected for a face.
 type Landmarks struct {
-	LeftEye    common.Point
-	RightEye   common.Point
-	Nose       common.Point
-	LeftMouth  common.Point
-	RightMouth common.Point
+	LeftEye    rootpullersdk.Point
+	RightEye   rootpullersdk.Point
+	Nose       rootpullersdk.Point
+	LeftMouth  rootpullersdk.Point
+	RightMouth rootpullersdk.Point
 }
 
 // FaceInfo describes one face the server detected and processed.
 type FaceInfo struct {
 	// OriginalBBox is the face bounding box in the input image.
-	OriginalBBox common.BoundingBox
+	OriginalBBox rootpullersdk.BoundingBox
 	// Confidence is the detection confidence.
 	Confidence float32
 	// Landmarks are the detected facial keypoints, nil when the server
@@ -51,7 +60,7 @@ type FaceInfo struct {
 	Landmarks *Landmarks
 	// RestoredBBox is the face bounding box in the output image, nil when
 	// the server did not report it.
-	RestoredBBox *common.BoundingBox
+	RestoredBBox *rootpullersdk.BoundingBox
 }
 
 // Metadata describes a face-fixing result.
@@ -69,9 +78,9 @@ type Metadata struct {
 	// ProcessingTime is the server-side processing duration.
 	ProcessingTime time.Duration
 	// InputSize is the input image size.
-	InputSize common.ImageSize
+	InputSize rootpullersdk.ImageSize
 	// OutputSize is the output image size.
-	OutputSize common.ImageSize
+	OutputSize rootpullersdk.ImageSize
 	// Model is the model name used.
 	Model string
 	// Operation is the operation performed: "restore", "colorize", or
@@ -147,115 +156,136 @@ func fromProtoMetadata(pb *facefixerpb.RestoreMetadata) Metadata {
 // Result is the outcome of a face-fixing call: the processed image and
 // the metadata the server reported for it.
 type Result struct {
-	File     common.File
+	File     rootpullersdk.File
 	Metadata Metadata
 }
 
-// RestoreParams configures RestoreFace. Nil pointer fields keep the
-// server defaults.
-type RestoreParams struct {
-	// Upscale is the upscaling factor, 2 or 4 (default 2).
-	Upscale *int
+// RestoreOptions tunes a RestoreFace call. Nil keeps all defaults.
+type RestoreOptions struct {
+	// Upscale is the upscaling factor, 2 or 4 (0 = server default 2).
+	Upscale int
 	// FidelityWeight balances quality against fidelity, 0.0-1.0 (default
-	// 0.5).
+	// 0.5). Nil keeps the server default; 0 is meaningful.
 	FidelityWeight *float32
-	// HasAligned marks the input as already face-aligned (default false).
-	HasAligned *bool
-	// OnlyCenterFace processes only the center face (default false).
-	OnlyCenterFace *bool
-	// EnhanceBackground enhances the background with RealESRGAN (default
-	// true).
+	// HasAligned marks the input as already face-aligned.
+	HasAligned bool
+	// OnlyCenterFace processes only the center face.
+	OnlyCenterFace bool
+	// EnhanceBackground enhances the background with RealESRGAN. Nil
+	// keeps the server default (true).
 	EnhanceBackground *bool
 	// Format selects the output encoding.
-	Format common.ImageFormat
+	Format rootpullersdk.ImageFormat
 }
 
-func (p *RestoreParams) toProto() (*facefixerpb.RestoreFaceRequest_Params, error) {
-	format, err := toProtoFormat(p.Format)
+func (o *RestoreOptions) toProto() (*facefixerpb.RestoreFaceRequest_Params, error) {
+	format, err := toProtoFormat(o.Format)
 	if err != nil {
 		return nil, err
 	}
 
-	return &facefixerpb.RestoreFaceRequest_Params{
-		Upscale:           protoconv.Int32Ptr(p.Upscale),
-		FidelityWeight:    p.FidelityWeight,
-		HasAligned:        p.HasAligned,
-		OnlyCenterFace:    p.OnlyCenterFace,
-		EnhanceBackground: p.EnhanceBackground,
+	msg := &facefixerpb.RestoreFaceRequest_Params{
+		FidelityWeight:    o.FidelityWeight,
+		EnhanceBackground: o.EnhanceBackground,
 		Format:            format,
-	}, nil
+	}
+	if o.Upscale > 0 {
+		msg.Upscale = protoconv.Int32Ptr(&o.Upscale)
+	}
+
+	if o.HasAligned {
+		msg.HasAligned = &o.HasAligned
+	}
+
+	if o.OnlyCenterFace {
+		msg.OnlyCenterFace = &o.OnlyCenterFace
+	}
+
+	return msg, nil
 }
 
-// ColorizeParams configures ColorizeFace. Nil pointer fields keep the
-// server defaults.
-type ColorizeParams struct {
-	// Upscale is the upscaling factor, 2 or 4 (default 2).
-	Upscale *int
+// ColorizeOptions tunes a ColorizeFace call. Nil keeps all defaults.
+type ColorizeOptions struct {
+	// Upscale is the upscaling factor, 2 or 4 (0 = server default 2).
+	Upscale int
 	// FidelityWeight balances quality against fidelity, 0.0-1.0 (default
-	// 0.5).
+	// 0.5). Nil keeps the server default; 0 is meaningful.
 	FidelityWeight *float32
-	// OnlyCenterFace processes only the center face (default false).
-	OnlyCenterFace *bool
-	// EnhanceBackground enhances the background with RealESRGAN (default
-	// true).
+	// OnlyCenterFace processes only the center face.
+	OnlyCenterFace bool
+	// EnhanceBackground enhances the background with RealESRGAN. Nil
+	// keeps the server default (true).
 	EnhanceBackground *bool
 	// Format selects the output encoding.
-	Format common.ImageFormat
+	Format rootpullersdk.ImageFormat
 }
 
-func (p *ColorizeParams) toProto() (*facefixerpb.ColorizeFaceRequest_Params, error) {
-	format, err := toProtoFormat(p.Format)
+func (o *ColorizeOptions) toProto() (*facefixerpb.ColorizeFaceRequest_Params, error) {
+	format, err := toProtoFormat(o.Format)
 	if err != nil {
 		return nil, err
 	}
 
-	return &facefixerpb.ColorizeFaceRequest_Params{
-		Upscale:           protoconv.Int32Ptr(p.Upscale),
-		FidelityWeight:    p.FidelityWeight,
-		OnlyCenterFace:    p.OnlyCenterFace,
-		EnhanceBackground: p.EnhanceBackground,
+	msg := &facefixerpb.ColorizeFaceRequest_Params{
+		FidelityWeight:    o.FidelityWeight,
+		EnhanceBackground: o.EnhanceBackground,
 		Format:            format,
-	}, nil
+	}
+	if o.Upscale > 0 {
+		msg.Upscale = protoconv.Int32Ptr(&o.Upscale)
+	}
+
+	if o.OnlyCenterFace {
+		msg.OnlyCenterFace = &o.OnlyCenterFace
+	}
+
+	return msg, nil
 }
 
-// InpaintParams configures InpaintFace. Nil pointer fields keep the
-// server defaults.
-type InpaintParams struct {
-	// Upscale is the upscaling factor, 2 or 4 (default 2).
-	Upscale *int
+// InpaintOptions tunes an InpaintFace call. Nil keeps all defaults.
+type InpaintOptions struct {
+	// Upscale is the upscaling factor, 2 or 4 (0 = server default 2).
+	Upscale int
 	// FidelityWeight balances quality against fidelity, 0.0-1.0 (default
-	// 0.5).
+	// 0.5). Nil keeps the server default; 0 is meaningful.
 	FidelityWeight *float32
-	// OnlyCenterFace processes only the center face (default false).
-	OnlyCenterFace *bool
-	// EnhanceBackground enhances the background with RealESRGAN (default
-	// true).
+	// OnlyCenterFace processes only the center face.
+	OnlyCenterFace bool
+	// EnhanceBackground enhances the background with RealESRGAN. Nil
+	// keeps the server default (true).
 	EnhanceBackground *bool
 	// Format selects the output encoding.
-	Format common.ImageFormat
+	Format rootpullersdk.ImageFormat
 }
 
-func (p *InpaintParams) toProto() (*facefixerpb.InpaintFaceRequest_Params, error) {
-	format, err := toProtoFormat(p.Format)
+func (o *InpaintOptions) toProto() (*facefixerpb.InpaintFaceRequest_Params, error) {
+	format, err := toProtoFormat(o.Format)
 	if err != nil {
 		return nil, err
 	}
 
-	return &facefixerpb.InpaintFaceRequest_Params{
-		Upscale:           protoconv.Int32Ptr(p.Upscale),
-		FidelityWeight:    p.FidelityWeight,
-		OnlyCenterFace:    p.OnlyCenterFace,
-		EnhanceBackground: p.EnhanceBackground,
+	msg := &facefixerpb.InpaintFaceRequest_Params{
+		FidelityWeight:    o.FidelityWeight,
+		EnhanceBackground: o.EnhanceBackground,
 		Format:            format,
-	}, nil
+	}
+	if o.Upscale > 0 {
+		msg.Upscale = protoconv.Int32Ptr(&o.Upscale)
+	}
+
+	if o.OnlyCenterFace {
+		msg.OnlyCenterFace = &o.OnlyCenterFace
+	}
+
+	return msg, nil
 }
 
 // toProtoFormat maps a facade format to the proto optional enum, nil when
 // unspecified so the server default applies.
-func toProtoFormat(f common.ImageFormat) (*commonpb.ImageFormat, error) {
+func toProtoFormat(f rootpullersdk.ImageFormat) (*commonpb.ImageFormat, error) {
 	format, ok := protoconv.ToProtoImageFormat(f)
 	if !ok {
-		return nil, apierror.New(connect.CodeInvalidArgument, fmt.Sprintf("unknown image format %q", f), "", 0, nil)
+		return nil, apierr.New(connect.CodeInvalidArgument, fmt.Sprintf("unknown image format %q", f), "", 0, nil)
 	}
 
 	if format == commonpb.ImageFormat_IMAGE_FORMAT_UNSPECIFIED {
@@ -301,22 +331,27 @@ func collectResult[Req, Resp any](
 	}
 
 	if len(files) == 0 {
-		return nil, apierror.New(connect.CodeInternal, "server returned no image", procedure, 0, nil)
+		return nil, apierr.New(connect.CodeInternal, "server returned no image", procedure, 0, nil)
 	}
 
 	return &Result{File: files[0], Metadata: meta}, nil
 }
 
-// RestoreFace calls FaceFixerService/RestoreFace: streams the image up,
-// then returns the restored faces alongside the restoration metadata.
-func (c *Client) RestoreFace(ctx context.Context, params *RestoreParams, image common.Upload) (*Result, error) {
-	pb, err := params.toProto()
+// RestoreFace calls FaceFixerService/RestoreFace: it sends the params
+// frame first, then the image chunks, in that order, and half-closes. It
+// returns the restored faces alongside the restoration metadata.
+func (s *Service) RestoreFace(ctx context.Context, image rootpullersdk.Upload, opts *RestoreOptions) (*Result, error) {
+	if opts == nil {
+		opts = &RestoreOptions{}
+	}
+
+	pb, err := opts.toProto()
 	if err != nil {
 		return nil, err
 	}
 
 	procedure := facefixerconnect.FaceFixerServiceRestoreFaceProcedure
-	stream := c.rpc.RestoreFace(ctx)
+	stream := s.rpc.RestoreFace(ctx)
 
 	frames := streamio.Frames(
 		&facefixerpb.RestoreFaceRequest{Request: &facefixerpb.RestoreFaceRequest_Params_{Params: pb}},
@@ -330,16 +365,21 @@ func (c *Client) RestoreFace(ctx context.Context, params *RestoreParams, image c
 	})
 }
 
-// ColorizeFace calls FaceFixerService/ColorizeFace: streams the image up,
-// then returns the colorized result alongside the processing metadata.
-func (c *Client) ColorizeFace(ctx context.Context, params *ColorizeParams, image common.Upload) (*Result, error) {
-	pb, err := params.toProto()
+// ColorizeFace calls FaceFixerService/ColorizeFace: it sends the params
+// frame first, then the image chunks, in that order, and half-closes. It
+// returns the colorized result alongside the processing metadata.
+func (s *Service) ColorizeFace(ctx context.Context, image rootpullersdk.Upload, opts *ColorizeOptions) (*Result, error) {
+	if opts == nil {
+		opts = &ColorizeOptions{}
+	}
+
+	pb, err := opts.toProto()
 	if err != nil {
 		return nil, err
 	}
 
 	procedure := facefixerconnect.FaceFixerServiceColorizeFaceProcedure
-	stream := c.rpc.ColorizeFace(ctx)
+	stream := s.rpc.ColorizeFace(ctx)
 
 	frames := streamio.Frames(
 		&facefixerpb.ColorizeFaceRequest{Request: &facefixerpb.ColorizeFaceRequest_Params_{Params: pb}},
@@ -353,17 +393,22 @@ func (c *Client) ColorizeFace(ctx context.Context, params *ColorizeParams, image
 	})
 }
 
-// InpaintFace calls FaceFixerService/InpaintFace: streams the image and
-// the binary mask (white marks the regions to restore) up, then returns
-// the inpainted result alongside the processing metadata.
-func (c *Client) InpaintFace(ctx context.Context, params *InpaintParams, image common.Upload, mask common.Upload) (*Result, error) {
-	pb, err := params.toProto()
+// InpaintFace calls FaceFixerService/InpaintFace: it sends the params
+// frame first, then the image chunks, then the binary mask chunks (white
+// marks the regions to restore), strictly in that order, and half-closes.
+// It returns the inpainted result alongside the processing metadata.
+func (s *Service) InpaintFace(ctx context.Context, image, mask rootpullersdk.Upload, opts *InpaintOptions) (*Result, error) {
+	if opts == nil {
+		opts = &InpaintOptions{}
+	}
+
+	pb, err := opts.toProto()
 	if err != nil {
 		return nil, err
 	}
 
 	procedure := facefixerconnect.FaceFixerServiceInpaintFaceProcedure
-	stream := c.rpc.InpaintFace(ctx)
+	stream := s.rpc.InpaintFace(ctx)
 
 	frames := streamio.Frames(
 		&facefixerpb.InpaintFaceRequest{Request: &facefixerpb.InpaintFaceRequest_Params_{Params: pb}},

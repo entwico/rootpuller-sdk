@@ -5,12 +5,12 @@ import (
 
 	"connectrpc.com/connect"
 
-	"github.com/entwico/rootpuller-sdk/apierror"
+	"github.com/entwico/rootpuller-sdk/internal/apierr"
 	webcontentpb "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/webcontent"
 )
 
 func invalidArgument(msg string) error {
-	return apierror.New(connect.CodeInvalidArgument, msg, "", 0, nil)
+	return apierr.New(connect.CodeInvalidArgument, msg, "", 0, nil)
 }
 
 // Engine selects the fetch engine. The zero value lets FetchURL

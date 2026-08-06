@@ -11,7 +11,8 @@ import (
 
 	"connectrpc.com/connect"
 
-	"github.com/entwico/rootpuller-sdk/apierror"
+	rootpullersdk "github.com/entwico/rootpuller-sdk"
+	"github.com/entwico/rootpuller-sdk/internal/apierr"
 	webcontentpb "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/webcontent"
 	"github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/webcontent/webcontentconnect"
 	"github.com/entwico/rootpuller-sdk/internal/protoconv"
@@ -19,26 +20,24 @@ import (
 	"github.com/entwico/rootpuller-sdk/internal/transport"
 )
 
-// ScrapeClient calls the ScrapeService: multi-page crawling, sitemap
-// mapping, and interactive fetch sessions. Obtain one from
-// rootpuller.Client.Scrape.
-type ScrapeClient struct {
+// ScrapeService calls the ScrapeService: multi-page crawling, sitemap
+// mapping, and interactive fetch sessions.
+type ScrapeService struct {
 	rpc webcontentconnect.ScrapeServiceClient
 	bot string
 }
 
-// NewScrapeFromCore is the internal constructor used by rootpuller.New.
-func NewScrapeFromCore(core *transport.Core) *ScrapeClient {
-	return &ScrapeClient{rpc: webcontentconnect.NewScrapeServiceClient(core.HTTPClient, core.BaseURL, core.ClientOpts...)}
-}
+// NewScrapeService builds a ScrapeService client on the sdk connection.
+// It accepts the same options as NewService (e.g. WithBot).
+func NewScrapeService(sdk *rootpullersdk.Client, opts ...Option) *ScrapeService {
+	core := sdk.TransportCore()
 
-// WithBot returns a client that sends the rootpuller-bot identity header
-// on every call. A per-call rootpuller.ContextWithBot value still wins.
-func (c *ScrapeClient) WithBot(name string) *ScrapeClient {
-	derived := *c
-	derived.bot = name
+	s := &ScrapeService{rpc: webcontentconnect.NewScrapeServiceClient(core.HTTPClient, core.BaseURL, core.ClientOpts...)}
+	for _, opt := range opts {
+		opt.applyScrape(s)
+	}
 
-	return &derived
+	return s
 }
 
 // LinkExtraction controls which links a crawl follows.
@@ -101,34 +100,37 @@ type CrawlRules struct {
 	PathPrefixes         []string
 }
 
-// CrawlRequest configures Crawl and CrawlPages.
-type CrawlRequest struct {
-	Seed       Seed
+// CrawlOptions tunes Crawl and CrawlPages. Nil keeps all defaults.
+type CrawlOptions struct {
 	Fetcher    *FetcherOptions
 	Rules      *CrawlRules
 	Jobs       []ExtractionJob
 	Screenshot *ScreenshotOptions
 }
 
-func (r *CrawlRequest) toProto() (*webcontentpb.CrawlRequest, error) {
-	fetcher, err := r.Fetcher.toProto()
+func (o *CrawlOptions) toProto(seed Seed) (*webcontentpb.CrawlRequest, error) {
+	if o == nil {
+		o = &CrawlOptions{}
+	}
+
+	fetcher, err := o.Fetcher.toProto()
 	if err != nil {
 		return nil, err
 	}
 
-	jobs, err := jobsToProto(r.Jobs)
+	jobs, err := jobsToProto(o.Jobs)
 	if err != nil {
 		return nil, err
 	}
 
-	screenshot, err := r.Screenshot.toProto()
+	screenshot, err := o.Screenshot.toProto()
 	if err != nil {
 		return nil, err
 	}
 
 	msg := &webcontentpb.CrawlRequest{Fetcher: fetcher, Jobs: jobs, Screenshot: screenshot}
 
-	switch seed := r.Seed.(type) {
+	switch seed := seed.(type) {
 	case PageSeeds:
 		msg.Seed = &webcontentpb.CrawlRequest_Pages{Pages: &webcontentpb.CrawlRequest_PageSeeds{Urls: seed.URLs}}
 	case SitemapSeeds:
@@ -139,12 +141,12 @@ func (r *CrawlRequest) toProto() (*webcontentpb.CrawlRequest, error) {
 			AlternateLinks: seed.AlternateLinks,
 		}}
 	case nil:
-		return nil, invalidArgument("crawl request needs a seed (PageSeeds or SitemapSeeds)")
+		return nil, invalidArgument("crawl needs a seed (PageSeeds or SitemapSeeds)")
 	default:
 		return nil, invalidArgument("unknown seed type")
 	}
 
-	if rules := r.Rules; rules != nil {
+	if rules := o.Rules; rules != nil {
 		msg.Rules = &webcontentpb.CrawlRequest_Rules{
 			AllowedDomains:       rules.AllowedDomains,
 			DenyDomains:          rules.DenyDomains,
@@ -191,16 +193,16 @@ func (CrawlProgressEvent) isCrawlEvent() {}
 // page-scoped events (demultiplex by PageID) interleaved with crawl
 // progress. The stream ends when the crawl completes; per-page failures
 // arrive as PageEvent.Err, not as iteration errors. For per-page buffered
-// results use CrawlPages.
-func (c *ScrapeClient) Crawl(ctx context.Context, req *CrawlRequest) iter.Seq2[CrawlEvent, error] {
-	ctx = transport.EnsureBot(ctx, c.bot)
+// results use CrawlPages. A nil opts keeps all defaults.
+func (s *ScrapeService) Crawl(ctx context.Context, seed Seed, opts *CrawlOptions) iter.Seq2[CrawlEvent, error] {
+	ctx = transport.EnsureBot(ctx, s.bot)
 
-	msg, err := req.toProto()
+	msg, err := opts.toProto(seed)
 	if err != nil {
 		return errSeq[CrawlEvent](err)
 	}
 
-	stream, serr := c.rpc.Crawl(ctx, connect.NewRequest(msg))
+	stream, serr := s.rpc.Crawl(ctx, connect.NewRequest(msg))
 	if serr != nil {
 		return errSeq[CrawlEvent](transport.WrapError(serr, webcontentconnect.ScrapeServiceCrawlProcedure))
 	}
@@ -218,7 +220,7 @@ func (c *ScrapeClient) Crawl(ctx context.Context, req *CrawlRequest) iter.Seq2[C
 					MaxDepthReached: int(m.Progress.GetMaxDepthReached()),
 				}, false, nil
 			default:
-				return nil, false, apierror.New(connect.CodeInternal, "unknown Crawl response frame", webcontentconnect.ScrapeServiceCrawlProcedure, 0, nil)
+				return nil, false, apierr.New(connect.CodeInternal, "unknown Crawl response frame", webcontentconnect.ScrapeServiceCrawlProcedure, 0, nil)
 			}
 		})
 }
@@ -257,12 +259,12 @@ type CrawlPage struct {
 
 // CrawlPages calls ScrapeService/Crawl and yields each page fully
 // buffered once its terminal frame arrives. Crawl progress frames are
-// dropped; use Crawl for full control.
-func (c *ScrapeClient) CrawlPages(ctx context.Context, req *CrawlRequest) iter.Seq2[CrawlPage, error] {
+// dropped; use Crawl for full control. A nil opts keeps all defaults.
+func (s *ScrapeService) CrawlPages(ctx context.Context, seed Seed, opts *CrawlOptions) iter.Seq2[CrawlPage, error] {
 	return func(yield func(CrawlPage, error) bool) {
 		pending := map[int64]*FetchResult{}
 
-		for event, err := range c.Crawl(ctx, req) {
+		for event, err := range s.Crawl(ctx, seed, opts) {
 			if err != nil {
 				yield(CrawlPage{}, err)
 
@@ -303,15 +305,16 @@ func (c *ScrapeClient) CrawlPages(ctx context.Context, req *CrawlRequest) iter.S
 	}
 }
 
-// MapRequest configures MapURLs.
-type MapRequest struct {
-	// URL is the site whose sitemaps are mapped.
-	URL           string
-	Limit         *int // default 5000, max 50000
-	NormalizeURLs *bool
+// MapOptions tunes MapURLs. Nil keeps all defaults.
+type MapOptions struct {
+	// Limit caps the returned URLs (0 keeps the server default, 5000;
+	// max 50000).
+	Limit int
+	// NormalizeURLs canonicalises the returned URLs.
+	NormalizeURLs bool
 	PathPrefixes  []string
-	// IncludeSubdomains also returns URLs on subdomains of URL's host.
-	IncludeSubdomains *bool
+	// IncludeSubdomains also returns URLs on subdomains of the url's host.
+	IncludeSubdomains bool
 }
 
 // MapSummary is the terminal accounting of a MapURLs call.
@@ -320,19 +323,33 @@ type MapSummary struct {
 	Warning           *string // set when results look sparse or empty
 }
 
-// MapURLs calls ScrapeService/Map: discovers a site's URLs from its
-// sitemaps, buffered into one slice.
-func (c *ScrapeClient) MapURLs(ctx context.Context, req *MapRequest) ([]string, *MapSummary, error) {
-	ctx = transport.EnsureBot(ctx, c.bot)
+// MapURLs calls ScrapeService/Map: discovers the site's URLs from its
+// sitemaps, buffered into one slice. A nil opts keeps all defaults.
+func (s *ScrapeService) MapURLs(ctx context.Context, url string, opts *MapOptions) ([]string, *MapSummary, error) {
+	ctx = transport.EnsureBot(ctx, s.bot)
 	procedure := webcontentconnect.ScrapeServiceMapProcedure
 
-	stream, err := c.rpc.Map(ctx, connect.NewRequest(&webcontentpb.MapRequest{
-		Url:               req.URL,
-		Limit:             protoconv.Int32Ptr(req.Limit),
-		NormalizeUrls:     req.NormalizeURLs,
-		PathPrefixes:      req.PathPrefixes,
-		IncludeSubdomains: req.IncludeSubdomains,
-	}))
+	if opts == nil {
+		opts = &MapOptions{}
+	}
+
+	msg := &webcontentpb.MapRequest{
+		Url:          url,
+		PathPrefixes: opts.PathPrefixes,
+	}
+	if opts.Limit > 0 {
+		msg.Limit = protoconv.Int32Ptr(&opts.Limit)
+	}
+
+	if opts.NormalizeURLs {
+		msg.NormalizeUrls = &opts.NormalizeURLs
+	}
+
+	if opts.IncludeSubdomains {
+		msg.IncludeSubdomains = &opts.IncludeSubdomains
+	}
+
+	stream, err := s.rpc.Map(ctx, connect.NewRequest(msg))
 	if err != nil {
 		return nil, nil, transport.WrapError(err, procedure)
 	}
@@ -342,7 +359,7 @@ func (c *ScrapeClient) MapURLs(ctx context.Context, req *MapRequest) ([]string, 
 		summary *MapSummary
 	)
 
-	seq := streamio.EventSeq(stream, procedure, apierror.ErrMissingTerminal,
+	seq := streamio.EventSeq(stream, procedure, apierr.ErrMissingTerminal,
 		func(pb *webcontentpb.MapResponse) ([]string, bool, error) {
 			switch m := pb.GetMessage().(type) {
 			case *webcontentpb.MapResponse_Batch:
@@ -355,7 +372,7 @@ func (c *ScrapeClient) MapURLs(ctx context.Context, req *MapRequest) ([]string, 
 
 				return nil, true, nil
 			default:
-				return nil, false, apierror.New(connect.CodeInternal, "unknown Map response frame", procedure, 0, nil)
+				return nil, false, apierr.New(connect.CodeInternal, "unknown Map response frame", procedure, 0, nil)
 			}
 		})
 	for batch, err := range seq {

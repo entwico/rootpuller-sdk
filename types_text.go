@@ -1,4 +1,4 @@
-package common
+package rootpullersdk
 
 // TextChunk is one chunk produced by the text chunking or document
 // processing services. Indexes are rune offsets into the source text.

@@ -8,30 +8,22 @@ import (
 
 	"connectrpc.com/connect"
 
-	"github.com/entwico/rootpuller-sdk/apierror"
+	rootpullersdk "github.com/entwico/rootpuller-sdk"
 	rerankpb "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/rerank"
 	"github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/rerank/rerankconnect"
-	"github.com/entwico/rootpuller-sdk/internal/transport"
 	"github.com/entwico/rootpuller-sdk/rerank"
 	"github.com/entwico/rootpuller-sdk/rootpullertest"
 )
 
-// newClient dials baseURL the same way rootpuller.New does. The
-// rootpuller.Client accessor for this service is wired separately, so the
-// tests construct the service client directly from a transport.Core.
-func newClient(t *testing.T, baseURL string) *rerank.Client {
+func newService(t *testing.T, baseURL string, opts ...rerank.Option) *rerank.Service {
 	t.Helper()
 
-	httpClient, err := transport.NewHTTPClient(baseURL, nil)
+	sdk, err := rootpullersdk.New(baseURL)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	return rerank.NewFromCore(&transport.Core{
-		HTTPClient: httpClient,
-		BaseURL:    baseURL,
-		ClientOpts: []connect.ClientOption{connect.WithGRPC()},
-	})
+	return rerank.NewService(sdk, opts...)
 }
 
 func TestRerankRoundTrip(t *testing.T) {
@@ -54,16 +46,14 @@ func TestRerankRoundTrip(t *testing.T) {
 		},
 	})
 
-	c := newClient(t, srv.URL)
+	svc := newService(t, srv.URL)
 
-	resp, err := c.Rerank(t.Context(), &rerank.Request{
-		Query:     "what is chunking",
-		Documents: []string{"unrelated", "chunking splits text"},
-		Model: rerank.ModelRef{
-			ModelID:          "BAAI/bge-reranker-v2-m3",
+	resp, err := svc.Rerank(t.Context(), "what is chunking",
+		[]string{"unrelated", "chunking splits text"},
+		&rerank.Options{
+			Model:            "BAAI/bge-reranker-v2-m3",
 			InferenceBackend: rerank.InferenceBackendFlagReranker,
-		},
-	})
+		})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,29 +98,34 @@ func (h *capturingRerank) Rerank(_ context.Context, req *connect.Request[rerankp
 	return connect.NewResponse(&rerankpb.RerankResponse{}), nil
 }
 
-func TestRerankOptionsRoundTrip(t *testing.T) {
-	t.Parallel()
+func newCapturingServer(t *testing.T) (*rootpullertest.Server, chan *rerankpb.RerankRequest) {
+	t.Helper()
 
 	handler := &capturingRerank{requests: make(chan *rerankpb.RerankRequest, 1)}
 	mux := http.NewServeMux()
 	mux.Handle(rerankconnect.NewRerankServiceHandler(handler))
-	srv := rootpullertest.NewServerWithMux(t, mux)
-	c := newClient(t, srv.URL)
+
+	return rootpullertest.NewServerWithMux(t, mux), handler.requests
+}
+
+func TestRerankOptionsRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	srv, requests := newCapturingServer(t)
+	svc := newService(t, srv.URL)
 
 	// All optional fields set: the proto options message must carry them.
-	_, err := c.Rerank(t.Context(), &rerank.Request{
-		Query:           "q",
-		Documents:       []string{"d"},
-		Model:           rerank.ModelRef{ModelID: "m"},
-		TopN:            new(5),
-		MaxTokens:       new(1024),
+	_, err := svc.Rerank(t.Context(), "q", []string{"d"}, &rerank.Options{
+		Model:           "m",
+		TopN:            5,
+		MaxTokens:       1024,
 		ReturnDocuments: true,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	msg := <-handler.requests
+	msg := <-requests
 
 	opts := msg.GetOptions()
 	if opts == nil {
@@ -149,19 +144,41 @@ func TestRerankOptionsRoundTrip(t *testing.T) {
 		t.Error("ReturnDocuments = false, want true")
 	}
 
-	// No optional fields set: the options message must be omitted.
-	_, err = c.Rerank(t.Context(), &rerank.Request{
-		Query:     "q",
-		Documents: []string{"d"},
-		Model:     rerank.ModelRef{ModelID: "m"},
-	})
-	if err != nil {
+	// Nil options: the proto options message must be omitted entirely.
+	if _, err := svc.Rerank(t.Context(), "q", []string{"d"}, nil); err != nil {
 		t.Fatal(err)
 	}
 
-	msg = <-handler.requests
+	msg = <-requests
 	if msg.GetOptions() != nil {
 		t.Errorf("Options = %v, want nil when no optional field is set", msg.GetOptions())
+	}
+}
+
+func TestServiceDefaults(t *testing.T) {
+	t.Parallel()
+
+	srv, requests := newCapturingServer(t)
+	svc := newService(t, srv.URL,
+		rerank.WithDefaultModel("BAAI/bge-reranker-v2-m3"))
+
+	// The construction-time default model applies when Options leave it
+	// empty...
+	if _, err := svc.Rerank(t.Context(), "q", []string{"d"}, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := (<-requests).GetModel().GetModelId(); got != "BAAI/bge-reranker-v2-m3" {
+		t.Errorf("model = %q, want service default", got)
+	}
+
+	// ...and a per-call model wins over the default.
+	if _, err := svc.Rerank(t.Context(), "q", []string{"d"}, &rerank.Options{Model: "other"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := (<-requests).GetModel().GetModelId(); got != "other" {
+		t.Errorf("model = %q, want per-call override", got)
 	}
 }
 
@@ -186,9 +203,9 @@ func TestListModelsRoundTrip(t *testing.T) {
 		},
 	})
 
-	c := newClient(t, srv.URL)
+	svc := newService(t, srv.URL)
 
-	models, err := c.ListModels(t.Context())
+	models, err := svc.ListModels(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,17 +236,13 @@ func TestInvalidBackendFailsLocally(t *testing.T) {
 	t.Parallel()
 
 	// No server: local validation must fail before any dial.
-	c := newClient(t, "http://127.0.0.1:1")
+	svc := newService(t, "http://127.0.0.1:1")
 
-	_, err := c.Rerank(t.Context(), &rerank.Request{
-		Query:     "q",
-		Documents: []string{"d"},
-		Model: rerank.ModelRef{
-			ModelID:          "m",
-			InferenceBackend: rerank.InferenceBackend("bogus"),
-		},
+	_, err := svc.Rerank(t.Context(), "q", []string{"d"}, &rerank.Options{
+		Model:            "m",
+		InferenceBackend: rerank.InferenceBackend("bogus"),
 	})
-	if !errors.Is(err, apierror.ErrInvalidArgument) {
+	if !errors.Is(err, rootpullersdk.ErrInvalidArgument) {
 		t.Fatalf("err = %v, want ErrInvalidArgument", err)
 	}
 }

@@ -5,31 +5,20 @@ import (
 	"reflect"
 	"testing"
 
-	"connectrpc.com/connect"
-
-	"github.com/entwico/rootpuller-sdk/apierror"
+	rootpullersdk "github.com/entwico/rootpuller-sdk"
 	"github.com/entwico/rootpuller-sdk/chef"
-	"github.com/entwico/rootpuller-sdk/common"
-	"github.com/entwico/rootpuller-sdk/internal/transport"
 	"github.com/entwico/rootpuller-sdk/rootpullertest"
 )
 
-// newClient builds a chef client the same way rootpuller.New does. The
-// aggregate client's Chef accessor is wired outside this package, so the
-// tests go through NewFromCore directly.
-func newClient(t *testing.T, baseURL string) *chef.Client {
+func newService(t *testing.T, baseURL string) *chef.Service {
 	t.Helper()
 
-	httpClient, err := transport.NewHTTPClient(baseURL, nil)
+	sdk, err := rootpullersdk.New(baseURL)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	return chef.NewFromCore(&transport.Core{
-		HTTPClient: httpClient,
-		BaseURL:    baseURL,
-		ClientOpts: []connect.ClientOption{connect.WithGRPC()},
-	})
+	return chef.NewService(sdk)
 }
 
 func TestProcessTextRoundTrip(t *testing.T) {
@@ -45,7 +34,7 @@ func TestProcessTextRoundTrip(t *testing.T) {
 		},
 	})
 
-	result, err := newClient(t, srv.URL).ProcessText(t.Context(), "raw text")
+	result, err := newService(t, srv.URL).ProcessText(t.Context(), "raw text")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +77,7 @@ func TestProcessTextMetadataRoundTrip(t *testing.T) {
 		},
 	})
 
-	result, err := newClient(t, srv.URL).ProcessText(t.Context(), "x")
+	result, err := newService(t, srv.URL).ProcessText(t.Context(), "x")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +96,8 @@ func TestProcessTableRoundTrip(t *testing.T) {
 	}
 	srv := rootpullertest.NewServer(t, &rootpullertest.Chef{Tables: tables})
 
-	got, err := newClient(t, srv.URL).ProcessTable(t.Context(), "a,b\n1,2", chef.TableSourceTypeCSV)
+	got, err := newService(t, srv.URL).ProcessTable(t.Context(), "a,b\n1,2",
+		&chef.TableOptions{SourceType: chef.TableSourceTypeCSV})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +125,7 @@ func TestProcessMarkdownRoundTrip(t *testing.T) {
 		Images: []chef.ImageRef{
 			{URL: "https://example.com/a.png", AltText: new("diagram"), StartIndex: 40, EndIndex: 60},
 		},
-		Chunks: []common.TextChunk{
+		Chunks: []rootpullersdk.TextChunk{
 			{Text: "first", EndIndex: 5, TokenCount: 2},
 			{Text: "second", StartIndex: 5, EndIndex: 11, TokenCount: 3},
 		},
@@ -149,10 +139,8 @@ func TestProcessMarkdownRoundTrip(t *testing.T) {
 		},
 	})
 
-	got, err := newClient(t, srv.URL).ProcessMarkdown(t.Context(), &chef.MarkdownRequest{
-		Text:      "# heading",
-		Tokenizer: new("word"),
-	})
+	got, err := newService(t, srv.URL).ProcessMarkdown(t.Context(), "# heading",
+		&chef.MarkdownOptions{Tokenizer: "word"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -175,7 +163,7 @@ func TestListTokenizers(t *testing.T) {
 	}
 	srv := rootpullertest.NewServer(t, &rootpullertest.Chef{Tokenizers: tokenizers})
 
-	got, err := newClient(t, srv.URL).ListTokenizers(t.Context())
+	got, err := newService(t, srv.URL).ListTokenizers(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,10 +177,10 @@ func TestInvalidTableSourceTypeFailsLocally(t *testing.T) {
 	t.Parallel()
 
 	// No server: local validation must fail before any dial.
-	c := newClient(t, "http://127.0.0.1:1")
+	svc := newService(t, "http://127.0.0.1:1")
 
-	_, err := c.ProcessTable(t.Context(), "a,b", chef.TableSourceType("bogus"))
-	if !errors.Is(err, apierror.ErrInvalidArgument) {
+	_, err := svc.ProcessTable(t.Context(), "a,b", &chef.TableOptions{SourceType: chef.TableSourceType("bogus")})
+	if !errors.Is(err, rootpullersdk.ErrInvalidArgument) {
 		t.Fatalf("err = %v, want ErrInvalidArgument", err)
 	}
 }

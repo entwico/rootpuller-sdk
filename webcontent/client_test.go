@@ -9,31 +9,36 @@ import (
 
 	"connectrpc.com/connect"
 
-	rootpuller "github.com/entwico/rootpuller-sdk"
-	"github.com/entwico/rootpuller-sdk/apierror"
+	rootpullersdk "github.com/entwico/rootpuller-sdk"
 	webcontentpb "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/webcontent"
 	"github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/webcontent/webcontentconnect"
 	"github.com/entwico/rootpuller-sdk/rootpullertest"
 	"github.com/entwico/rootpuller-sdk/webcontent"
 )
 
-func newClient(t *testing.T, fake *rootpullertest.WebContent) *rootpuller.Client {
+func newSDK(t *testing.T, baseURL string) *rootpullersdk.Client {
 	t.Helper()
-	srv := rootpullertest.NewServer(t, fake)
 
-	c, err := rootpuller.New(srv.URL)
+	sdk, err := rootpullersdk.New(baseURL)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	return c
+	return sdk
+}
+
+func newService(t *testing.T, fake *rootpullertest.WebContent) *webcontent.Service {
+	t.Helper()
+	srv := rootpullertest.NewServer(t, fake)
+
+	return webcontent.NewService(newSDK(t, srv.URL))
 }
 
 func TestFetchBuffersEverything(t *testing.T) {
 	t.Parallel()
 
 	markdown := bytes.Repeat([]byte("# heading\ntext\n"), 300_000) // ~4.2 MiB → 3 chunks
-	c := newClient(t, &rootpullertest.WebContent{
+	svc := newService(t, &rootpullertest.WebContent{
 		Artifacts: map[webcontent.ArtifactKind][]byte{
 			webcontent.ArtifactKindExtractedMarkdown: markdown,
 			webcontent.ArtifactKindExtractedText:     []byte("plain"),
@@ -43,8 +48,7 @@ func TestFetchBuffersEverything(t *testing.T) {
 		},
 	})
 
-	result, err := c.WebContent().Fetch(t.Context(), &webcontent.FetchURLRequest{
-		URL: "https://example.com/article",
+	result, err := svc.Fetch(t.Context(), "https://example.com/article", &webcontent.FetchOptions{
 		Jobs: []webcontent.ExtractionJob{
 			{Kind: webcontent.ArtifactKindExtractedMarkdown},
 			{Kind: webcontent.ArtifactKindExtractedText},
@@ -76,7 +80,7 @@ func TestFetchBuffersEverything(t *testing.T) {
 func TestFetchURLTerminalError(t *testing.T) {
 	t.Parallel()
 
-	c := newClient(t, &rootpullertest.WebContent{
+	svc := newService(t, &rootpullertest.WebContent{
 		FetchError: &webcontent.ContentError{
 			Code:       webcontent.ErrorCodePaywall,
 			Message:    "subscription required",
@@ -86,7 +90,7 @@ func TestFetchURLTerminalError(t *testing.T) {
 	})
 
 	var lastErr error
-	for _, err := range c.WebContent().FetchURL(t.Context(), &webcontent.FetchURLRequest{URL: "https://example.com"}) {
+	for _, err := range svc.FetchURL(t.Context(), "https://example.com", nil) {
 		lastErr = err
 	}
 
@@ -103,14 +107,14 @@ func TestFetchURLTerminalError(t *testing.T) {
 func TestFetchURLMissingTerminal(t *testing.T) {
 	t.Parallel()
 
-	c := newClient(t, &rootpullertest.WebContent{OmitTerminal: true})
+	svc := newService(t, &rootpullertest.WebContent{OmitTerminal: true})
 
 	var lastErr error
-	for _, err := range c.WebContent().FetchURL(t.Context(), &webcontent.FetchURLRequest{URL: "https://example.com"}) {
+	for _, err := range svc.FetchURL(t.Context(), "https://example.com", nil) {
 		lastErr = err
 	}
 
-	if !errors.Is(lastErr, apierror.ErrMissingTerminal) {
+	if !errors.Is(lastErr, rootpullersdk.ErrMissingTerminal) {
 		t.Fatalf("err = %v, want ErrMissingTerminal", lastErr)
 	}
 }
@@ -125,7 +129,7 @@ func TestExtractContentRoundTrip(t *testing.T) {
 		gotLen  int
 	)
 
-	c := newClient(t, &rootpullertest.WebContent{
+	svc := newService(t, &rootpullertest.WebContent{
 		ExtractFunc: func(kind webcontent.ArtifactKind, uploaded []byte) (map[webcontent.ArtifactKind][]byte, error) {
 			gotKind = kind
 			gotLen = len(uploaded)
@@ -136,10 +140,11 @@ func TestExtractContentRoundTrip(t *testing.T) {
 		},
 	})
 
-	result, err := c.WebContent().ExtractContent(t.Context(), &webcontent.ExtractRequest{
-		Jobs:     []webcontent.ExtractionJob{{Kind: webcontent.ArtifactKindExtractedMarkdown}},
-		Document: webcontent.HTMLDocument{Kind: webcontent.ArtifactKindHTMLRendered, Content: bytes.NewReader(html)},
-	})
+	result, err := svc.ExtractContent(t.Context(),
+		webcontent.HTMLDocument{Kind: webcontent.ArtifactKindHTMLRendered, Content: bytes.NewReader(html)},
+		&webcontent.ExtractOptions{
+			Jobs: []webcontent.ExtractionJob{{Kind: webcontent.ArtifactKindExtractedMarkdown}},
+		})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,15 +169,14 @@ func TestExtractContentRoundTrip(t *testing.T) {
 func TestExtractContentTerminalContentError(t *testing.T) {
 	t.Parallel()
 
-	c := newClient(t, &rootpullertest.WebContent{
+	svc := newService(t, &rootpullertest.WebContent{
 		ExtractFunc: func(webcontent.ArtifactKind, []byte) (map[webcontent.ArtifactKind][]byte, error) {
 			return nil, &webcontent.ContentError{Code: webcontent.ErrorCodeExtractionNoContent}
 		},
 	})
 
-	_, err := c.WebContent().ExtractContent(t.Context(), &webcontent.ExtractRequest{
-		Document: webcontent.HTMLDocument{Content: bytes.NewReader([]byte("<p>x</p>"))},
-	})
+	_, err := svc.ExtractContent(t.Context(),
+		webcontent.HTMLDocument{Content: bytes.NewReader([]byte("<p>x</p>"))}, nil)
 
 	var ce *webcontent.ContentError
 	if !errors.As(err, &ce) || ce.Code != webcontent.ErrorCodeExtractionNoContent {
@@ -204,13 +208,10 @@ func TestWithBotHeader(t *testing.T) {
 	mux.Handle(webcontentconnect.NewWebContentServiceHandler(handler))
 	srv := rootpullertest.NewServerWithMux(t, mux)
 
-	c, err := rootpuller.New(srv.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
+	sdk := newSDK(t, srv.URL)
 
-	wc := c.WebContent().WithBot("crawler-a")
-	if _, err := wc.Fetch(t.Context(), &webcontent.FetchURLRequest{URL: "https://example.com"}); err != nil {
+	wc := webcontent.NewService(sdk, webcontent.WithBot("crawler-a"))
+	if _, err := wc.Fetch(t.Context(), "https://example.com", nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -218,9 +219,9 @@ func TestWithBotHeader(t *testing.T) {
 		t.Errorf("rootpuller-bot = %q, want crawler-a", got)
 	}
 
-	// Per-call context override wins over the client default.
-	ctx := rootpuller.ContextWithBot(t.Context(), "crawler-b")
-	if _, err := wc.Fetch(ctx, &webcontent.FetchURLRequest{URL: "https://example.com"}); err != nil {
+	// Per-call context override wins over the service default.
+	ctx := rootpullersdk.ContextWithBot(t.Context(), "crawler-b")
+	if _, err := wc.Fetch(ctx, "https://example.com", nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -228,28 +229,24 @@ func TestWithBotHeader(t *testing.T) {
 		t.Errorf("override rootpuller-bot = %q, want crawler-b", got)
 	}
 
-	// The base client sends no bot header.
-	if _, err := c.WebContent().Fetch(t.Context(), &webcontent.FetchURLRequest{URL: "https://example.com"}); err != nil {
+	// A service without WithBot sends no bot header.
+	if _, err := webcontent.NewService(sdk).Fetch(t.Context(), "https://example.com", nil); err != nil {
 		t.Fatal(err)
 	}
 
 	if got := <-handler.bots; got != "" {
-		t.Errorf("base client rootpuller-bot = %q, want unset", got)
+		t.Errorf("base service rootpuller-bot = %q, want unset", got)
 	}
 }
 
 func TestExtractContentInvalidKindFailsLocally(t *testing.T) {
 	t.Parallel()
 
-	c, err := rootpuller.New("http://127.0.0.1:1")
-	if err != nil {
-		t.Fatal(err)
-	}
+	svc := webcontent.NewService(newSDK(t, "http://127.0.0.1:1"))
 
-	_, err = c.WebContent().ExtractContent(t.Context(), &webcontent.ExtractRequest{
-		Document: webcontent.HTMLDocument{Kind: webcontent.ArtifactKindExtractedMarkdown, Content: bytes.NewReader(nil)},
-	})
-	if !errors.Is(err, apierror.ErrInvalidArgument) {
+	_, err := svc.ExtractContent(t.Context(),
+		webcontent.HTMLDocument{Kind: webcontent.ArtifactKindExtractedMarkdown, Content: bytes.NewReader(nil)}, nil)
+	if !errors.Is(err, rootpullersdk.ErrInvalidArgument) {
 		t.Fatalf("err = %v, want ErrInvalidArgument", err)
 	}
 }

@@ -6,14 +6,14 @@ import (
 
 	"connectrpc.com/connect"
 
-	"github.com/entwico/rootpuller-sdk/apierror"
-	"github.com/entwico/rootpuller-sdk/common"
+	rootpullersdk "github.com/entwico/rootpuller-sdk"
+	"github.com/entwico/rootpuller-sdk/internal/apierr"
 	painterpb "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/painter"
 	"github.com/entwico/rootpuller-sdk/internal/protoconv"
 )
 
 func invalidArgument(msg string) error {
-	return apierror.New(connect.CodeInvalidArgument, msg, "", 0, nil)
+	return apierr.New(connect.CodeInvalidArgument, msg, "", 0, nil)
 }
 
 // enumToProto maps a facade enum value to the optional proto enum field.
@@ -588,10 +588,8 @@ func (b OutpaintOpenAI) toProto() (*painterpb.OutpaintImageRequest_OpenAI, error
 	}, nil
 }
 
-// GenerateRequest configures Generate.
-type GenerateRequest struct {
-	// Prompt describes the image to generate.
-	Prompt string
+// GenerateOptions tunes a Generate call. Nil keeps all defaults.
+type GenerateOptions struct {
 	// Backend must be GenerateGoogle or GenerateOpenAI (or nil for the
 	// server-chosen default backend); any other variant fails locally
 	// with InvalidArgument.
@@ -601,9 +599,10 @@ type GenerateRequest struct {
 	OnProgress func(Progress)
 }
 
-func (r *GenerateRequest) toProto() (*painterpb.GenerateImageRequest_Params, error) {
-	msg := &painterpb.GenerateImageRequest_Params{Prompt: r.Prompt}
-	switch b := r.Backend.(type) {
+func (o *GenerateOptions) toProto(prompt string) (*painterpb.GenerateImageRequest_Params, error) {
+	msg := &painterpb.GenerateImageRequest_Params{Prompt: prompt}
+
+	switch b := o.Backend.(type) {
 	case nil:
 	case GenerateGoogle:
 		google, err := b.toProto()
@@ -620,28 +619,30 @@ func (r *GenerateRequest) toProto() (*painterpb.GenerateImageRequest_Params, err
 
 		msg.Backend = &painterpb.GenerateImageRequest_Params_Openai{Openai: openai}
 	default:
-		return nil, invalidArgument(fmt.Sprintf("GenerateRequest.Backend must be GenerateGoogle or GenerateOpenAI, got %T", r.Backend))
+		return nil, invalidArgument(fmt.Sprintf("GenerateOptions.Backend must be GenerateGoogle or GenerateOpenAI, got %T", o.Backend))
 	}
 
 	return msg, nil
 }
 
-// EditRequest configures Edit.
-type EditRequest struct {
-	// Prompt describes the edit to apply.
-	Prompt string
+// EditOptions tunes an Edit call. Nil keeps all defaults.
+type EditOptions struct {
 	// Backend must be EditGoogle or EditOpenAI (or nil for the
 	// server-chosen default backend); any other variant fails locally
 	// with InvalidArgument.
 	Backend Backend
+	// Mask optionally restricts the edit to the white regions of a mask
+	// image; nil edits the whole image.
+	Mask *rootpullersdk.Upload
 	// OnProgress, when set, receives progress frames as the server
 	// reports them. Called synchronously from the receive loop.
 	OnProgress func(Progress)
 }
 
-func (r *EditRequest) toProto() (*painterpb.EditImageRequest_Params, error) {
-	msg := &painterpb.EditImageRequest_Params{Prompt: r.Prompt}
-	switch b := r.Backend.(type) {
+func (o *EditOptions) toProto(prompt string) (*painterpb.EditImageRequest_Params, error) {
+	msg := &painterpb.EditImageRequest_Params{Prompt: prompt}
+
+	switch b := o.Backend.(type) {
 	case nil:
 	case EditGoogle:
 		google, err := b.toProto()
@@ -658,21 +659,26 @@ func (r *EditRequest) toProto() (*painterpb.EditImageRequest_Params, error) {
 
 		msg.Backend = &painterpb.EditImageRequest_Params_Openai{Openai: openai}
 	default:
-		return nil, invalidArgument(fmt.Sprintf("EditRequest.Backend must be EditGoogle or EditOpenAI, got %T", r.Backend))
+		return nil, invalidArgument(fmt.Sprintf("EditOptions.Backend must be EditGoogle or EditOpenAI, got %T", o.Backend))
 	}
 
 	return msg, nil
 }
 
-// OutpaintRequest configures Outpaint. The Extend fields give the number
-// of pixels to add on each side of the input image.
-type OutpaintRequest struct {
-	// Prompt guides the generated extension.
-	Prompt       string
-	ExtendTop    int
-	ExtendBottom int
-	ExtendLeft   int
-	ExtendRight  int
+// Extend gives the number of pixels to add on each side of the input
+// image during Outpaint.
+type Extend struct {
+	Top    int
+	Bottom int
+	Left   int
+	Right  int
+}
+
+// OutpaintOptions tunes an Outpaint call. Nil keeps all defaults.
+type OutpaintOptions struct {
+	// Extend gives the number of pixels to add on each side of the input
+	// image.
+	Extend Extend
 	// Backend must be OutpaintGoogle or OutpaintOpenAI (or nil for the
 	// server-chosen default backend); any other variant fails locally
 	// with InvalidArgument.
@@ -682,17 +688,17 @@ type OutpaintRequest struct {
 	OnProgress func(Progress)
 }
 
-func (r *OutpaintRequest) toProto() (*painterpb.OutpaintImageRequest_Params, error) {
+func (o *OutpaintOptions) toProto(prompt string) (*painterpb.OutpaintImageRequest_Params, error) {
 	msg := &painterpb.OutpaintImageRequest_Params{
-		Prompt: r.Prompt,
+		Prompt: prompt,
 		// Pixel counts clamp to the int32 range; any real extend value is
 		// far below it, and the server rejects out-of-range sizes anyway.
-		ExtendTop:    protoconv.ClampInt32(int64(r.ExtendTop)),
-		ExtendBottom: protoconv.ClampInt32(int64(r.ExtendBottom)),
-		ExtendLeft:   protoconv.ClampInt32(int64(r.ExtendLeft)),
-		ExtendRight:  protoconv.ClampInt32(int64(r.ExtendRight)),
+		ExtendTop:    protoconv.ClampInt32(int64(o.Extend.Top)),
+		ExtendBottom: protoconv.ClampInt32(int64(o.Extend.Bottom)),
+		ExtendLeft:   protoconv.ClampInt32(int64(o.Extend.Left)),
+		ExtendRight:  protoconv.ClampInt32(int64(o.Extend.Right)),
 	}
-	switch b := r.Backend.(type) {
+	switch b := o.Backend.(type) {
 	case nil:
 	case OutpaintGoogle:
 		google, err := b.toProto()
@@ -709,7 +715,7 @@ func (r *OutpaintRequest) toProto() (*painterpb.OutpaintImageRequest_Params, err
 
 		msg.Backend = &painterpb.OutpaintImageRequest_Params_Openai{Openai: openai}
 	default:
-		return nil, invalidArgument(fmt.Sprintf("OutpaintRequest.Backend must be OutpaintGoogle or OutpaintOpenAI, got %T", r.Backend))
+		return nil, invalidArgument(fmt.Sprintf("OutpaintOptions.Backend must be OutpaintGoogle or OutpaintOpenAI, got %T", o.Backend))
 	}
 
 	return msg, nil
@@ -776,7 +782,7 @@ type ImageMetadata struct {
 	// Seed is the seed actually used. Unset for OpenAI, which does not
 	// expose used seeds.
 	Seed *int64
-	Size common.ImageSize
+	Size rootpullersdk.ImageSize
 	// SafetyBlocked reports that the backend's safety filter suppressed
 	// this image.
 	SafetyBlocked bool
@@ -800,7 +806,7 @@ type Metadata struct {
 	// Notes are free-form server remarks, e.g. when a requested option
 	// had to be adjusted.
 	Notes []string
-	Usage common.Usage
+	Usage rootpullersdk.Usage
 }
 
 func metadataFromProto(m *painterpb.GenerationMetadata) Metadata {
@@ -832,6 +838,6 @@ func metadataFromProto(m *painterpb.GenerationMetadata) Metadata {
 // response chunk stream; safety-blocked images are absent here but listed
 // in Metadata.Images.
 type Result struct {
-	Images   []common.File
+	Images   []rootpullersdk.File
 	Metadata Metadata
 }

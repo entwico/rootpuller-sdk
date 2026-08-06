@@ -16,7 +16,7 @@ import (
 // each wire frame to a facade value and reports whether the frame is the
 // protocol's terminal frame; a convert error is yielded as the iteration
 // error and ends the stream. When missingTerminal is non-nil (the
-// webcontent/scrape protocols pass apierror.ErrMissingTerminal), reaching
+// webcontent/scrape protocols pass apierr.ErrMissingTerminal), reaching
 // EOF without a terminal frame yields it as the iteration error; nil
 // disables the check. Breaking out of the loop closes the stream.
 func EventSeq[Resp, E any](

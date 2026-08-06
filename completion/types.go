@@ -5,10 +5,9 @@ import (
 
 	"connectrpc.com/connect"
 
-	"github.com/entwico/rootpuller-sdk/apierror"
-	"github.com/entwico/rootpuller-sdk/common"
+	rootpullersdk "github.com/entwico/rootpuller-sdk"
+	"github.com/entwico/rootpuller-sdk/internal/apierr"
 	completionpb "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/completion"
-	"github.com/entwico/rootpuller-sdk/internal/protoconv"
 )
 
 // Provider selects the LLM backend.
@@ -66,7 +65,7 @@ var roleToProto = map[Role]completionpb.Message_Role{
 }
 
 func invalidArgument(msg string) error {
-	return apierror.New(connect.CodeInvalidArgument, msg, "", 0, nil)
+	return apierr.New(connect.CodeInvalidArgument, msg, "", 0, nil)
 }
 
 // Part is one content block of a multimodal Message. Implementations:
@@ -157,66 +156,12 @@ func (m Message) toProto() (*completionpb.Message, error) {
 	return msg, nil
 }
 
-// Request configures Complete and CompleteWithAttachments.
-type Request struct {
-	Provider Provider
-	Messages []Message
-	// Model overrides the provider's default model.
-	Model *string
-	// System is the system prompt.
-	System *string
-	// ResponseSchema is a JSON schema enforcing structured output.
-	ResponseSchema *string
-	Temperature    *float32
-	MaxTokens      *int
-	ThinkingEffort ThinkingEffort
-	// ThinkingBudgetTokens caps extended thinking for providers that
-	// meter it.
-	ThinkingBudgetTokens *int
-}
-
-func (r *Request) toProto() (*completionpb.CompleteRequest, error) {
-	provider, ok := providerToProto[r.Provider]
-	if !ok {
-		return nil, invalidArgument(fmt.Sprintf("unknown provider %q", r.Provider))
-	}
-
-	effort, ok := thinkingEffortToProto[r.ThinkingEffort]
-	if !ok {
-		return nil, invalidArgument(fmt.Sprintf("unknown thinking effort %q", r.ThinkingEffort))
-	}
-
-	msg := &completionpb.CompleteRequest{
-		Provider:             provider,
-		Model:                r.Model,
-		System:               r.System,
-		ResponseSchema:       r.ResponseSchema,
-		Temperature:          r.Temperature,
-		MaxTokens:            protoconv.Int32Ptr(r.MaxTokens),
-		ThinkingBudgetTokens: protoconv.Int32Ptr(r.ThinkingBudgetTokens),
-	}
-	if effort != completionpb.ThinkingEffort_THINKING_EFFORT_UNSPECIFIED {
-		msg.ThinkingEffort = &effort
-	}
-
-	for _, m := range r.Messages {
-		pm, err := m.toProto()
-		if err != nil {
-			return nil, err
-		}
-
-		msg.Messages = append(msg.Messages, pm)
-	}
-
-	return msg, nil
-}
-
 // Response is the completion result.
 type Response struct {
 	Content string
 	// Model is the concrete model that served the request.
 	Model string
-	Usage common.Usage
+	Usage rootpullersdk.Usage
 	// Thinking is the extended-thinking transcript when requested.
 	Thinking string
 }

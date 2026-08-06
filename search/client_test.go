@@ -8,30 +8,22 @@ import (
 
 	"connectrpc.com/connect"
 
-	"github.com/entwico/rootpuller-sdk/apierror"
+	rootpullersdk "github.com/entwico/rootpuller-sdk"
 	searchpb "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/search"
 	"github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/search/searchconnect"
-	"github.com/entwico/rootpuller-sdk/internal/transport"
 	"github.com/entwico/rootpuller-sdk/rootpullertest"
 	"github.com/entwico/rootpuller-sdk/search"
 )
 
-// newClient dials baseURL the same way rootpuller.New does. The
-// rootpuller.Client accessor for this service is wired separately, so the
-// tests construct the service client directly from a transport.Core.
-func newClient(t *testing.T, baseURL string) *search.Client {
+func newService(t *testing.T, baseURL string, opts ...search.Option) *search.Service {
 	t.Helper()
 
-	httpClient, err := transport.NewHTTPClient(baseURL, nil)
+	sdk, err := rootpullersdk.New(baseURL)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	return search.NewFromCore(&transport.Core{
-		HTTPClient: httpClient,
-		BaseURL:    baseURL,
-		ClientOpts: []connect.ClientOption{connect.WithGRPC()},
-	})
+	return search.NewService(sdk, opts...)
 }
 
 func TestSearchRoundTrip(t *testing.T) {
@@ -55,15 +47,14 @@ func TestSearchRoundTrip(t *testing.T) {
 		},
 	})
 
-	c := newClient(t, srv.URL)
+	svc := newService(t, srv.URL)
 
-	resp, err := c.Search(t.Context(), &search.Request{
+	resp, err := svc.Search(t.Context(), "chunking", &search.Options{
 		Provider:   search.ProviderBrave,
-		Query:      "chunking",
 		Type:       search.TypeNews,
-		MaxResults: new(5),
-		Country:    new("DE"),
-		Language:   new("de"),
+		MaxResults: 5,
+		Country:    "DE",
+		Language:   "de",
 		Freshness:  search.FreshnessWeek,
 	})
 	if err != nil {
@@ -110,30 +101,36 @@ func (h *capturingSearch) Search(_ context.Context, req *connect.Request[searchp
 	return connect.NewResponse(&searchpb.SearchResponse{}), nil
 }
 
-func TestSearchOptionalFieldsRoundTrip(t *testing.T) {
-	t.Parallel()
+func newCapturingServer(t *testing.T) (*rootpullertest.Server, chan *searchpb.SearchRequest) {
+	t.Helper()
 
 	handler := &capturingSearch{requests: make(chan *searchpb.SearchRequest, 1)}
 	mux := http.NewServeMux()
 	mux.Handle(searchconnect.NewSearchServiceHandler(handler))
-	srv := rootpullertest.NewServerWithMux(t, mux)
-	c := newClient(t, srv.URL)
+
+	return rootpullertest.NewServerWithMux(t, mux), handler.requests
+}
+
+func TestSearchOptionalFieldsRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	srv, requests := newCapturingServer(t)
+	svc := newService(t, srv.URL)
 
 	// All optional fields set.
-	_, err := c.Search(t.Context(), &search.Request{
+	_, err := svc.Search(t.Context(), "q", &search.Options{
 		Provider:   search.ProviderSerper,
-		Query:      "q",
 		Type:       search.TypeImages,
-		MaxResults: new(7),
-		Country:    new("DE"),
-		Language:   new("de"),
+		MaxResults: 7,
+		Country:    "DE",
+		Language:   "de",
 		Freshness:  search.FreshnessMonth,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	msg := <-handler.requests
+	msg := <-requests
 	if msg.GetProvider() != searchpb.Provider_PROVIDER_SERPER {
 		t.Errorf("Provider = %v, want PROVIDER_SERPER", msg.GetProvider())
 	}
@@ -158,19 +155,61 @@ func TestSearchOptionalFieldsRoundTrip(t *testing.T) {
 		t.Errorf("Freshness = %v, want FRESHNESS_MONTH", msg.Freshness)
 	}
 
-	// Zero values: optional proto fields must stay unset.
-	_, err = c.Search(t.Context(), &search.Request{Query: "q"})
+	// Nil options: optional proto fields must stay unset.
+	_, err = svc.Search(t.Context(), "q", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	msg = <-handler.requests
+	msg = <-requests
 	if msg.GetProvider() != searchpb.Provider_PROVIDER_UNSPECIFIED {
 		t.Errorf("Provider = %v, want PROVIDER_UNSPECIFIED", msg.GetProvider())
 	}
 
 	if msg.Type != nil || msg.MaxResults != nil || msg.Country != nil || msg.Language != nil || msg.Freshness != nil {
-		t.Errorf("optional fields must be nil for zero-value request: %+v", msg)
+		t.Errorf("optional fields must be nil for nil options: %+v", msg)
+	}
+}
+
+func TestServiceDefaults(t *testing.T) {
+	t.Parallel()
+
+	srv, requests := newCapturingServer(t)
+	svc := newService(t, srv.URL,
+		search.WithDefaultProvider(search.ProviderBrave),
+		search.WithDefaultMaxResults(3))
+
+	// The construction-time defaults apply when Options leave the fields
+	// zero...
+	if _, err := svc.Search(t.Context(), "q", nil); err != nil {
+		t.Fatal(err)
+	}
+
+	msg := <-requests
+	if msg.GetProvider() != searchpb.Provider_PROVIDER_BRAVE {
+		t.Errorf("Provider = %v, want service default PROVIDER_BRAVE", msg.GetProvider())
+	}
+
+	if msg.MaxResults == nil || msg.GetMaxResults() != 3 {
+		t.Errorf("MaxResults = %v, want service default 3", msg.MaxResults)
+	}
+
+	// ...and per-call values win over the defaults.
+	_, err := svc.Search(t.Context(), "q", &search.Options{
+		Provider:   search.ProviderSerper,
+		MaxResults: 9,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	msg = <-requests
+	if msg.GetProvider() != searchpb.Provider_PROVIDER_SERPER {
+		t.Errorf("Provider = %v, want per-call PROVIDER_SERPER", msg.GetProvider())
+	}
+
+	if msg.MaxResults == nil || msg.GetMaxResults() != 9 {
+		t.Errorf("MaxResults = %v, want per-call 9", msg.MaxResults)
 	}
 }
 
@@ -178,19 +217,19 @@ func TestInvalidEnumsFailLocally(t *testing.T) {
 	t.Parallel()
 
 	// No server: local validation must fail before any dial.
-	c := newClient(t, "http://127.0.0.1:1")
+	svc := newService(t, "http://127.0.0.1:1")
 
-	requests := map[string]*search.Request{
-		"provider":  {Query: "q", Provider: search.Provider("bogus")},
-		"type":      {Query: "q", Type: search.Type("bogus")},
-		"freshness": {Query: "q", Freshness: search.Freshness("bogus")},
+	options := map[string]*search.Options{
+		"provider":  {Provider: search.Provider("bogus")},
+		"type":      {Type: search.Type("bogus")},
+		"freshness": {Freshness: search.Freshness("bogus")},
 	}
-	for name, req := range requests {
+	for name, opts := range options {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := c.Search(t.Context(), req)
-			if !errors.Is(err, apierror.ErrInvalidArgument) {
+			_, err := svc.Search(t.Context(), "q", opts)
+			if !errors.Is(err, rootpullersdk.ErrInvalidArgument) {
 				t.Fatalf("err = %v, want ErrInvalidArgument", err)
 			}
 		})

@@ -1,50 +1,31 @@
-// Package rootpuller is the entry point of the rootpuller-api Go SDK.
-// New builds a Client from a base URL; per-service clients hang off it:
+// Package rootpullersdk is the entry point of the rootpuller-api Go SDK.
+// New builds the globally configured SDK handle; each service package
+// constructs its client from it:
 //
-//	c, err := rootpuller.New("http://rootpuller-api:8755",
-//	    rootpuller.WithTokenSource(tokenSource),
-//	    rootpuller.WithDeployment("cloudrun"))
+//	sdk, err := rootpullersdk.New("http://rootpuller-api:8755",
+//	    rootpullersdk.WithTokenSource(tokenSource))
 //	if err != nil { ... }
-//	chunks, err := c.Chunker().ChunkToken(ctx, &chunker.TokenRequest{Texts: texts})
-package rootpuller
+//	svc := rerank.NewService(sdk, rerank.WithDeployment("local"))
+//	results, err := svc.Rerank(ctx, query, documents, nil)
+//
+// The root package also holds the types shared across services (File,
+// Upload, Usage, TextChunk, ...) and the error model (Error, the Err*
+// sentinels, IsTransient).
+package rootpullersdk
 
 import (
 	"connectrpc.com/connect"
 	"connectrpc.com/otelconnect"
 
-	"github.com/entwico/rootpuller-sdk/bgremover"
-	"github.com/entwico/rootpuller-sdk/chef"
-	"github.com/entwico/rootpuller-sdk/chunker"
-	"github.com/entwico/rootpuller-sdk/completion"
-	"github.com/entwico/rootpuller-sdk/embedding"
-	"github.com/entwico/rootpuller-sdk/facefixer"
 	"github.com/entwico/rootpuller-sdk/internal/transport"
-	"github.com/entwico/rootpuller-sdk/painter"
-	"github.com/entwico/rootpuller-sdk/rerank"
-	"github.com/entwico/rootpuller-sdk/search"
-	"github.com/entwico/rootpuller-sdk/unshakaler"
-	"github.com/entwico/rootpuller-sdk/vectorops"
-	"github.com/entwico/rootpuller-sdk/webcontent"
 )
 
-// Client aggregates one configured connection to rootpuller-api and the
-// per-service clients built on it. It is safe for concurrent use.
+// Client is the configured connection to one rootpuller-api instance:
+// transport, auth, and global call options. Pass it to the service
+// constructors (rerank.NewService, chunker.NewService, ...). It is safe
+// for concurrent use.
 type Client struct {
 	core *transport.Core
-
-	bgremover  *bgremover.Client
-	chef       *chef.Client
-	chunker    *chunker.Client
-	facefixer  *facefixer.Client
-	completion *completion.Client
-	embedding  *embedding.Client
-	painter    *painter.Client
-	rerank     *rerank.Client
-	scrape     *webcontent.ScrapeClient
-	search     *search.Client
-	unshakaler *unshakaler.Client
-	vectorops  *vectorops.Client
-	webcontent *webcontent.Client
 }
 
 // New builds a Client for the rootpuller-api instance at baseURL.
@@ -74,6 +55,10 @@ func New(baseURL string, opts ...Option) (*Client, error) {
 		interceptors = append(interceptors, transport.NewAuthInterceptor(cfg.tokenSource))
 	}
 
+	if cfg.retry != nil {
+		interceptors = append(interceptors, transport.NewRetryInterceptor(*cfg.retry))
+	}
+
 	if cfg.otelEnabled {
 		otelInterceptor, err := otelconnect.NewInterceptor(cfg.otelOptions...)
 		if err != nil {
@@ -95,59 +80,11 @@ func New(baseURL string, opts ...Option) (*Client, error) {
 		},
 	}
 
-	return &Client{
-		core:       core,
-		bgremover:  bgremover.NewFromCore(core),
-		chef:       chef.NewFromCore(core),
-		chunker:    chunker.NewFromCore(core),
-		facefixer:  facefixer.NewFromCore(core),
-		painter:    painter.NewFromCore(core),
-		scrape:     webcontent.NewScrapeFromCore(core),
-		completion: completion.NewFromCore(core),
-		embedding:  embedding.NewFromCore(core),
-		rerank:     rerank.NewFromCore(core),
-		search:     search.NewFromCore(core),
-		unshakaler: unshakaler.NewFromCore(core),
-		vectorops:  vectorops.NewFromCore(core),
-		webcontent: webcontent.NewFromCore(core),
-	}, nil
+	return &Client{core: core}, nil
 }
 
-// BgRemover returns the BackgroundRemoverService client.
-func (c *Client) BgRemover() *bgremover.Client { return c.bgremover }
-
-// Chef returns the DocumentProcessingService client.
-func (c *Client) Chef() *chef.Client { return c.chef }
-
-// FaceFixer returns the FaceFixerService client.
-func (c *Client) FaceFixer() *facefixer.Client { return c.facefixer }
-
-// Chunker returns the TextChunkerService client.
-func (c *Client) Chunker() *chunker.Client { return c.chunker }
-
-// Completion returns the CompletionService client.
-func (c *Client) Completion() *completion.Client { return c.completion }
-
-// Embedding returns the VectorEmbeddingService client.
-func (c *Client) Embedding() *embedding.Client { return c.embedding }
-
-// Painter returns the ImagePainterService client.
-func (c *Client) Painter() *painter.Client { return c.painter }
-
-// Rerank returns the RerankService client.
-func (c *Client) Rerank() *rerank.Client { return c.rerank }
-
-// Scrape returns the ScrapeService client.
-func (c *Client) Scrape() *webcontent.ScrapeClient { return c.scrape }
-
-// Search returns the SearchService client.
-func (c *Client) Search() *search.Client { return c.search }
-
-// Unshakaler returns the UnshakalerService client.
-func (c *Client) Unshakaler() *unshakaler.Client { return c.unshakaler }
-
-// VectorOps returns the VectorOpsService client.
-func (c *Client) VectorOps() *vectorops.Client { return c.vectorops }
-
-// WebContent returns the WebContentService client.
-func (c *Client) WebContent() *webcontent.Client { return c.webcontent }
+// TransportCore exposes the connection internals to the SDK's own
+// service packages. The returned type lives in an internal package, so
+// code outside this module cannot do anything with it — treat this
+// method as SDK-internal.
+func (c *Client) TransportCore() *transport.Core { return c.core }

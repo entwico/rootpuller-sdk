@@ -6,33 +6,22 @@ import (
 	"testing"
 	"time"
 
-	"connectrpc.com/connect"
-
-	"github.com/entwico/rootpuller-sdk/apierror"
-	"github.com/entwico/rootpuller-sdk/common"
+	rootpullersdk "github.com/entwico/rootpuller-sdk"
 	"github.com/entwico/rootpuller-sdk/facefixer"
-	"github.com/entwico/rootpuller-sdk/internal/transport"
 	"github.com/entwico/rootpuller-sdk/rootpullertest"
 )
 
 var errNoFaceDetected = errors.New("no face detected")
 
-// newClient dials baseURL the same way rootpuller.New does. The
-// rootpuller.Client accessor for this service is wired separately, so the
-// tests construct the service client directly from a transport.Core.
-func newClient(t *testing.T, baseURL string) *facefixer.Client {
+func newService(t *testing.T, baseURL string) *facefixer.Service {
 	t.Helper()
 
-	httpClient, err := transport.NewHTTPClient(baseURL, nil)
+	sdk, err := rootpullersdk.New(baseURL)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	return facefixer.NewFromCore(&transport.Core{
-		HTTPClient: httpClient,
-		BaseURL:    baseURL,
-		ClientOpts: []connect.ClientOption{connect.WithGRPC()},
-	})
+	return facefixer.NewService(sdk)
 }
 
 func TestRestoreFaceRoundTrip(t *testing.T) {
@@ -47,33 +36,33 @@ func TestRestoreFaceRoundTrip(t *testing.T) {
 		OnlyCenterFace:    false,
 		EnhanceBackground: true,
 		ProcessingTime:    2300 * time.Millisecond,
-		InputSize:         common.ImageSize{Width: 512, Height: 512},
-		OutputSize:        common.ImageSize{Width: 2048, Height: 2048},
+		InputSize:         rootpullersdk.ImageSize{Width: 512, Height: 512},
+		OutputSize:        rootpullersdk.ImageSize{Width: 2048, Height: 2048},
 		Model:             "codeformer",
 		Operation:         "restore",
 		Faces: []facefixer.FaceInfo{
 			{
-				OriginalBBox: common.BoundingBox{
-					Position: common.Point{X: 10, Y: 20},
-					Size:     common.ImageSize{Width: 100, Height: 120},
+				OriginalBBox: rootpullersdk.BoundingBox{
+					Position: rootpullersdk.Point{X: 10, Y: 20},
+					Size:     rootpullersdk.ImageSize{Width: 100, Height: 120},
 				},
 				Confidence: 0.98,
 				Landmarks: &facefixer.Landmarks{
-					LeftEye:    common.Point{X: 30, Y: 50},
-					RightEye:   common.Point{X: 70, Y: 50},
-					Nose:       common.Point{X: 50, Y: 70},
-					LeftMouth:  common.Point{X: 35, Y: 95},
-					RightMouth: common.Point{X: 65, Y: 95},
+					LeftEye:    rootpullersdk.Point{X: 30, Y: 50},
+					RightEye:   rootpullersdk.Point{X: 70, Y: 50},
+					Nose:       rootpullersdk.Point{X: 50, Y: 70},
+					LeftMouth:  rootpullersdk.Point{X: 35, Y: 95},
+					RightMouth: rootpullersdk.Point{X: 65, Y: 95},
 				},
-				RestoredBBox: &common.BoundingBox{
-					Position: common.Point{X: 40, Y: 80},
-					Size:     common.ImageSize{Width: 400, Height: 480},
+				RestoredBBox: &rootpullersdk.BoundingBox{
+					Position: rootpullersdk.Point{X: 40, Y: 80},
+					Size:     rootpullersdk.ImageSize{Width: 400, Height: 480},
 				},
 			},
 			{
-				OriginalBBox: common.BoundingBox{
-					Position: common.Point{X: 200, Y: 30},
-					Size:     common.ImageSize{Width: 90, Height: 110},
+				OriginalBBox: rootpullersdk.BoundingBox{
+					Position: rootpullersdk.Point{X: 200, Y: 30},
+					Size:     rootpullersdk.ImageSize{Width: 90, Height: 110},
 				},
 				Confidence: 0.55,
 				// Landmarks and RestoredBBox absent: must map to nil.
@@ -83,29 +72,28 @@ func TestRestoreFaceRoundTrip(t *testing.T) {
 
 	var (
 		gotOp   string
-		gotMask *common.File
+		gotMask *rootpullersdk.File
 	)
 
 	srv := rootpullertest.NewServer(t, &rootpullertest.FaceFixer{
 		Metadata: meta,
-		FixFunc: func(op string, image common.File, mask *common.File) (*common.File, error) {
+		FixFunc: func(op string, image rootpullersdk.File, mask *rootpullersdk.File) (*rootpullersdk.File, error) {
 			gotOp = op
 			gotMask = mask
 
-			return &common.File{Name: op + "-" + image.Name, MIMEType: image.MIMEType, Data: image.Data}, nil
+			return &rootpullersdk.File{Name: op + "-" + image.Name, MIMEType: image.MIMEType, Data: image.Data}, nil
 		},
 	})
 
-	c := newClient(t, srv.URL)
+	svc := newService(t, srv.URL)
 
-	result, err := c.RestoreFace(t.Context(),
-		&facefixer.RestoreParams{
-			Upscale:        new(4),
+	result, err := svc.RestoreFace(t.Context(),
+		rootpullersdk.UploadBytes("portrait.png", "image/png", payload),
+		&facefixer.RestoreOptions{
+			Upscale:        4,
 			FidelityWeight: new(float32(0.7)),
-			HasAligned:     new(false),
-			Format:         common.ImageFormatPNG,
+			Format:         rootpullersdk.ImageFormatPNG,
 		},
-		common.UploadBytes("portrait.png", "image/png", payload),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -136,7 +124,7 @@ func TestRestoreFaceRoundTrip(t *testing.T) {
 		t.Errorf("ProcessingTime = %v, want 2.3s", m.ProcessingTime)
 	}
 
-	if m.InputSize != (common.ImageSize{Width: 512, Height: 512}) || m.OutputSize != (common.ImageSize{Width: 2048, Height: 2048}) {
+	if m.InputSize != (rootpullersdk.ImageSize{Width: 512, Height: 512}) || m.OutputSize != (rootpullersdk.ImageSize{Width: 2048, Height: 2048}) {
 		t.Errorf("sizes = %+v / %+v", m.InputSize, m.OutputSize)
 	}
 
@@ -182,17 +170,17 @@ func TestColorizeFaceRoundTrip(t *testing.T) {
 
 	srv := rootpullertest.NewServer(t, &rootpullertest.FaceFixer{
 		Metadata: &facefixer.Metadata{Operation: "colorize", Model: "codeformer"},
-		FixFunc: func(op string, image common.File, _ *common.File) (*common.File, error) {
+		FixFunc: func(op string, image rootpullersdk.File, _ *rootpullersdk.File) (*rootpullersdk.File, error) {
 			gotOp = op
 
-			return &common.File{Name: op + "-" + image.Name, MIMEType: image.MIMEType, Data: image.Data}, nil
+			return &rootpullersdk.File{Name: op + "-" + image.Name, MIMEType: image.MIMEType, Data: image.Data}, nil
 		},
 	})
-	c := newClient(t, srv.URL)
+	svc := newService(t, srv.URL)
 
-	result, err := c.ColorizeFace(t.Context(),
-		&facefixer.ColorizeParams{Upscale: new(2)},
-		common.UploadBytes("gray.png", "image/png", []byte{1, 2, 3}),
+	result, err := svc.ColorizeFace(t.Context(),
+		rootpullersdk.UploadBytes("gray.png", "image/png", []byte{1, 2, 3}),
+		&facefixer.ColorizeOptions{Upscale: 2},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -220,26 +208,26 @@ func TestInpaintFaceMaskDelivery(t *testing.T) {
 
 	var (
 		gotOp    string
-		gotImage common.File
-		gotMask  *common.File
+		gotImage rootpullersdk.File
+		gotMask  *rootpullersdk.File
 	)
 
 	srv := rootpullertest.NewServer(t, &rootpullertest.FaceFixer{
 		Metadata: &facefixer.Metadata{Operation: "inpaint", MaskProvided: new(true)},
-		FixFunc: func(op string, image common.File, mask *common.File) (*common.File, error) {
+		FixFunc: func(op string, image rootpullersdk.File, mask *rootpullersdk.File) (*rootpullersdk.File, error) {
 			gotOp = op
 			gotImage = image
 			gotMask = mask
 
-			return &common.File{Name: op + "-" + image.Name, MIMEType: image.MIMEType, Data: image.Data}, nil
+			return &rootpullersdk.File{Name: op + "-" + image.Name, MIMEType: image.MIMEType, Data: image.Data}, nil
 		},
 	})
-	c := newClient(t, srv.URL)
+	svc := newService(t, srv.URL)
 
-	result, err := c.InpaintFace(t.Context(),
-		&facefixer.InpaintParams{FidelityWeight: new(float32(0.5))},
-		common.UploadBytes("damaged.png", "image/png", imagePayload),
-		common.UploadBytes("mask.png", "image/png", maskPayload),
+	result, err := svc.InpaintFace(t.Context(),
+		rootpullersdk.UploadBytes("damaged.png", "image/png", imagePayload),
+		rootpullersdk.UploadBytes("mask.png", "image/png", maskPayload),
+		&facefixer.InpaintOptions{FidelityWeight: new(float32(0.5))},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -274,20 +262,20 @@ func TestRestoreFaceServerError(t *testing.T) {
 	t.Parallel()
 
 	srv := rootpullertest.NewServer(t, &rootpullertest.FaceFixer{
-		FixFunc: func(string, common.File, *common.File) (*common.File, error) {
+		FixFunc: func(string, rootpullersdk.File, *rootpullersdk.File) (*rootpullersdk.File, error) {
 			return nil, errNoFaceDetected
 		},
 	})
-	c := newClient(t, srv.URL)
+	svc := newService(t, srv.URL)
 
-	_, err := c.RestoreFace(t.Context(), &facefixer.RestoreParams{},
-		common.UploadBytes("x.png", "image/png", []byte{1}))
+	_, err := svc.RestoreFace(t.Context(),
+		rootpullersdk.UploadBytes("x.png", "image/png", []byte{1}), nil)
 	if err == nil {
 		t.Fatal("want error")
 	}
 
-	if _, ok := errors.AsType[*apierror.Error](err); !ok {
-		t.Fatalf("err = %#v, want *apierror.Error", err)
+	if _, ok := errors.AsType[*rootpullersdk.Error](err); !ok {
+		t.Fatalf("err = %#v, want *rootpullersdk.Error", err)
 	}
 }
 
@@ -295,21 +283,21 @@ func TestInvalidFormatFailsLocally(t *testing.T) {
 	t.Parallel()
 
 	// No server: local validation must fail before any dial.
-	c := newClient(t, "http://127.0.0.1:1")
-	upload := func() common.Upload { return common.UploadBytes("x.png", "image/png", []byte{1}) }
+	svc := newService(t, "http://127.0.0.1:1")
+	upload := func() rootpullersdk.Upload { return rootpullersdk.UploadBytes("x.png", "image/png", []byte{1}) }
 
-	_, err := c.RestoreFace(t.Context(), &facefixer.RestoreParams{Format: common.ImageFormat("bmp")}, upload())
-	if !errors.Is(err, apierror.ErrInvalidArgument) {
+	_, err := svc.RestoreFace(t.Context(), upload(), &facefixer.RestoreOptions{Format: rootpullersdk.ImageFormat("bmp")})
+	if !errors.Is(err, rootpullersdk.ErrInvalidArgument) {
 		t.Fatalf("RestoreFace err = %v, want ErrInvalidArgument", err)
 	}
 
-	_, err = c.ColorizeFace(t.Context(), &facefixer.ColorizeParams{Format: common.ImageFormat("bmp")}, upload())
-	if !errors.Is(err, apierror.ErrInvalidArgument) {
+	_, err = svc.ColorizeFace(t.Context(), upload(), &facefixer.ColorizeOptions{Format: rootpullersdk.ImageFormat("bmp")})
+	if !errors.Is(err, rootpullersdk.ErrInvalidArgument) {
 		t.Fatalf("ColorizeFace err = %v, want ErrInvalidArgument", err)
 	}
 
-	_, err = c.InpaintFace(t.Context(), &facefixer.InpaintParams{Format: common.ImageFormat("bmp")}, upload(), upload())
-	if !errors.Is(err, apierror.ErrInvalidArgument) {
+	_, err = svc.InpaintFace(t.Context(), upload(), upload(), &facefixer.InpaintOptions{Format: rootpullersdk.ImageFormat("bmp")})
+	if !errors.Is(err, rootpullersdk.ErrInvalidArgument) {
 		t.Fatalf("InpaintFace err = %v, want ErrInvalidArgument", err)
 	}
 }

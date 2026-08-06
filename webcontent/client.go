@@ -13,60 +13,79 @@ import (
 
 	"connectrpc.com/connect"
 
-	"github.com/entwico/rootpuller-sdk/apierror"
+	rootpullersdk "github.com/entwico/rootpuller-sdk"
+	"github.com/entwico/rootpuller-sdk/internal/apierr"
 	webcontentpb "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/webcontent"
 	"github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/webcontent/webcontentconnect"
 	"github.com/entwico/rootpuller-sdk/internal/streamio"
 	"github.com/entwico/rootpuller-sdk/internal/transport"
 )
 
-// Client calls the WebContentService. Obtain one from
-// rootpuller.Client.WebContent.
-type Client struct {
+// Service calls the WebContentService.
+type Service struct {
 	rpc webcontentconnect.WebContentServiceClient
 	bot string
 }
 
-// NewFromCore is the internal constructor used by rootpuller.New.
-func NewFromCore(core *transport.Core) *Client {
-	return &Client{rpc: webcontentconnect.NewWebContentServiceClient(core.HTTPClient, core.BaseURL, core.ClientOpts...)}
+// Option configures a Service or a ScrapeService at construction. The
+// same option values apply to both constructors.
+type Option interface {
+	applyWebContent(s *Service)
+	applyScrape(s *ScrapeService)
 }
 
-// WithBot returns a client that sends the rootpuller-bot identity header
-// on every call. A per-call rootpuller.ContextWithBot value still wins.
-func (c *Client) WithBot(name string) *Client {
-	derived := *c
-	derived.bot = name
+// botOption implements Option for both service types.
+type botOption struct{ name string }
 
-	return &derived
+func (o botOption) applyWebContent(s *Service) { s.bot = o.name }
+
+func (o botOption) applyScrape(s *ScrapeService) { s.bot = o.name }
+
+// WithBot sends the rootpuller-bot identity header on every call. A
+// per-call rootpullersdk.ContextWithBot value still wins.
+func WithBot(name string) Option { return botOption{name: name} }
+
+// NewService builds a WebContentService client on the sdk connection.
+func NewService(sdk *rootpullersdk.Client, opts ...Option) *Service {
+	core := sdk.TransportCore()
+
+	s := &Service{rpc: webcontentconnect.NewWebContentServiceClient(core.HTTPClient, core.BaseURL, core.ClientOpts...)}
+	for _, opt := range opts {
+		opt.applyWebContent(s)
+	}
+
+	return s
 }
 
-// FetchURLRequest configures FetchURL and Fetch.
-type FetchURLRequest struct {
-	URL     string
+// FetchOptions tunes FetchURL and Fetch. Nil keeps all defaults.
+type FetchOptions struct {
 	Fetcher *FetcherOptions
 	// Jobs are the extraction outputs to produce; empty fetches only.
 	Jobs       []ExtractionJob
 	Screenshot *ScreenshotOptions
 }
 
-func (r *FetchURLRequest) toProto() (*webcontentpb.FetchUrlRequest, error) {
-	fetcher, err := r.Fetcher.toProto()
+func (o *FetchOptions) toProto(url string) (*webcontentpb.FetchUrlRequest, error) {
+	if o == nil {
+		o = &FetchOptions{}
+	}
+
+	fetcher, err := o.Fetcher.toProto()
 	if err != nil {
 		return nil, err
 	}
 
-	jobs, err := jobsToProto(r.Jobs)
+	jobs, err := jobsToProto(o.Jobs)
 	if err != nil {
 		return nil, err
 	}
 
-	screenshot, err := r.Screenshot.toProto()
+	screenshot, err := o.Screenshot.toProto()
 	if err != nil {
 		return nil, err
 	}
 
-	return &webcontentpb.FetchUrlRequest{Url: r.URL, Fetcher: fetcher, Jobs: jobs, Screenshot: screenshot}, nil
+	return &webcontentpb.FetchUrlRequest{Url: url, Fetcher: fetcher, Jobs: jobs, Screenshot: screenshot}, nil
 }
 
 func errSeq[E any](err error) iter.Seq2[E, error] {
@@ -80,22 +99,22 @@ func errSeq[E any](err error) iter.Seq2[E, error] {
 // typed events (progress, page metadata, artifact chunks, per-kind
 // errors) ending in a DoneEvent. A terminal error frame surfaces as the
 // iteration error (*ContentError); a stream that ends without a terminal
-// frame yields apierror.ErrMissingTerminal. For the buffered convenience
-// form use Fetch.
-func (c *Client) FetchURL(ctx context.Context, req *FetchURLRequest) iter.Seq2[Event, error] {
-	ctx = transport.EnsureBot(ctx, c.bot)
+// frame yields rootpullersdk.ErrMissingTerminal. For the buffered
+// convenience form use Fetch. A nil opts keeps all defaults.
+func (s *Service) FetchURL(ctx context.Context, url string, opts *FetchOptions) iter.Seq2[Event, error] {
+	ctx = transport.EnsureBot(ctx, s.bot)
 
-	msg, err := req.toProto()
+	msg, err := opts.toProto(url)
 	if err != nil {
 		return errSeq[Event](err)
 	}
 
-	stream, serr := c.rpc.FetchUrl(ctx, connect.NewRequest(msg))
+	stream, serr := s.rpc.FetchUrl(ctx, connect.NewRequest(msg))
 	if serr != nil {
 		return errSeq[Event](transport.WrapError(serr, webcontentconnect.WebContentServiceFetchUrlProcedure))
 	}
 
-	return streamio.EventSeq(stream, webcontentconnect.WebContentServiceFetchUrlProcedure, apierror.ErrMissingTerminal,
+	return streamio.EventSeq(stream, webcontentconnect.WebContentServiceFetchUrlProcedure, apierr.ErrMissingTerminal,
 		func(pb *webcontentpb.FetchUrlResponse) (Event, bool, error) {
 			switch m := pb.GetMessage().(type) {
 			case *webcontentpb.FetchUrlResponse_FetchProgress:
@@ -115,7 +134,7 @@ func (c *Client) FetchURL(ctx context.Context, req *FetchURLRequest) iter.Seq2[E
 			case *webcontentpb.FetchUrlResponse_Done:
 				return DoneEvent{Summary: summaryFromProto(m.Done)}, true, nil
 			default:
-				return nil, false, apierror.New(connect.CodeInternal, "unknown FetchUrl response frame", webcontentconnect.WebContentServiceFetchUrlProcedure, 0, nil)
+				return nil, false, apierr.New(connect.CodeInternal, "unknown FetchUrl response frame", webcontentconnect.WebContentServiceFetchUrlProcedure, 0, nil)
 			}
 		})
 }
@@ -177,9 +196,10 @@ func CollectEvents(events iter.Seq2[Event, error]) (*FetchResult, error) {
 }
 
 // Fetch calls WebContentService/FetchUrl and buffers the whole stream
-// into a FetchResult. Use FetchURL for incremental consumption.
-func (c *Client) Fetch(ctx context.Context, req *FetchURLRequest) (*FetchResult, error) {
-	return CollectEvents(c.FetchURL(ctx, req))
+// into a FetchResult. Use FetchURL for incremental consumption. A nil
+// opts keeps all defaults.
+func (s *Service) Fetch(ctx context.Context, url string, opts *FetchOptions) (*FetchResult, error) {
+	return CollectEvents(s.FetchURL(ctx, url, opts))
 }
 
 // HTMLDocument is the HTML input of ExtractContent.
@@ -190,12 +210,12 @@ type HTMLDocument struct {
 	Content io.Reader
 }
 
-// ExtractRequest configures ExtractContent.
-type ExtractRequest struct {
-	Jobs     []ExtractionJob
-	Document HTMLDocument
-	// SourceURL improves relative-link resolution and metadata.
-	SourceURL *string
+// ExtractOptions tunes ExtractContent. Nil keeps all defaults.
+type ExtractOptions struct {
+	Jobs []ExtractionJob
+	// SourceURL improves relative-link resolution and metadata; empty
+	// leaves it unset.
+	SourceURL string
 }
 
 // ExtractResult is the outcome of ExtractContent.
@@ -209,12 +229,17 @@ type ExtractResult struct {
 // ExtractContent calls WebContentService/ExtractContent: uploads an HTML
 // document (init frame first, then chunks with an in-band last_chunk
 // marker) and returns the extracted artifacts. The extractor buffers the
-// whole document, so results arrive only after the upload completes.
-func (c *Client) ExtractContent(ctx context.Context, req *ExtractRequest) (*ExtractResult, error) {
-	ctx = transport.EnsureBot(ctx, c.bot)
+// whole document, so results arrive only after the upload completes. A
+// nil opts keeps all defaults.
+func (s *Service) ExtractContent(ctx context.Context, doc HTMLDocument, opts *ExtractOptions) (*ExtractResult, error) {
+	ctx = transport.EnsureBot(ctx, s.bot)
 	procedure := webcontentconnect.WebContentServiceExtractContentProcedure
 
-	kind := req.Document.Kind
+	if opts == nil {
+		opts = &ExtractOptions{}
+	}
+
+	kind := doc.Kind
 	if kind == ArtifactKindUnspecified {
 		kind = ArtifactKindHTMLRaw
 	}
@@ -235,13 +260,18 @@ func (c *Client) ExtractContent(ctx context.Context, req *ExtractRequest) (*Extr
 		return nil, err
 	}
 
-	jobs, err := jobsToProto(req.Jobs)
+	jobs, err := jobsToProto(opts.Jobs)
 	if err != nil {
 		return nil, err
 	}
 
-	stream := c.rpc.ExtractContent(ctx)
-	frames := extractFrames(jobs, req.SourceURL, kindPb, req.Document.Content)
+	var sourceURL *string
+	if opts.SourceURL != "" {
+		sourceURL = &opts.SourceURL
+	}
+
+	stream := s.rpc.ExtractContent(ctx)
+	frames := extractFrames(jobs, sourceURL, kindPb, doc.Content)
 
 	result := &ExtractResult{}
 
@@ -291,7 +321,7 @@ func (c *Client) ExtractContent(ctx context.Context, req *ExtractRequest) (*Extr
 	}
 
 	if !sawTerminal {
-		return nil, apierror.ErrMissingTerminal
+		return nil, apierr.ErrMissingTerminal
 	}
 
 	return result, nil

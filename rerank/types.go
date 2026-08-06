@@ -6,7 +6,7 @@ import (
 
 	"connectrpc.com/connect"
 
-	"github.com/entwico/rootpuller-sdk/apierror"
+	"github.com/entwico/rootpuller-sdk/internal/apierr"
 	rerankpb "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/rerank"
 )
 
@@ -54,7 +54,7 @@ func inferenceBackendFromProto(v rerankpb.RerankInferenceBackend) InferenceBacke
 }
 
 func invalidArgument(msg string) error {
-	return apierror.New(connect.CodeInvalidArgument, msg, "", 0, nil)
+	return apierr.New(connect.CodeInvalidArgument, msg, "", 0, nil)
 }
 
 // ModelRef identifies a locally-served reranker model, e.g.
@@ -83,31 +83,6 @@ func modelRefFromProto(m *rerankpb.RerankModelRef) ModelRef {
 		ModelID:          m.GetModelId(),
 		InferenceBackend: inferenceBackendFromProto(m.GetInferenceBackend()),
 	}
-}
-
-// Request configures Rerank: it scores Documents against Query with the
-// given Model. Nil pointer fields keep the server defaults noted per
-// field.
-type Request struct {
-	// Query is the search text the documents are scored against.
-	// Required; passed verbatim (cross-encoders need no instruction
-	// prefix).
-	Query string
-	// Documents are the candidate passages to score, in caller order.
-	// The 0-based position of each document is echoed back as
-	// Result.Index. Must not be empty.
-	Documents []string
-	Model     ModelRef
-	// TopN limits the response to the N highest-scoring documents
-	// (default: return all, sorted by relevance).
-	TopN *int
-	// MaxTokens truncates each (query, document) pair to this many
-	// tokens before scoring (default: the model's maximum context
-	// length).
-	MaxTokens *int
-	// ReturnDocuments echoes each scored document's text back in its
-	// result (default false — map scores back via Result.Index instead).
-	ReturnDocuments bool
 }
 
 // Result is one scored document. RelevanceScore is sigmoid-normalised to

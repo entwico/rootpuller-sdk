@@ -7,10 +7,10 @@ import (
 	"connectrpc.com/connect"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 
-	"github.com/entwico/rootpuller-sdk/apierror"
+	"github.com/entwico/rootpuller-sdk/internal/apierr"
 )
 
-// WrapError converts any RPC failure into *apierror.Error, extracting the
+// WrapError converts any RPC failure into *apierr.Error, extracting the
 // google.rpc.RetryInfo hint when the server attached one. It is called at
 // every Send/Receive/unary call site; nil stays nil so call sites can wrap
 // unconditionally.
@@ -19,7 +19,7 @@ func WrapError(err error, procedure string) error {
 		return nil
 	}
 
-	if _, ok := errors.AsType[*apierror.Error](err); ok {
+	if _, ok := errors.AsType[*apierr.Error](err); ok {
 		return err // already wrapped (e.g. local validation error)
 	}
 
@@ -40,5 +40,5 @@ func WrapError(err error, procedure string) error {
 		}
 	}
 
-	return apierror.New(connect.CodeOf(err), message, procedure, retryAfter, err)
+	return apierr.New(connect.CodeOf(err), message, procedure, retryAfter, err)
 }

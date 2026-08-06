@@ -7,33 +7,22 @@ import (
 	"testing"
 	"time"
 
-	"connectrpc.com/connect"
-
-	"github.com/entwico/rootpuller-sdk/apierror"
-	"github.com/entwico/rootpuller-sdk/common"
-	"github.com/entwico/rootpuller-sdk/internal/transport"
+	rootpullersdk "github.com/entwico/rootpuller-sdk"
 	"github.com/entwico/rootpuller-sdk/painter"
 	"github.com/entwico/rootpuller-sdk/rootpullertest"
 )
 
 var errBackendUnavailable = errors.New("backend unavailable")
 
-// newClient dials baseURL the same way rootpuller.New does. The
-// rootpuller.Client accessor for this service is wired separately, so the
-// tests construct the service client directly from a transport.Core.
-func newClient(t *testing.T, baseURL string) *painter.Client {
+func newService(t *testing.T, baseURL string) *painter.Service {
 	t.Helper()
 
-	httpClient, err := transport.NewHTTPClient(baseURL, nil)
+	sdk, err := rootpullersdk.New(baseURL)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	return painter.NewFromCore(&transport.Core{
-		HTTPClient: httpClient,
-		BaseURL:    baseURL,
-		ClientOpts: []connect.ClientOption{connect.WithGRPC()},
-	})
+	return painter.NewService(sdk)
 }
 
 func TestGenerateMultiImageDemux(t *testing.T) {
@@ -47,10 +36,10 @@ func TestGenerateMultiImageDemux(t *testing.T) {
 	var gotPrompt string
 
 	srv := rootpullertest.NewServer(t, &rootpullertest.Painter{
-		GenerateFunc: func(prompt string) ([]common.File, error) {
+		GenerateFunc: func(prompt string) ([]rootpullersdk.File, error) {
 			gotPrompt = prompt
 
-			return []common.File{
+			return []rootpullersdk.File{
 				{Name: "image_0.png", MIMEType: "image/png", Data: payload0},
 				{Name: "image_1.png", MIMEType: "image/png", Data: payload1},
 			}, nil
@@ -61,18 +50,17 @@ func TestGenerateMultiImageDemux(t *testing.T) {
 			ProcessingTime: 1500 * time.Millisecond,
 			NumImages:      2,
 			Images: []painter.ImageMetadata{
-				{Index: 0, Seed: new(int64(42)), Size: common.ImageSize{Width: 1024, Height: 1024}},
+				{Index: 0, Seed: new(int64(42)), Size: rootpullersdk.ImageSize{Width: 1024, Height: 1024}},
 				{Index: 1, Seed: new(int64(43)), RevisedPrompt: new("a very detailed cat")},
 			},
 			Notes: []string{"aspect ratio adjusted"},
-			Usage: common.Usage{EstimatedCostMicros: 40000, CurrencyCode: "USD"},
+			Usage: rootpullersdk.Usage{EstimatedCostMicros: 40000, CurrencyCode: "USD"},
 		},
 	})
 
-	c := newClient(t, srv.URL)
+	svc := newService(t, srv.URL)
 
-	result, err := c.Generate(t.Context(), &painter.GenerateRequest{
-		Prompt: "a cat",
+	result, err := svc.Generate(t.Context(), "a cat", &painter.GenerateOptions{
 		Backend: painter.GenerateGoogle{
 			NumberOfImages: new(2),
 			AspectRatio:    painter.AspectRatio1x1,
@@ -117,7 +105,7 @@ func TestGenerateMultiImageDemux(t *testing.T) {
 		t.Errorf("images[0] = %+v", meta.Images[0])
 	}
 
-	if meta.Images[0].Size != (common.ImageSize{Width: 1024, Height: 1024}) {
+	if meta.Images[0].Size != (rootpullersdk.ImageSize{Width: 1024, Height: 1024}) {
 		t.Errorf("images[0].Size = %+v", meta.Images[0].Size)
 	}
 
@@ -145,32 +133,31 @@ func TestEditWithMaskOrdering(t *testing.T) {
 
 	var (
 		gotPrompt string
-		gotImage  common.File
-		gotMask   *common.File
+		gotImage  rootpullersdk.File
+		gotMask   *rootpullersdk.File
 	)
 
 	srv := rootpullertest.NewServer(t, &rootpullertest.Painter{
-		EditFunc: func(prompt string, image common.File, mask *common.File) ([]common.File, error) {
+		EditFunc: func(prompt string, image rootpullersdk.File, mask *rootpullersdk.File) ([]rootpullersdk.File, error) {
 			gotPrompt = prompt
 			gotImage = image
 			gotMask = mask
 
-			return []common.File{{Name: "image_0.png", MIMEType: "image/png", Data: []byte{0x01, 0x02}}}, nil
+			return []rootpullersdk.File{{Name: "image_0.png", MIMEType: "image/png", Data: []byte{0x01, 0x02}}}, nil
 		},
 	})
 
-	c := newClient(t, srv.URL)
+	svc := newService(t, srv.URL)
 
-	result, err := c.Edit(t.Context(),
-		&painter.EditRequest{
-			Prompt: "remove the lamp post",
+	result, err := svc.Edit(t.Context(), "remove the lamp post",
+		rootpullersdk.UploadBytes("photo.png", "image/png", imageData),
+		&painter.EditOptions{
 			Backend: painter.EditGoogle{
 				EditMode:     painter.GoogleEditModeInpaintRemoval,
 				MaskDilation: new(8),
 			},
+			Mask: new(rootpullersdk.UploadBytes("mask.png", "image/png", maskData)),
 		},
-		common.UploadBytes("photo.png", "image/png", imageData),
-		new(common.UploadBytes("mask.png", "image/png", maskData)),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -202,30 +189,26 @@ func TestOutpaintRoundTrip(t *testing.T) {
 
 	var (
 		gotPrompt string
-		gotImage  common.File
+		gotImage  rootpullersdk.File
 	)
 
 	srv := rootpullertest.NewServer(t, &rootpullertest.Painter{
-		OutpaintFunc: func(prompt string, image common.File) ([]common.File, error) {
+		OutpaintFunc: func(prompt string, image rootpullersdk.File) ([]rootpullersdk.File, error) {
 			gotPrompt = prompt
 			gotImage = image
 
-			return []common.File{{Name: "image_0.png", MIMEType: "image/png", Data: []byte{0x99}}}, nil
+			return []rootpullersdk.File{{Name: "image_0.png", MIMEType: "image/png", Data: []byte{0x99}}}, nil
 		},
 	})
 
-	c := newClient(t, srv.URL)
+	svc := newService(t, srv.URL)
 
-	result, err := c.Outpaint(t.Context(),
-		&painter.OutpaintRequest{
-			Prompt:       "extend the beach",
-			ExtendTop:    64,
-			ExtendBottom: 64,
-			ExtendLeft:   128,
-			ExtendRight:  128,
-			Backend:      painter.OutpaintOpenAI{Quality: painter.OpenAIQualityHigh},
+	result, err := svc.Outpaint(t.Context(), "extend the beach",
+		rootpullersdk.UploadBytes("beach.png", "image/png", []byte{0x10, 0x20, 0x30}),
+		&painter.OutpaintOptions{
+			Extend:  painter.Extend{Top: 64, Bottom: 64, Left: 128, Right: 128},
+			Backend: painter.OutpaintOpenAI{Quality: painter.OpenAIQualityHigh},
 		},
-		common.UploadBytes("beach.png", "image/png", []byte{0x10, 0x20, 0x30}),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -258,12 +241,11 @@ func TestGenerateProgressCallback(t *testing.T) {
 	}
 	srv := rootpullertest.NewServer(t, &rootpullertest.Painter{Progress: want})
 
-	c := newClient(t, srv.URL)
+	svc := newService(t, srv.URL)
 
 	var got []painter.Progress
 
-	_, err := c.Generate(t.Context(), &painter.GenerateRequest{
-		Prompt:     "a dog",
+	_, err := svc.Generate(t.Context(), "a dog", &painter.GenerateOptions{
 		Backend:    painter.GenerateOpenAI{N: new(1)},
 		OnProgress: func(p painter.Progress) { got = append(got, p) },
 	})
@@ -280,13 +262,12 @@ func TestGenerateWrongBackendVariantFailsLocally(t *testing.T) {
 	t.Parallel()
 
 	// No server: the wrong Backend variant must fail before any dial.
-	c := newClient(t, "http://127.0.0.1:1")
+	svc := newService(t, "http://127.0.0.1:1")
 
-	_, err := c.Generate(t.Context(), &painter.GenerateRequest{
-		Prompt:  "a cat",
+	_, err := svc.Generate(t.Context(), "a cat", &painter.GenerateOptions{
 		Backend: painter.EditGoogle{},
 	})
-	if !errors.Is(err, apierror.ErrInvalidArgument) {
+	if !errors.Is(err, rootpullersdk.ErrInvalidArgument) {
 		t.Fatalf("err = %v, want ErrInvalidArgument", err)
 	}
 }
@@ -294,13 +275,12 @@ func TestGenerateWrongBackendVariantFailsLocally(t *testing.T) {
 func TestGenerateUnknownEnumFailsLocally(t *testing.T) {
 	t.Parallel()
 
-	c := newClient(t, "http://127.0.0.1:1")
+	svc := newService(t, "http://127.0.0.1:1")
 
-	_, err := c.Generate(t.Context(), &painter.GenerateRequest{
-		Prompt:  "a cat",
+	_, err := svc.Generate(t.Context(), "a cat", &painter.GenerateOptions{
 		Backend: painter.GenerateGoogle{AspectRatio: painter.AspectRatio("21:9")},
 	})
-	if !errors.Is(err, apierror.ErrInvalidArgument) {
+	if !errors.Is(err, rootpullersdk.ErrInvalidArgument) {
 		t.Fatalf("err = %v, want ErrInvalidArgument", err)
 	}
 }
@@ -309,18 +289,18 @@ func TestGenerateServerError(t *testing.T) {
 	t.Parallel()
 
 	srv := rootpullertest.NewServer(t, &rootpullertest.Painter{
-		GenerateFunc: func(string) ([]common.File, error) {
+		GenerateFunc: func(string) ([]rootpullersdk.File, error) {
 			return nil, errBackendUnavailable
 		},
 	})
-	c := newClient(t, srv.URL)
+	svc := newService(t, srv.URL)
 
-	_, err := c.Generate(t.Context(), &painter.GenerateRequest{Prompt: "a cat"})
+	_, err := svc.Generate(t.Context(), "a cat", nil)
 	if err == nil {
 		t.Fatal("want error")
 	}
 
-	if _, ok := errors.AsType[*apierror.Error](err); !ok {
-		t.Fatalf("err = %#v, want *apierror.Error", err)
+	if _, ok := errors.AsType[*rootpullersdk.Error](err); !ok {
+		t.Fatalf("err = %#v, want *rootpullersdk.Error", err)
 	}
 }

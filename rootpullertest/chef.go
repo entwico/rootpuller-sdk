@@ -8,8 +8,8 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/structpb"
 
+	rootpullersdk "github.com/entwico/rootpuller-sdk"
 	"github.com/entwico/rootpuller-sdk/chef"
-	"github.com/entwico/rootpuller-sdk/common"
 	chefpb "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/chef"
 	"github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/chef/chefconnect"
 	commonpb "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/common"
@@ -77,7 +77,7 @@ func (h *chefHandler) ProcessMarkdown(_ context.Context, req *connect.Request[ch
 			return &chef.MarkdownResult{
 				Content: text,
 				ID:      "markdown-1",
-				Chunks:  []common.TextChunk{{Text: text, EndIndex: len(text), TokenCount: len(text)}},
+				Chunks:  []rootpullersdk.TextChunk{{Text: text, EndIndex: len(text), TokenCount: len(text)}},
 			}, nil
 		}
 	}

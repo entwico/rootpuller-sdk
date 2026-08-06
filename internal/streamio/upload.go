@@ -8,7 +8,7 @@ import (
 
 	"connectrpc.com/connect"
 
-	"github.com/entwico/rootpuller-sdk/common"
+	rootpullersdk "github.com/entwico/rootpuller-sdk"
 	commonpb "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/common"
 	"github.com/entwico/rootpuller-sdk/internal/protoconv"
 	"github.com/entwico/rootpuller-sdk/internal/transport"
@@ -73,7 +73,7 @@ func UploadCollect[Req, Resp any](
 // FileChunkFrames slices an Upload into ≤MaxChunkBytes FileChunk frames,
 // wrapped into the service's request type. An empty upload still yields
 // one empty chunk so the payload's name and MIME type reach the server.
-func FileChunkFrames[Req any](u common.Upload, wrap func(*commonpb.FileChunk) *Req) iter.Seq2[*Req, error] {
+func FileChunkFrames[Req any](u rootpullersdk.Upload, wrap func(*commonpb.FileChunk) *Req) iter.Seq2[*Req, error] {
 	return func(yield func(*Req, error) bool) {
 		buf := make([]byte, MaxChunkBytes)
 		sent := false
@@ -172,15 +172,15 @@ func (fc *FileCollector) Add(chunk *commonpb.FileChunk) {
 
 // Files returns the reassembled files in arrival order, validating each
 // against the content_length the server declared on its chunks.
-func (fc *FileCollector) Files() ([]common.File, error) {
-	out := make([]common.File, 0, len(fc.order))
+func (fc *FileCollector) Files() ([]rootpullersdk.File, error) {
+	out := make([]rootpullersdk.File, 0, len(fc.order))
 	for _, name := range fc.order {
 		f := fc.files[name]
 		if f.expected > 0 && len(f.data) != f.expected {
 			return nil, fmt.Errorf("rootpuller: file %q %w: got %d bytes, server declared %d", name, errTruncated, len(f.data), f.expected)
 		}
 
-		out = append(out, common.File{Name: name, MIMEType: f.mimeType, Data: f.data})
+		out = append(out, rootpullersdk.File{Name: name, MIMEType: f.mimeType, Data: f.data})
 	}
 
 	return out, nil

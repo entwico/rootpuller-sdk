@@ -5,10 +5,9 @@ import (
 
 	"connectrpc.com/connect"
 
-	"github.com/entwico/rootpuller-sdk/apierror"
-	"github.com/entwico/rootpuller-sdk/common"
+	rootpullersdk "github.com/entwico/rootpuller-sdk"
+	"github.com/entwico/rootpuller-sdk/internal/apierr"
 	embeddingpb "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/embedding"
-	"github.com/entwico/rootpuller-sdk/internal/protoconv"
 )
 
 // Backend selects where the embedding model runs. The zero value keeps
@@ -126,7 +125,7 @@ func invertMap[K, V comparable](m map[K]V) map[V]K {
 }
 
 func invalidArgument(msg string) error {
-	return apierror.New(connect.CodeInvalidArgument, msg, "", 0, nil)
+	return apierr.New(connect.CodeInvalidArgument, msg, "", 0, nil)
 }
 
 // ModelRef names an embedding model on a backend.
@@ -193,53 +192,6 @@ func Text(texts ...string) []Input {
 	return inputs
 }
 
-// Request configures Embed and EmbedStream.
-type Request struct {
-	Inputs []Input
-	Model  ModelRef
-	Mode   Mode
-	Task   Task
-	// Dimensions truncates MRL-capable dense embeddings.
-	Dimensions *int
-	// MaxTokens overrides the model's input truncation limit.
-	MaxTokens *int
-	// Normalize L2-normalizes dense vectors server-side.
-	Normalize bool
-}
-
-func (r *Request) toProto() (*embeddingpb.EmbedRequest, error) {
-	model, err := r.Model.toProto()
-	if err != nil {
-		return nil, err
-	}
-
-	mode, ok := modeToProto[r.Mode]
-	if !ok {
-		return nil, invalidArgument(fmt.Sprintf("unknown embedding mode %q", r.Mode))
-	}
-
-	task, ok := taskToProto[r.Task]
-	if !ok {
-		return nil, invalidArgument(fmt.Sprintf("unknown embedding task %q", r.Task))
-	}
-
-	inputs := make([]*embeddingpb.TextInput, len(r.Inputs))
-	for i, in := range r.Inputs {
-		inputs[i] = &embeddingpb.TextInput{Content: in.Content, Metadata: in.Metadata}
-	}
-
-	msg := &embeddingpb.EmbedRequest{Inputs: inputs, Model: model, Mode: mode, Task: task}
-	if r.Dimensions != nil || r.MaxTokens != nil || r.Normalize {
-		msg.Options = &embeddingpb.EmbeddingOptions{
-			Dimensions: protoconv.Int32Ptr(r.Dimensions),
-			MaxTokens:  protoconv.Int32Ptr(r.MaxTokens),
-			Normalize:  r.Normalize,
-		}
-	}
-
-	return msg, nil
-}
-
 // SparseVector is a sparse embedding as parallel index/value slices.
 type SparseVector struct {
 	Indices []uint32
@@ -297,7 +249,7 @@ type Response struct {
 	Mode           Mode
 	Task           Task
 	DenseDimension int
-	Usage          common.Usage
+	Usage          rootpullersdk.Usage
 }
 
 // StreamResult is one EmbedStream frame: the embedding of a single input,
@@ -308,7 +260,7 @@ type StreamResult struct {
 	Mode           Mode
 	Task           Task
 	DenseDimension int
-	Usage          common.Usage
+	Usage          rootpullersdk.Usage
 }
 
 // ModelInfo describes one model reported by ListModels.

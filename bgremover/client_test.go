@@ -6,33 +6,22 @@ import (
 	"testing"
 	"time"
 
-	"connectrpc.com/connect"
-
-	"github.com/entwico/rootpuller-sdk/apierror"
+	rootpullersdk "github.com/entwico/rootpuller-sdk"
 	"github.com/entwico/rootpuller-sdk/bgremover"
-	"github.com/entwico/rootpuller-sdk/common"
-	"github.com/entwico/rootpuller-sdk/internal/transport"
 	"github.com/entwico/rootpuller-sdk/rootpullertest"
 )
 
 var errModelNotLoaded = errors.New("model not loaded")
 
-// newClient dials baseURL the same way rootpuller.New does. The
-// rootpuller.Client accessor for this service is wired separately, so the
-// tests construct the service client directly from a transport.Core.
-func newClient(t *testing.T, baseURL string) *bgremover.Client {
+func newService(t *testing.T, baseURL string) *bgremover.Service {
 	t.Helper()
 
-	httpClient, err := transport.NewHTTPClient(baseURL, nil)
+	sdk, err := rootpullersdk.New(baseURL)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	return bgremover.NewFromCore(&transport.Core{
-		HTTPClient: httpClient,
-		BaseURL:    baseURL,
-		ClientOpts: []connect.ClientOption{connect.WithGRPC()},
-	})
+	return bgremover.NewService(sdk)
 }
 
 func TestRemoveBackgroundRoundTrip(t *testing.T) {
@@ -42,36 +31,36 @@ func TestRemoveBackgroundRoundTrip(t *testing.T) {
 	payload := bytes.Repeat([]byte{0xAB}, 5<<20)
 	meta := &bgremover.Metadata{
 		ProcessingTime:    1500 * time.Millisecond,
-		Size:              common.ImageSize{Width: 800, Height: 600},
+		Size:              rootpullersdk.ImageSize{Width: 800, Height: 600},
 		Device:            "cuda",
 		MaskConfidence:    0.93,
 		ForegroundPercent: 41.5,
-		BoundingBox: &common.BoundingBox{
-			Position: common.Point{X: 10, Y: 20},
-			Size:     common.ImageSize{Width: 300, Height: 400},
+		BoundingBox: &rootpullersdk.BoundingBox{
+			Position: rootpullersdk.Point{X: 10, Y: 20},
+			Size:     rootpullersdk.ImageSize{Width: 300, Height: 400},
 		},
 	}
 
-	var gotInput common.File
+	var gotInput rootpullersdk.File
 
 	srv := rootpullertest.NewServer(t, &rootpullertest.BgRemover{
 		Metadata: meta,
-		RemoveFunc: func(image common.File) (*common.File, error) {
+		RemoveFunc: func(image rootpullersdk.File) (*rootpullersdk.File, error) {
 			gotInput = image
 
-			return &common.File{Name: "nobg-" + image.Name, MIMEType: image.MIMEType, Data: image.Data}, nil
+			return &rootpullersdk.File{Name: "nobg-" + image.Name, MIMEType: image.MIMEType, Data: image.Data}, nil
 		},
 	})
 
-	c := newClient(t, srv.URL)
+	svc := newService(t, srv.URL)
 
-	result, err := c.RemoveBackground(t.Context(),
-		&bgremover.Params{
+	result, err := svc.RemoveBackground(t.Context(),
+		rootpullersdk.UploadBytes("photo.png", "image/png", payload),
+		&bgremover.Options{
 			Threshold:      new(float32(0.4)),
-			Erode:          new(2),
+			Erode:          2,
 			MorphologyMode: bgremover.MorphologyModeClosing,
 		},
-		common.UploadBytes("photo.png", "image/png", payload),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -94,7 +83,7 @@ func TestRemoveBackgroundRoundTrip(t *testing.T) {
 		t.Errorf("ProcessingTime = %v, want 1.5s", m.ProcessingTime)
 	}
 
-	if m.Size != (common.ImageSize{Width: 800, Height: 600}) {
+	if m.Size != (rootpullersdk.ImageSize{Width: 800, Height: 600}) {
 		t.Errorf("Size = %+v", m.Size)
 	}
 
@@ -117,10 +106,10 @@ func TestRemoveBackgroundNilBoundingBox(t *testing.T) {
 	srv := rootpullertest.NewServer(t, &rootpullertest.BgRemover{
 		Metadata: &bgremover.Metadata{Device: "cpu"},
 	})
-	c := newClient(t, srv.URL)
+	svc := newService(t, srv.URL)
 
-	result, err := c.RemoveBackground(t.Context(), &bgremover.Params{},
-		common.UploadBytes("x.png", "image/png", []byte{1, 2, 3}))
+	result, err := svc.RemoveBackground(t.Context(),
+		rootpullersdk.UploadBytes("x.png", "image/png", []byte{1, 2, 3}), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,20 +127,20 @@ func TestRemoveBackgroundServerError(t *testing.T) {
 	t.Parallel()
 
 	srv := rootpullertest.NewServer(t, &rootpullertest.BgRemover{
-		RemoveFunc: func(common.File) (*common.File, error) {
+		RemoveFunc: func(rootpullersdk.File) (*rootpullersdk.File, error) {
 			return nil, errModelNotLoaded
 		},
 	})
-	c := newClient(t, srv.URL)
+	svc := newService(t, srv.URL)
 
-	_, err := c.RemoveBackground(t.Context(), &bgremover.Params{},
-		common.UploadBytes("x.png", "image/png", []byte{1}))
+	_, err := svc.RemoveBackground(t.Context(),
+		rootpullersdk.UploadBytes("x.png", "image/png", []byte{1}), nil)
 	if err == nil {
 		t.Fatal("want error")
 	}
 
-	if _, ok := errors.AsType[*apierror.Error](err); !ok {
-		t.Fatalf("err = %#v, want *apierror.Error", err)
+	if _, ok := errors.AsType[*rootpullersdk.Error](err); !ok {
+		t.Fatalf("err = %#v, want *rootpullersdk.Error", err)
 	}
 }
 
@@ -159,13 +148,13 @@ func TestRemoveBackgroundInvalidModeFailsLocally(t *testing.T) {
 	t.Parallel()
 
 	// No server: local validation must fail before any dial.
-	c := newClient(t, "http://127.0.0.1:1")
+	svc := newService(t, "http://127.0.0.1:1")
 
-	_, err := c.RemoveBackground(t.Context(),
-		&bgremover.Params{MorphologyMode: bgremover.MorphologyMode("erosion")},
-		common.UploadBytes("x.png", "image/png", []byte{1}),
+	_, err := svc.RemoveBackground(t.Context(),
+		rootpullersdk.UploadBytes("x.png", "image/png", []byte{1}),
+		&bgremover.Options{MorphologyMode: bgremover.MorphologyMode("erosion")},
 	)
-	if !errors.Is(err, apierror.ErrInvalidArgument) {
+	if !errors.Is(err, rootpullersdk.ErrInvalidArgument) {
 		t.Fatalf("err = %v, want ErrInvalidArgument", err)
 	}
 }

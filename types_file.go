@@ -1,7 +1,4 @@
-// Package common holds facade types shared by several rootpuller-sdk
-// service packages: file payloads, image geometry, text chunks, and usage
-// accounting. They mirror the com.entwico.rootpuller.common proto package.
-package common
+package rootpullersdk
 
 import (
 	"bytes"

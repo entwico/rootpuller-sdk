@@ -22,7 +22,7 @@ func TestSessionConcurrentFetches(t *testing.T) {
 
 	// The fake handles instructions concurrently and interleaves their
 	// response frames, so correct results prove correlation-ID demuxing.
-	c := newScrapeClient(t, &rootpullertest.Scrape{
+	svc := newScrapeService(t, &rootpullertest.Scrape{
 		SessionFunc: func(url string) (map[webcontent.ArtifactKind][]byte, *webcontent.ContentError) {
 			return map[webcontent.ArtifactKind][]byte{
 				webcontent.ArtifactKindExtractedMarkdown: []byte(strings.Repeat(url+"|", 200_000)), // ~multi-chunk
@@ -30,7 +30,7 @@ func TestSessionConcurrentFetches(t *testing.T) {
 		},
 	})
 
-	session, err := c.Scrape().OpenSession(t.Context(), &webcontent.SessionInit{
+	session, err := svc.OpenSession(t.Context(), &webcontent.SessionOptions{
 		Jobs: []webcontent.ExtractionJob{{Kind: webcontent.ArtifactKindExtractedMarkdown}},
 	})
 	if err != nil {
@@ -52,7 +52,7 @@ func TestSessionConcurrentFetches(t *testing.T) {
 		wg.Go(func() {
 			url := fmt.Sprintf("https://example.com/page-%d", i)
 
-			result, ferr := session.Fetch(t.Context(), &webcontent.Instruction{URL: url})
+			result, ferr := session.Fetch(t.Context(), url, nil)
 			if ferr != nil {
 				errs[i] = ferr
 
@@ -84,7 +84,7 @@ func TestSessionConcurrentFetches(t *testing.T) {
 func TestSessionInstructionError(t *testing.T) {
 	t.Parallel()
 
-	c := newScrapeClient(t, &rootpullertest.Scrape{
+	svc := newScrapeService(t, &rootpullertest.Scrape{
 		SessionFunc: func(url string) (map[webcontent.ArtifactKind][]byte, *webcontent.ContentError) {
 			if strings.Contains(url, "blocked") {
 				return nil, &webcontent.ContentError{Code: webcontent.ErrorCodeBlockedCloudflare, Retryable: false}
@@ -94,7 +94,7 @@ func TestSessionInstructionError(t *testing.T) {
 		},
 	})
 
-	session, err := c.Scrape().OpenSession(t.Context(), nil)
+	session, err := svc.OpenSession(t.Context(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,14 +102,14 @@ func TestSessionInstructionError(t *testing.T) {
 	defer func() { _ = session.Close() }()
 
 	// The failing instruction errors...
-	_, err = session.Fetch(t.Context(), &webcontent.Instruction{URL: "https://example.com/blocked"})
+	_, err = session.Fetch(t.Context(), "https://example.com/blocked", nil)
 
 	var ce *webcontent.ContentError
 	if !errors.As(err, &ce) || ce.Code != webcontent.ErrorCodeBlockedCloudflare {
 		t.Fatalf("err = %#v, want ContentError BLOCKED_CLOUDFLARE", err)
 	}
 	// ...while the session stays usable.
-	result, err := session.Fetch(t.Context(), &webcontent.Instruction{URL: "https://example.com/fine"})
+	result, err := session.Fetch(t.Context(), "https://example.com/fine", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,9 +122,9 @@ func TestSessionInstructionError(t *testing.T) {
 func TestSessionFetchAfterClose(t *testing.T) {
 	t.Parallel()
 
-	c := newScrapeClient(t, &rootpullertest.Scrape{})
+	svc := newScrapeService(t, &rootpullertest.Scrape{})
 
-	session, err := c.Scrape().OpenSession(t.Context(), nil)
+	session, err := svc.OpenSession(t.Context(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +133,7 @@ func TestSessionFetchAfterClose(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = session.Fetch(t.Context(), &webcontent.Instruction{URL: "https://example.com"})
+	_, err = session.Fetch(t.Context(), "https://example.com", nil)
 	if !errors.Is(err, webcontent.ErrSessionClosed) {
 		t.Fatalf("err = %v, want ErrSessionClosed", err)
 	}

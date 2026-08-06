@@ -8,7 +8,7 @@ import (
 
 	"connectrpc.com/connect"
 
-	"github.com/entwico/rootpuller-sdk/common"
+	rootpullersdk "github.com/entwico/rootpuller-sdk"
 	commonpb "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/common"
 	unshakalerpb "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/unshakaler"
 	"github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/unshakaler/unshakalerconnect"
@@ -21,7 +21,7 @@ import (
 // input; a nil UpscaleFunc echoes the input with an "upscaled-" name
 // prefix. Progress values are streamed before the result.
 type Unshakaler struct {
-	UpscaleFunc func(model string, image common.File) (*common.File, error)
+	UpscaleFunc func(model string, image rootpullersdk.File) (*rootpullersdk.File, error)
 	Progress    []float32
 }
 
@@ -36,7 +36,7 @@ type unshakalerHandler struct {
 func (h *unshakalerHandler) UpscaleImage(_ context.Context, stream *connect.BidiStream[unshakalerpb.UpscaleImageRequest, unshakalerpb.UpscaleImageResponse]) error {
 	var (
 		params *unshakalerpb.UpscaleImageRequest_Params
-		input  common.File
+		input  rootpullersdk.File
 	)
 	// Like the real server: drain the full request before any work.
 
@@ -76,8 +76,8 @@ func (h *unshakalerHandler) UpscaleImage(_ context.Context, stream *connect.Bidi
 
 	upscale := h.fake.UpscaleFunc
 	if upscale == nil {
-		upscale = func(_ string, image common.File) (*common.File, error) {
-			return &common.File{Name: "upscaled-" + image.Name, MIMEType: image.MIMEType, Data: image.Data}, nil
+		upscale = func(_ string, image rootpullersdk.File) (*rootpullersdk.File, error) {
+			return &rootpullersdk.File{Name: "upscaled-" + image.Name, MIMEType: image.MIMEType, Data: image.Data}, nil
 		}
 	}
 
@@ -104,7 +104,7 @@ func (h *unshakalerHandler) UpscaleImage(_ context.Context, stream *connect.Bidi
 // SendFileChunks streams a file back to the client the way the real
 // server does: 2 MiB chunks, each repeating name, MIME type, and the
 // total content length. Exported for use by hand-built test handlers.
-func SendFileChunks(f *common.File, send func(*commonpb.FileChunk) error) error {
+func SendFileChunks(f *rootpullersdk.File, send func(*commonpb.FileChunk) error) error {
 	const chunkSize = 2 << 20
 
 	data := f.Data

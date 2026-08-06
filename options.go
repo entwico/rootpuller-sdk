@@ -1,12 +1,15 @@
-package rootpuller
+package rootpullersdk
 
 import (
 	"crypto/tls"
 	"net/http"
+	"time"
 
 	"connectrpc.com/connect"
 	"connectrpc.com/otelconnect"
 	"golang.org/x/oauth2"
+
+	"github.com/entwico/rootpuller-sdk/internal/transport"
 )
 
 // DefaultReadMaxBytes caps the size of a single received message. The
@@ -21,6 +24,7 @@ type config struct {
 	otelEnabled      bool
 	otelOptions      []otelconnect.Option
 	readMaxBytes     int
+	retry            *transport.RetryConfig
 	userInterceptors []connect.Interceptor
 }
 
@@ -72,6 +76,47 @@ func WithOTel(opts ...otelconnect.Option) Option {
 // WithReadMaxBytes overrides DefaultReadMaxBytes for received messages.
 func WithReadMaxBytes(n int) Option {
 	return func(c *config) { c.readMaxBytes = n }
+}
+
+// RetryOptions bounds the retry loop enabled by WithRetry. Zero fields
+// take the defaults noted per field.
+type RetryOptions struct {
+	// MaxAttempts is the total number of tries including the first
+	// (default 4).
+	MaxAttempts int
+	// MaxElapsed caps the whole retry budget including waits (default
+	// 20s).
+	MaxElapsed time.Duration
+	// InitialInterval is the first backoff delay, doubling per attempt
+	// with jitter (default 500ms). The server's RetryAfter hint
+	// overrides the schedule when present.
+	InitialInterval time.Duration
+}
+
+// WithRetry retries transiently failing unary calls (IsTransient:
+// Unavailable, DeadlineExceeded, ResourceExhausted, Aborted) with
+// exponential backoff, honoring the server's retry hints. Streaming
+// calls are never retried automatically.
+func WithRetry(opts RetryOptions) Option {
+	if opts.MaxAttempts <= 0 {
+		opts.MaxAttempts = 4
+	}
+
+	if opts.MaxElapsed <= 0 {
+		opts.MaxElapsed = 20 * time.Second
+	}
+
+	if opts.InitialInterval <= 0 {
+		opts.InitialInterval = 500 * time.Millisecond
+	}
+
+	return func(c *config) {
+		c.retry = &transport.RetryConfig{
+			MaxAttempts:     opts.MaxAttempts,
+			MaxElapsed:      opts.MaxElapsed,
+			InitialInterval: opts.InitialInterval,
+		}
+	}
 }
 
 // WithInterceptors appends custom connect interceptors after the SDK's

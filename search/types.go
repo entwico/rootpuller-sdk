@@ -6,7 +6,7 @@ import (
 
 	"connectrpc.com/connect"
 
-	"github.com/entwico/rootpuller-sdk/apierror"
+	"github.com/entwico/rootpuller-sdk/internal/apierr"
 	searchpb "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/search"
 )
 
@@ -127,27 +127,7 @@ func (f Freshness) toProto() (*searchpb.Freshness, error) {
 }
 
 func invalidArgument(msg string) error {
-	return apierror.New(connect.CodeInvalidArgument, msg, "", 0, nil)
-}
-
-// Request configures Search. Nil pointer and zero-value enum fields keep
-// the provider or gateway defaults noted per field.
-type Request struct {
-	Provider Provider
-	// Query is the search text, plain. Required.
-	Query string
-	Type  Type
-	// MaxResults caps the number of results; the gateway clamps it to
-	// the provider's supported range (provider default, typically 10,
-	// when nil).
-	MaxResults *int
-	// Country localizes results, ISO 3166-1 alpha-2 (e.g. "DE");
-	// provider default when nil.
-	Country *string
-	// Language is the result language, ISO 639-1 (e.g. "de"); provider
-	// default when nil.
-	Language  *string
-	Freshness Freshness
+	return apierr.New(connect.CodeInvalidArgument, msg, "", 0, nil)
 }
 
 // Result is one search hit. Results come back in provider ranking order.

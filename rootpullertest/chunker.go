@@ -6,7 +6,7 @@ import (
 
 	"connectrpc.com/connect"
 
-	"github.com/entwico/rootpuller-sdk/common"
+	rootpullersdk "github.com/entwico/rootpuller-sdk"
 	chunkerpb "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/chunker"
 	"github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/chunker/chunkerconnect"
 	commonpb "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/common"
@@ -17,7 +17,7 @@ import (
 // one chunk slice per text. A nil ChunkFunc echoes each text as a single
 // chunk.
 type Chunker struct {
-	ChunkFunc func(method string, texts []string) ([][]common.TextChunk, error)
+	ChunkFunc func(method string, texts []string) ([][]rootpullersdk.TextChunk, error)
 }
 
 func (f *Chunker) register(mux *http.ServeMux) {
@@ -67,10 +67,10 @@ func (h *chunkerHandler) ChunkSlumber(_ context.Context, req *connect.Request[ch
 func (h *chunkerHandler) respond(method string, texts []string) (*connect.Response[chunkerpb.TextChunkResponse], error) {
 	chunkFunc := h.fake.ChunkFunc
 	if chunkFunc == nil {
-		chunkFunc = func(_ string, texts []string) ([][]common.TextChunk, error) {
-			out := make([][]common.TextChunk, len(texts))
+		chunkFunc = func(_ string, texts []string) ([][]rootpullersdk.TextChunk, error) {
+			out := make([][]rootpullersdk.TextChunk, len(texts))
 			for i, t := range texts {
-				out[i] = []common.TextChunk{{Text: t, EndIndex: len(t), TokenCount: len(t)}}
+				out[i] = []rootpullersdk.TextChunk{{Text: t, EndIndex: len(t), TokenCount: len(t)}}
 			}
 
 			return out, nil

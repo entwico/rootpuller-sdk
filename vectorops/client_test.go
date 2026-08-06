@@ -7,30 +7,22 @@ import (
 
 	"connectrpc.com/connect"
 
-	"github.com/entwico/rootpuller-sdk/apierror"
-	"github.com/entwico/rootpuller-sdk/internal/transport"
+	rootpullersdk "github.com/entwico/rootpuller-sdk"
 	"github.com/entwico/rootpuller-sdk/rootpullertest"
 	"github.com/entwico/rootpuller-sdk/vectorops"
 )
 
 var errGPUBusy = errors.New("gpu busy")
 
-// newClient dials baseURL the same way rootpuller.New does. The
-// rootpuller.Client accessor for this service is wired separately, so the
-// tests construct the service client directly from a transport.Core.
-func newClient(t *testing.T, baseURL string) *vectorops.Client {
+func newService(t *testing.T, baseURL string) *vectorops.Service {
 	t.Helper()
 
-	httpClient, err := transport.NewHTTPClient(baseURL, nil)
+	sdk, err := rootpullersdk.New(baseURL)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	return vectorops.NewFromCore(&transport.Core{
-		HTTPClient: httpClient,
-		BaseURL:    baseURL,
-		ClientOpts: []connect.ClientOption{connect.WithGRPC()},
-	})
+	return vectorops.NewService(sdk)
 }
 
 // testMatrix builds a rows x cols matrix with deterministic content and
@@ -60,13 +52,13 @@ func TestClusterHdbscanRoundTrip(t *testing.T) {
 
 	var (
 		gotPoints vectorops.Matrix
-		gotParams *vectorops.HdbscanParams
+		gotOpts   *vectorops.HdbscanOptions
 	)
 
 	srv := rootpullertest.NewServer(t, &rootpullertest.VectorOps{
-		ClusterFunc: func(points vectorops.Matrix, params *vectorops.HdbscanParams) (*vectorops.HdbscanResult, error) {
+		ClusterFunc: func(points vectorops.Matrix, opts *vectorops.HdbscanOptions) (*vectorops.HdbscanResult, error) {
 			gotPoints = points
-			gotParams = params
+			gotOpts = opts
 
 			result := &vectorops.HdbscanResult{
 				NumClusters:   3,
@@ -85,12 +77,11 @@ func TestClusterHdbscanRoundTrip(t *testing.T) {
 		},
 	})
 
-	c := newClient(t, srv.URL)
+	svc := newService(t, srv.URL)
 	points := testMatrix(rows, cols)
-	minClusterSize := 15
 
-	result, err := c.ClusterHdbscan(t.Context(), points, &vectorops.HdbscanParams{
-		MinClusterSize:         &minClusterSize,
+	result, err := svc.ClusterHdbscan(t.Context(), points, &vectorops.HdbscanOptions{
+		MinClusterSize:         15,
 		Metric:                 vectorops.DistanceMetricEuclidean,
 		ClusterSelectionMethod: vectorops.ClusterSelectionMethodLeaf,
 	})
@@ -112,12 +103,12 @@ func TestClusterHdbscanRoundTrip(t *testing.T) {
 		t.Errorf("server saw %d ids (first %q)", len(gotPoints.IDs), gotPoints.IDs[0])
 	}
 
-	if gotParams == nil || gotParams.MinClusterSize == nil || *gotParams.MinClusterSize != 15 {
-		t.Errorf("server saw params %+v, want MinClusterSize 15", gotParams)
+	if gotOpts == nil || gotOpts.MinClusterSize != 15 {
+		t.Errorf("server saw options %+v, want MinClusterSize 15", gotOpts)
 	}
 
-	if gotParams.Metric != vectorops.DistanceMetricEuclidean || gotParams.ClusterSelectionMethod != vectorops.ClusterSelectionMethodLeaf {
-		t.Errorf("server saw metric %q method %q", gotParams.Metric, gotParams.ClusterSelectionMethod)
+	if gotOpts.Metric != vectorops.DistanceMetricEuclidean || gotOpts.ClusterSelectionMethod != vectorops.ClusterSelectionMethodLeaf {
+		t.Errorf("server saw metric %q method %q", gotOpts.Metric, gotOpts.ClusterSelectionMethod)
 	}
 
 	// The client must have reassembled the full per-point arrays.
@@ -160,7 +151,7 @@ func TestProjectUmapRoundTrip(t *testing.T) {
 		},
 	})
 
-	c := newClient(t, srv.URL)
+	svc := newService(t, srv.URL)
 	points := testMatrix(rows, cols)
 
 	labels := make([]int32, rows)
@@ -168,10 +159,8 @@ func TestProjectUmapRoundTrip(t *testing.T) {
 		labels[i] = int32(i % 7)
 	}
 
-	nComponents := 3
-
-	result, err := c.ProjectUmap(t.Context(), points, &vectorops.UmapParams{
-		NComponents:      &nComponents,
+	result, err := svc.ProjectUmap(t.Context(), points, &vectorops.UmapOptions{
+		NComponents:      3,
 		Metric:           vectorops.DistanceMetricCosine,
 		SupervisedLabels: labels,
 	})
@@ -201,27 +190,27 @@ func TestMatrixValidationFailsLocally(t *testing.T) {
 	t.Parallel()
 
 	// No server: local validation must fail before any dial.
-	c := newClient(t, "http://127.0.0.1:1")
+	svc := newService(t, "http://127.0.0.1:1")
 
 	// Data length disagreeing with rows*cols.
 	bad := vectorops.Matrix{Data: make([]float32, 10), Rows: 3, Cols: 4}
-	if _, err := c.ClusterHdbscan(t.Context(), bad, nil); !errors.Is(err, apierror.ErrInvalidArgument) {
+	if _, err := svc.ClusterHdbscan(t.Context(), bad, nil); !errors.Is(err, rootpullersdk.ErrInvalidArgument) {
 		t.Errorf("ClusterHdbscan(data mismatch) err = %v, want ErrInvalidArgument", err)
 	}
 
-	if _, err := c.ProjectUmap(t.Context(), bad, nil); !errors.Is(err, apierror.ErrInvalidArgument) {
+	if _, err := svc.ProjectUmap(t.Context(), bad, nil); !errors.Is(err, rootpullersdk.ErrInvalidArgument) {
 		t.Errorf("ProjectUmap(data mismatch) err = %v, want ErrInvalidArgument", err)
 	}
 
 	// IDs length disagreeing with rows.
 	badIDs := vectorops.Matrix{Data: make([]float32, 12), Rows: 3, Cols: 4, IDs: []string{"only-one"}}
-	if _, err := c.ClusterHdbscan(t.Context(), badIDs, nil); !errors.Is(err, apierror.ErrInvalidArgument) {
+	if _, err := svc.ClusterHdbscan(t.Context(), badIDs, nil); !errors.Is(err, rootpullersdk.ErrInvalidArgument) {
 		t.Errorf("ClusterHdbscan(ids mismatch) err = %v, want ErrInvalidArgument", err)
 	}
 
 	// Supervised labels length disagreeing with rows.
 	good := vectorops.Matrix{Data: make([]float32, 12), Rows: 3, Cols: 4}
-	if _, err := c.ProjectUmap(t.Context(), good, &vectorops.UmapParams{SupervisedLabels: []int32{1}}); !errors.Is(err, apierror.ErrInvalidArgument) {
+	if _, err := svc.ProjectUmap(t.Context(), good, &vectorops.UmapOptions{SupervisedLabels: []int32{1}}); !errors.Is(err, rootpullersdk.ErrInvalidArgument) {
 		t.Errorf("ProjectUmap(labels mismatch) err = %v, want ErrInvalidArgument", err)
 	}
 }
@@ -230,24 +219,24 @@ func TestServerErrorSurfacesAsAPIError(t *testing.T) {
 	t.Parallel()
 
 	srv := rootpullertest.NewServer(t, &rootpullertest.VectorOps{
-		ClusterFunc: func(vectorops.Matrix, *vectorops.HdbscanParams) (*vectorops.HdbscanResult, error) {
+		ClusterFunc: func(vectorops.Matrix, *vectorops.HdbscanOptions) (*vectorops.HdbscanResult, error) {
 			return nil, connect.NewError(connect.CodeResourceExhausted, errGPUBusy)
 		},
 	})
 
-	c := newClient(t, srv.URL)
-	_, err := c.ClusterHdbscan(t.Context(), testMatrix(10, 4), nil)
+	svc := newService(t, srv.URL)
+	_, err := svc.ClusterHdbscan(t.Context(), testMatrix(10, 4), nil)
 
-	apiErr, ok := errors.AsType[*apierror.Error](err)
+	apiErr, ok := errors.AsType[*rootpullersdk.Error](err)
 	if !ok {
-		t.Fatalf("err = %T (%v), want *apierror.Error", err, err)
+		t.Fatalf("err = %T (%v), want *rootpullersdk.Error", err, err)
 	}
 
 	if apiErr.Code != connect.CodeResourceExhausted {
 		t.Errorf("Code = %v, want ResourceExhausted", apiErr.Code)
 	}
 
-	if !errors.Is(err, apierror.ErrResourceExhausted) {
+	if !errors.Is(err, rootpullersdk.ErrResourceExhausted) {
 		t.Error("errors.Is(err, ErrResourceExhausted) = false")
 	}
 }

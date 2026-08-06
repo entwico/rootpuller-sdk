@@ -11,49 +11,60 @@ import (
 	"os"
 	"testing"
 
-	rootpuller "github.com/entwico/rootpuller-sdk"
+	rootpullersdk "github.com/entwico/rootpuller-sdk"
 	"github.com/entwico/rootpuller-sdk/chunker"
+	"github.com/entwico/rootpuller-sdk/embedding"
 )
 
-func newClient(t *testing.T) *rootpuller.Client {
+func newSDK(t *testing.T) *rootpullersdk.Client {
 	t.Helper()
+
 	addr := os.Getenv("ROOTPULLER_ADDR")
 	if addr == "" {
 		t.Skip("ROOTPULLER_ADDR not set")
 	}
-	var opts []rootpuller.Option
+
+	var opts []rootpullersdk.Option
 	if token := os.Getenv("ROOTPULLER_TOKEN"); token != "" {
-		opts = append(opts, rootpuller.WithToken(token))
+		opts = append(opts, rootpullersdk.WithToken(token))
 	}
-	c, err := rootpuller.New(addr, opts...)
+
+	sdk, err := rootpullersdk.New(addr, opts...)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return c
+
+	return sdk
 }
 
 func TestChunkToken(t *testing.T) {
-	c := newClient(t)
-	chunks, err := c.Chunker().ChunkToken(t.Context(), &chunker.TokenRequest{
-		Texts: []string{"The quick brown fox jumps over the lazy dog. " + "It was a bright cold day in April."},
-		// Character tokenizer needs no model download on the worker.
-		Tokenizer: chunker.TokenizerCharacter,
-		ChunkSize: rootpuller.Ptr(16),
-	})
+	svc := chunker.NewService(newSDK(t))
+
+	chunks, err := svc.ChunkToken(t.Context(),
+		[]string{"The quick brown fox jumps over the lazy dog. It was a bright cold day in April."},
+		&chunker.TokenOptions{
+			// Character tokenizer needs no model download on the worker.
+			Tokenizer: chunker.TokenizerCharacter,
+			ChunkSize: 16,
+		})
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if len(chunks) != 1 || len(chunks[0]) == 0 {
 		t.Fatalf("unexpected chunks: %+v", chunks)
 	}
+
 	t.Logf("got %d chunks", len(chunks[0]))
 }
 
 func TestEmbeddingListModels(t *testing.T) {
-	c := newClient(t)
-	models, err := c.Embedding().ListModels(t.Context())
+	svc := embedding.NewService(newSDK(t))
+
+	models, err := svc.ListModels(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	t.Logf("server offers %d embedding models", len(models))
 }

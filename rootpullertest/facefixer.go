@@ -8,7 +8,7 @@ import (
 
 	"connectrpc.com/connect"
 
-	"github.com/entwico/rootpuller-sdk/common"
+	rootpullersdk "github.com/entwico/rootpuller-sdk"
 	"github.com/entwico/rootpuller-sdk/facefixer"
 	commonpb "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/common"
 	facefixerpb "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/facefixer"
@@ -24,7 +24,7 @@ import (
 // prefix. When Metadata is set it is streamed as the metadata frame ahead
 // of the file chunks, like the real server.
 type FaceFixer struct {
-	FixFunc  func(op string, image common.File, mask *common.File) (*common.File, error)
+	FixFunc  func(op string, image rootpullersdk.File, mask *rootpullersdk.File) (*rootpullersdk.File, error)
 	Metadata *facefixer.Metadata
 }
 
@@ -39,7 +39,7 @@ type faceFixerHandler struct {
 func (h *faceFixerHandler) RestoreFace(_ context.Context, stream *connect.BidiStream[facefixerpb.RestoreFaceRequest, facefixerpb.RestoreFaceResponse]) error {
 	var (
 		params *facefixerpb.RestoreFaceRequest_Params
-		input  common.File
+		input  rootpullersdk.File
 	)
 	// Like the real server: drain the full request before any work.
 
@@ -94,7 +94,7 @@ func (h *faceFixerHandler) RestoreFace(_ context.Context, stream *connect.BidiSt
 func (h *faceFixerHandler) ColorizeFace(_ context.Context, stream *connect.BidiStream[facefixerpb.ColorizeFaceRequest, facefixerpb.ColorizeFaceResponse]) error {
 	var (
 		params *facefixerpb.ColorizeFaceRequest_Params
-		input  common.File
+		input  rootpullersdk.File
 	)
 	// Like the real server: drain the full request before any work.
 
@@ -149,7 +149,7 @@ func (h *faceFixerHandler) ColorizeFace(_ context.Context, stream *connect.BidiS
 func (h *faceFixerHandler) InpaintFace(_ context.Context, stream *connect.BidiStream[facefixerpb.InpaintFaceRequest, facefixerpb.InpaintFaceResponse]) error {
 	var (
 		params      *facefixerpb.InpaintFaceRequest_Params
-		input, mask common.File
+		input, mask rootpullersdk.File
 	)
 
 	maskSeen := false
@@ -198,7 +198,7 @@ func (h *faceFixerHandler) InpaintFace(_ context.Context, stream *connect.BidiSt
 		return invalidArgument(errMissingParams)
 	}
 
-	var maskFile *common.File
+	var maskFile *rootpullersdk.File
 	if maskSeen {
 		maskFile = &mask
 	}
@@ -221,15 +221,15 @@ func (h *faceFixerHandler) InpaintFace(_ context.Context, stream *connect.BidiSt
 // followed by the result file, using the given per-RPC senders.
 func (h *faceFixerHandler) respond(
 	op string,
-	image common.File,
-	mask *common.File,
+	image rootpullersdk.File,
+	mask *rootpullersdk.File,
 	sendMetadata func(*facefixerpb.RestoreMetadata) error,
 	sendFile func(*commonpb.FileChunk) error,
 ) error {
 	fix := h.fake.FixFunc
 	if fix == nil {
-		fix = func(op string, image common.File, _ *common.File) (*common.File, error) {
-			return &common.File{Name: op + "-" + image.Name, MIMEType: image.MIMEType, Data: image.Data}, nil
+		fix = func(op string, image rootpullersdk.File, _ *rootpullersdk.File) (*rootpullersdk.File, error) {
+			return &rootpullersdk.File{Name: op + "-" + image.Name, MIMEType: image.MIMEType, Data: image.Data}, nil
 		}
 	}
 

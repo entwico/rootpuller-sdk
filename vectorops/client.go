@@ -11,33 +11,40 @@ import (
 
 	"connectrpc.com/connect"
 
-	"github.com/entwico/rootpuller-sdk/apierror"
+	rootpullersdk "github.com/entwico/rootpuller-sdk"
+	"github.com/entwico/rootpuller-sdk/internal/apierr"
 	vectoropspb "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/vectorops"
 	"github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/vectorops/vectoropsconnect"
 	"github.com/entwico/rootpuller-sdk/internal/streamio"
 	"github.com/entwico/rootpuller-sdk/internal/transport"
 )
 
-// Client calls the VectorOpsService. Obtain one from
-// rootpuller.Client.VectorOps.
-type Client struct {
+// Service calls the VectorOpsService.
+type Service struct {
 	rpc        vectoropsconnect.VectorOpsServiceClient
 	deployment string
 }
 
-// NewFromCore is the internal constructor used by rootpuller.New.
-func NewFromCore(core *transport.Core) *Client {
-	return &Client{rpc: vectoropsconnect.NewVectorOpsServiceClient(core.HTTPClient, core.BaseURL, core.ClientOpts...)}
+// Option configures a Service at construction.
+type Option func(*Service)
+
+// WithDeployment sends the rootpuller-deployment routing header (e.g.
+// "local", "cloudrun") on every call. A per-call
+// rootpullersdk.ContextWithDeployment value still wins.
+func WithDeployment(name string) Option {
+	return func(s *Service) { s.deployment = name }
 }
 
-// WithDeployment returns a client that sends the rootpuller-deployment
-// routing header (e.g. "local", "cloudrun") on every call. A per-call
-// rootpuller.ContextWithDeployment value still wins.
-func (c *Client) WithDeployment(name string) *Client {
-	derived := *c
-	derived.deployment = name
+// NewService builds a VectorOpsService client on the sdk connection.
+func NewService(sdk *rootpullersdk.Client, opts ...Option) *Service {
+	core := sdk.TransportCore()
 
-	return &derived
+	s := &Service{rpc: vectoropsconnect.NewVectorOpsServiceClient(core.HTTPClient, core.BaseURL, core.ClientOpts...)}
+	for _, opt := range opts {
+		opt(s)
+	}
+
+	return s
 }
 
 // Outbound chunk sizing. Frames must stay under streamio.MaxChunkBytes
@@ -99,21 +106,21 @@ func labelFrames(labels []int32) iter.Seq2[*vectoropspb.ProjectUmapRequest, erro
 // clusters with HDBSCAN, labelling low-density points as noise. On the
 // wire it sends exactly one header frame, then the points matrix as
 // chunks, half-closes, and collects one metadata frame followed by
-// row-aligned result chunks. A nil params keeps all server defaults.
-func (c *Client) ClusterHdbscan(ctx context.Context, points Matrix, params *HdbscanParams) (*HdbscanResult, error) {
-	ctx = transport.EnsureDeployment(ctx, c.deployment)
+// row-aligned result chunks. A nil opts keeps all server defaults.
+func (s *Service) ClusterHdbscan(ctx context.Context, points Matrix, opts *HdbscanOptions) (*HdbscanResult, error) {
+	ctx = transport.EnsureDeployment(ctx, s.deployment)
 
 	if err := points.validate(); err != nil {
 		return nil, err
 	}
 
-	header, err := params.toHeader(&points)
+	header, err := opts.toHeader(&points)
 	if err != nil {
 		return nil, err
 	}
 
 	procedure := vectoropsconnect.VectorOpsServiceClusterHdbscanProcedure
-	stream := c.rpc.ClusterHdbscan(ctx)
+	stream := s.rpc.ClusterHdbscan(ctx)
 
 	frames := streamio.Frames(
 		&vectoropspb.ClusterHdbscanRequest{Request: &vectoropspb.ClusterHdbscanRequest_Header_{Header: header}},
@@ -146,11 +153,11 @@ func (c *Client) ClusterHdbscan(ctx context.Context, points Matrix, params *Hdbs
 	}
 
 	if !gotMetadata {
-		return nil, apierror.New(connect.CodeInternal, "server sent no metadata frame", procedure, 0, nil)
+		return nil, apierr.New(connect.CodeInternal, "server sent no metadata frame", procedure, 0, nil)
 	}
 
 	if len(result.Labels) != points.Rows {
-		return nil, apierror.New(connect.CodeInternal,
+		return nil, apierr.New(connect.CodeInternal,
 			fmt.Sprintf("server streamed %d labels, want %d (one per input row)", len(result.Labels), points.Rows),
 			procedure, 0, nil)
 	}
@@ -161,32 +168,32 @@ func (c *Client) ClusterHdbscan(ctx context.Context, points Matrix, params *Hdbs
 // ProjectUmap calls VectorOpsService/ProjectUmap: reduces points to a
 // lower-dimensional embedding via UMAP. On the wire it sends exactly one
 // header frame, then the points matrix as chunks (plus supervised-labels
-// chunks when params.SupervisedLabels is set), half-closes, and collects
+// chunks when opts.SupervisedLabels is set), half-closes, and collects
 // one metadata frame (output dimensions) followed by row-aligned embedding
-// chunks. A nil params keeps all server defaults.
-func (c *Client) ProjectUmap(ctx context.Context, points Matrix, params *UmapParams) (*UmapResult, error) {
-	ctx = transport.EnsureDeployment(ctx, c.deployment)
+// chunks. A nil opts keeps all server defaults.
+func (s *Service) ProjectUmap(ctx context.Context, points Matrix, opts *UmapOptions) (*UmapResult, error) {
+	ctx = transport.EnsureDeployment(ctx, s.deployment)
 
 	if err := points.validate(); err != nil {
 		return nil, err
 	}
 
 	var labels []int32
-	if params != nil {
-		labels = params.SupervisedLabels
+	if opts != nil {
+		labels = opts.SupervisedLabels
 	}
 
 	if len(labels) != 0 && len(labels) != points.Rows {
 		return nil, invalidArgument(fmt.Sprintf("got %d supervised labels for %d rows; labels must be empty or one per row", len(labels), points.Rows))
 	}
 
-	header, err := params.toHeader(&points)
+	header, err := opts.toHeader(&points)
 	if err != nil {
 		return nil, err
 	}
 
 	procedure := vectoropsconnect.VectorOpsServiceProjectUmapProcedure
-	stream := c.rpc.ProjectUmap(ctx)
+	stream := s.rpc.ProjectUmap(ctx)
 
 	frames := streamio.Frames(
 		&vectoropspb.ProjectUmapRequest{Request: &vectoropspb.ProjectUmapRequest_Header_{Header: header}},
@@ -219,11 +226,11 @@ func (c *Client) ProjectUmap(ctx context.Context, points Matrix, params *UmapPar
 	}
 
 	if !gotMetadata {
-		return nil, apierror.New(connect.CodeInternal, "server sent no metadata frame", procedure, 0, nil)
+		return nil, apierr.New(connect.CodeInternal, "server sent no metadata frame", procedure, 0, nil)
 	}
 
 	if want := result.Embedding.Rows * result.Embedding.Cols; len(result.Embedding.Data) != want {
-		return nil, apierror.New(connect.CodeInternal,
+		return nil, apierr.New(connect.CodeInternal,
 			fmt.Sprintf("server streamed %d embedding values, want %d (declared %d rows x %d cols)",
 				len(result.Embedding.Data), want, result.Embedding.Rows, result.Embedding.Cols),
 			procedure, 0, nil)

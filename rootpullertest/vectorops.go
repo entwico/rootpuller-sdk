@@ -22,7 +22,7 @@ import (
 // first two input columns). Results are streamed back in row-aligned
 // chunks of 1000 rows to exercise multi-chunk reassembly.
 type VectorOps struct {
-	ClusterFunc func(points vectorops.Matrix, params *vectorops.HdbscanParams) (*vectorops.HdbscanResult, error)
+	ClusterFunc func(points vectorops.Matrix, opts *vectorops.HdbscanOptions) (*vectorops.HdbscanResult, error)
 	UmapFunc    func(points vectorops.Matrix, labels []int32) (*vectorops.UmapResult, error)
 }
 
@@ -95,7 +95,7 @@ func (h *vectorOpsHandler) ClusterHdbscan(_ context.Context, stream *connect.Bid
 
 	cluster := h.fake.ClusterFunc
 	if cluster == nil {
-		cluster = func(points vectorops.Matrix, _ *vectorops.HdbscanParams) (*vectorops.HdbscanResult, error) {
+		cluster = func(points vectorops.Matrix, _ *vectorops.HdbscanOptions) (*vectorops.HdbscanResult, error) {
 			result := &vectorops.HdbscanResult{
 				NumClusters:   1,
 				Labels:        make([]int32, points.Rows),
@@ -111,7 +111,7 @@ func (h *vectorOpsHandler) ClusterHdbscan(_ context.Context, stream *connect.Bid
 		}
 	}
 
-	result, err := cluster(points, hdbscanParamsFromProto(header))
+	result, err := cluster(points, hdbscanOptionsFromProto(header))
 	if err != nil {
 		return err
 	}
@@ -297,24 +297,14 @@ func buildFacadeMatrix(rows, cols int32, data []float32, ids []string) (vectorop
 	return vectorops.Matrix{Data: data, Rows: int(rows), Cols: int(cols), IDs: ids}, nil
 }
 
-func hdbscanParamsFromProto(h *vectoropspb.ClusterHdbscanRequest_Header) *vectorops.HdbscanParams {
-	return &vectorops.HdbscanParams{
-		MinClusterSize:          intPtrFromInt32(h.MinClusterSize),
-		MinSamples:              intPtrFromInt32(h.MinSamples),
+func hdbscanOptionsFromProto(h *vectoropspb.ClusterHdbscanRequest_Header) *vectorops.HdbscanOptions {
+	return &vectorops.HdbscanOptions{
+		MinClusterSize:          int(h.GetMinClusterSize()),
+		MinSamples:              int(h.GetMinSamples()),
 		ClusterSelectionEpsilon: h.ClusterSelectionEpsilon,
 		Metric:                  distanceMetricFromProto(h.GetMetric()),
 		ClusterSelectionMethod:  clusterSelectionMethodFromProto(h.GetClusterSelectionMethod()),
 	}
-}
-
-func intPtrFromInt32(p *int32) *int {
-	if p == nil {
-		return nil
-	}
-
-	v := int(*p)
-
-	return &v
 }
 
 func distanceMetricFromProto(m vectoropspb.DistanceMetric) vectorops.DistanceMetric {

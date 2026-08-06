@@ -10,58 +10,100 @@ import (
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	rootpullersdk "github.com/entwico/rootpuller-sdk"
 	rerankpb "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/rerank"
 	"github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/rerank/rerankconnect"
 	"github.com/entwico/rootpuller-sdk/internal/protoconv"
 	"github.com/entwico/rootpuller-sdk/internal/transport"
 )
 
-// Client calls the RerankService. Obtain one from
-// rootpuller.Client.Rerank.
-type Client struct {
-	rpc        rerankconnect.RerankServiceClient
-	deployment string
+// Service calls the RerankService.
+type Service struct {
+	rpc          rerankconnect.RerankServiceClient
+	deployment   string
+	defaultModel string
 }
 
-// NewFromCore is the internal constructor used by rootpuller.New.
-func NewFromCore(core *transport.Core) *Client {
-	return &Client{rpc: rerankconnect.NewRerankServiceClient(core.HTTPClient, core.BaseURL, core.ClientOpts...)}
+// Option configures a Service at construction.
+type Option func(*Service)
+
+// WithDeployment sends the rootpuller-deployment routing header (e.g.
+// "local", "cloudrun") on every call. A per-call
+// rootpullersdk.ContextWithDeployment value still wins.
+func WithDeployment(name string) Option {
+	return func(s *Service) { s.deployment = name }
 }
 
-// WithDeployment returns a client that sends the rootpuller-deployment
-// routing header (e.g. "local", "cloudrun") on every call. A per-call
-// rootpuller.ContextWithDeployment value still wins.
-func (c *Client) WithDeployment(name string) *Client {
-	derived := *c
-	derived.deployment = name
-
-	return &derived
+// WithDefaultModel sets the reranker model used when a call's Options
+// leave Model empty.
+func WithDefaultModel(modelID string) Option {
+	return func(s *Service) { s.defaultModel = modelID }
 }
 
-// Rerank calls RerankService/Rerank: scores the request's documents
-// against its query and returns them sorted by descending relevance.
-func (c *Client) Rerank(ctx context.Context, req *Request) (*Response, error) {
-	ctx = transport.EnsureDeployment(ctx, c.deployment)
+// NewService builds a RerankService client on the sdk connection.
+func NewService(sdk *rootpullersdk.Client, opts ...Option) *Service {
+	core := sdk.TransportCore()
 
-	model, err := req.Model.toProto()
+	s := &Service{rpc: rerankconnect.NewRerankServiceClient(core.HTTPClient, core.BaseURL, core.ClientOpts...)}
+	for _, opt := range opts {
+		opt(s)
+	}
+
+	return s
+}
+
+// Options tunes a Rerank call. Nil keeps all defaults.
+type Options struct {
+	// Model overrides the service default reranker model.
+	Model string
+	// InferenceBackend pins the local inference engine.
+	InferenceBackend InferenceBackend
+	// TopN returns only the N best documents (0 = all).
+	TopN int
+	// MaxTokens overrides the model's input truncation limit.
+	MaxTokens int
+	// ReturnDocuments echoes the document texts in the results.
+	ReturnDocuments bool
+}
+
+// Rerank calls RerankService/Rerank: scores every document against the
+// query and returns results sorted by descending relevance.
+func (s *Service) Rerank(ctx context.Context, query string, documents []string, opts *Options) (*Response, error) {
+	ctx = transport.EnsureDeployment(ctx, s.deployment)
+
+	if opts == nil {
+		opts = &Options{}
+	}
+
+	modelID := opts.Model
+	if modelID == "" {
+		modelID = s.defaultModel
+	}
+
+	model, err := ModelRef{ModelID: modelID, InferenceBackend: opts.InferenceBackend}.toProto()
 	if err != nil {
 		return nil, err
 	}
 
 	msg := &rerankpb.RerankRequest{
-		Query:     req.Query,
-		Documents: req.Documents,
+		Query:     query,
+		Documents: documents,
 		Model:     model,
 	}
-	if req.TopN != nil || req.MaxTokens != nil || req.ReturnDocuments {
+	if opts.TopN > 0 || opts.MaxTokens > 0 || opts.ReturnDocuments {
 		msg.Options = &rerankpb.RerankOptions{
-			TopN:            protoconv.Int32Ptr(req.TopN),
-			MaxTokens:       protoconv.Int32Ptr(req.MaxTokens),
-			ReturnDocuments: req.ReturnDocuments,
+			ReturnDocuments: opts.ReturnDocuments,
+		}
+		if opts.TopN > 0 {
+			msg.Options.TopN = protoconv.Int32Ptr(&opts.TopN)
+		}
+
+		if opts.MaxTokens > 0 {
+			msg.Options.MaxTokens = protoconv.Int32Ptr(&opts.MaxTokens)
 		}
 	}
 
-	resp, err := c.rpc.Rerank(ctx, connect.NewRequest(msg))
+	resp, err := s.rpc.Rerank(ctx, connect.NewRequest(msg))
 	if err != nil {
 		return nil, transport.WrapError(err, rerankconnect.RerankServiceRerankProcedure)
 	}
@@ -85,10 +127,10 @@ func (c *Client) Rerank(ctx context.Context, req *Request) (*Response, error) {
 
 // ListModels calls RerankService/ListModels: lists the reranker models
 // available on the server.
-func (c *Client) ListModels(ctx context.Context) ([]ModelInfo, error) {
-	ctx = transport.EnsureDeployment(ctx, c.deployment)
+func (s *Service) ListModels(ctx context.Context) ([]ModelInfo, error) {
+	ctx = transport.EnsureDeployment(ctx, s.deployment)
 
-	resp, err := c.rpc.ListModels(ctx, connect.NewRequest(&emptypb.Empty{}))
+	resp, err := s.rpc.ListModels(ctx, connect.NewRequest(&emptypb.Empty{}))
 	if err != nil {
 		return nil, transport.WrapError(err, rerankconnect.RerankServiceListModelsProcedure)
 	}

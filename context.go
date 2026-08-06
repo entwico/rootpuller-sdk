@@ -1,4 +1,4 @@
-package rootpuller
+package rootpullersdk
 
 import (
 	"context"

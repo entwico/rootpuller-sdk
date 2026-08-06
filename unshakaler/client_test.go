@@ -6,14 +6,23 @@ import (
 	"slices"
 	"testing"
 
-	rootpuller "github.com/entwico/rootpuller-sdk"
-	"github.com/entwico/rootpuller-sdk/apierror"
-	"github.com/entwico/rootpuller-sdk/common"
+	rootpullersdk "github.com/entwico/rootpuller-sdk"
 	"github.com/entwico/rootpuller-sdk/rootpullertest"
 	"github.com/entwico/rootpuller-sdk/unshakaler"
 )
 
 var errModelNotFound = errors.New("model not found")
+
+func newService(t *testing.T, baseURL string, opts ...unshakaler.Option) *unshakaler.Service {
+	t.Helper()
+
+	sdk, err := rootpullersdk.New(baseURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return unshakaler.NewService(sdk, opts...)
+}
 
 func TestUpscaleImageRoundTrip(t *testing.T) {
 	t.Parallel()
@@ -25,28 +34,25 @@ func TestUpscaleImageRoundTrip(t *testing.T) {
 
 	srv := rootpullertest.NewServer(t, &rootpullertest.Unshakaler{
 		Progress: []float32{25, 50, 100},
-		UpscaleFunc: func(model string, image common.File) (*common.File, error) {
+		UpscaleFunc: func(model string, image rootpullersdk.File) (*rootpullersdk.File, error) {
 			gotModel = model
 
-			return &common.File{Name: "big-" + image.Name, MIMEType: image.MIMEType, Data: image.Data}, nil
+			return &rootpullersdk.File{Name: "big-" + image.Name, MIMEType: image.MIMEType, Data: image.Data}, nil
 		},
 	})
 
-	c, err := rootpuller.New(srv.URL)
-	if err != nil {
-		t.Fatal(err)
-	}
+	svc := newService(t, srv.URL)
 
 	var progress []float32
 
-	result, err := c.Unshakaler().UpscaleImage(t.Context(),
-		&unshakaler.UpscaleParams{
+	result, err := svc.UpscaleImage(t.Context(),
+		rootpullersdk.UploadBytes("photo.png", "image/png", payload),
+		&unshakaler.Options{
 			Model:       "realesrgan-x4plus",
-			ScaleFactor: new(4),
-			Format:      common.ImageFormatPNG,
+			ScaleFactor: 4,
+			Format:      rootpullersdk.ImageFormatPNG,
 			OnProgress:  func(p float32) { progress = append(progress, p) },
 		},
-		common.UploadBytes("photo.png", "image/png", payload),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -69,46 +75,81 @@ func TestUpscaleImageRoundTrip(t *testing.T) {
 	}
 }
 
-func TestUpscaleImageServerError(t *testing.T) {
+func TestServiceDefaults(t *testing.T) {
 	t.Parallel()
 
+	var gotModel string
+
 	srv := rootpullertest.NewServer(t, &rootpullertest.Unshakaler{
-		UpscaleFunc: func(string, common.File) (*common.File, error) {
-			return nil, errModelNotFound
+		UpscaleFunc: func(model string, image rootpullersdk.File) (*rootpullersdk.File, error) {
+			gotModel = model
+
+			return &rootpullersdk.File{Name: image.Name, MIMEType: image.MIMEType, Data: image.Data}, nil
 		},
 	})
 
-	c, err := rootpuller.New(srv.URL)
+	svc := newService(t, srv.URL, unshakaler.WithDefaultModel("realesrgan-x4plus"))
+
+	// The construction-time default model applies when Options leave it
+	// empty...
+	_, err := svc.UpscaleImage(t.Context(),
+		rootpullersdk.UploadBytes("x.png", "image/png", []byte{1}), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	_, err = c.Unshakaler().UpscaleImage(t.Context(),
-		&unshakaler.UpscaleParams{Model: "nope"},
-		common.UploadBytes("x.png", "image/png", []byte{1}),
+	if gotModel != "realesrgan-x4plus" {
+		t.Errorf("model = %q, want service default", gotModel)
+	}
+
+	// ...and a per-call model wins over the default.
+	_, err = svc.UpscaleImage(t.Context(),
+		rootpullersdk.UploadBytes("x.png", "image/png", []byte{1}),
+		&unshakaler.Options{Model: "other"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if gotModel != "other" {
+		t.Errorf("model = %q, want per-call override", gotModel)
+	}
+}
+
+func TestUpscaleImageServerError(t *testing.T) {
+	t.Parallel()
+
+	srv := rootpullertest.NewServer(t, &rootpullertest.Unshakaler{
+		UpscaleFunc: func(string, rootpullersdk.File) (*rootpullersdk.File, error) {
+			return nil, errModelNotFound
+		},
+	})
+
+	svc := newService(t, srv.URL)
+
+	_, err := svc.UpscaleImage(t.Context(),
+		rootpullersdk.UploadBytes("x.png", "image/png", []byte{1}),
+		&unshakaler.Options{Model: "nope"},
 	)
 	if err == nil {
 		t.Fatal("want error")
 	}
 
-	if _, ok := errors.AsType[*apierror.Error](err); !ok {
-		t.Fatalf("err = %#v, want *apierror.Error", err)
+	if _, ok := errors.AsType[*rootpullersdk.Error](err); !ok {
+		t.Fatalf("err = %#v, want *rootpullersdk.Error", err)
 	}
 }
 
 func TestUpscaleImageInvalidFormatFailsLocally(t *testing.T) {
 	t.Parallel()
 
-	c, err := rootpuller.New("http://127.0.0.1:1")
-	if err != nil {
-		t.Fatal(err)
-	}
+	// No server: local validation must fail before any dial.
+	svc := newService(t, "http://127.0.0.1:1")
 
-	_, err = c.Unshakaler().UpscaleImage(t.Context(),
-		&unshakaler.UpscaleParams{Format: common.ImageFormat("bmp")},
-		common.UploadBytes("x.png", "image/png", []byte{1}),
+	_, err := svc.UpscaleImage(t.Context(),
+		rootpullersdk.UploadBytes("x.png", "image/png", []byte{1}),
+		&unshakaler.Options{Format: rootpullersdk.ImageFormat("bmp")},
 	)
-	if !errors.Is(err, apierror.ErrInvalidArgument) {
+	if !errors.Is(err, rootpullersdk.ErrInvalidArgument) {
 		t.Fatalf("err = %v, want ErrInvalidArgument", err)
 	}
 }

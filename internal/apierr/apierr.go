@@ -1,8 +1,8 @@
-// Package apierror defines the error model shared by every rootpuller-sdk
-// service package. All RPC failures surface as *Error; match broad classes
-// with errors.Is against the exported sentinels, or errors.As to inspect
-// the full error.
-package apierror
+// Package apierr defines the error model shared by every rootpuller-sdk
+// service package. The root rootpullersdk package aliases everything here
+// as its public error API; this internal home only exists to break the
+// import cycle between the root package and the transport layer.
+package apierr
 
 import (
 	"errors"
@@ -50,7 +50,7 @@ func (e *Error) Error() string {
 func (e *Error) Unwrap() error { return e.cause }
 
 // Is reports whether target is one of the package sentinels with the same
-// code, enabling errors.Is(err, apierror.ErrUnauthenticated).
+// code, enabling errors.Is(err, ErrUnauthenticated).
 func (e *Error) Is(target error) bool {
 	s, ok := target.(*sentinelError)
 
