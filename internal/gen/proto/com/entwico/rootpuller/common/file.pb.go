@@ -22,11 +22,13 @@ const (
 )
 
 type FileChunk struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	MimeType      string                 `protobuf:"bytes,2,opt,name=mime_type,json=mimeType,proto3" json:"mime_type,omitempty"`
-	ContentLength int32                  `protobuf:"varint,3,opt,name=content_length,json=contentLength,proto3" json:"content_length,omitempty"`
-	Data          []byte                 `protobuf:"bytes,4,opt,name=data,proto3" json:"data,omitempty"`
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Name     string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	MimeType string                 `protobuf:"bytes,2,opt,name=mime_type,json=mimeType,proto3" json:"mime_type,omitempty"`
+	// total size of the whole file in bytes, repeated on every chunk.
+	// int64 because video payloads exceed the int32 range.
+	ContentLength int64  `protobuf:"varint,3,opt,name=content_length,json=contentLength,proto3" json:"content_length,omitempty"`
+	Data          []byte `protobuf:"bytes,4,opt,name=data,proto3" json:"data,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -75,7 +77,7 @@ func (x *FileChunk) GetMimeType() string {
 	return ""
 }
 
-func (x *FileChunk) GetContentLength() int32 {
+func (x *FileChunk) GetContentLength() int64 {
 	if x != nil {
 		return x.ContentLength
 	}
@@ -97,7 +99,7 @@ const file_com_entwico_rootpuller_common_file_proto_rawDesc = "" +
 	"\tFileChunk\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1b\n" +
 	"\tmime_type\x18\x02 \x01(\tR\bmimeType\x12%\n" +
-	"\x0econtent_length\x18\x03 \x01(\x05R\rcontentLength\x12\x12\n" +
+	"\x0econtent_length\x18\x03 \x01(\x03R\rcontentLength\x12\x12\n" +
 	"\x04data\x18\x04 \x01(\fR\x04dataB\x9a\x02\n" +
 	"!com.com.entwico.rootpuller.commonB\tFileProtoP\x01ZRgithub.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/common\xa2\x02\x04CERC\xaa\x02\x1dCom.Entwico.Rootpuller.Common\xca\x02\x1dCom\\Entwico\\Rootpuller\\Common\xe2\x02)Com\\Entwico\\Rootpuller\\Common\\GPBMetadata\xea\x02 Com::Entwico::Rootpuller::Commonb\x06proto3"
 

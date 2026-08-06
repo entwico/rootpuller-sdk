@@ -104,6 +104,7 @@ links only the service packages it imports.
 | `facefixer` | FaceFixerService | restore/colorize/inpaint faces |
 | `bgremover` | BackgroundRemoverService | background removal |
 | `painter` | ImagePainterService | Imagen 3 / gpt-image-1 generate/edit/outpaint |
+| `assetia` | MediaProcessingService | image crop/resize/convert/watermark, video transcode (H.265/AV1), previews, `ProbeMedia` |
 
 Method shape everywhere: **required inputs positional, optional tuning in
 one trailing `*Options` (nil = all defaults)**. Construction-time

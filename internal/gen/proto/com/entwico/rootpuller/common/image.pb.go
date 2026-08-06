@@ -29,6 +29,7 @@ const (
 	ImageFormat_IMAGE_FORMAT_JPG         ImageFormat = 1
 	ImageFormat_IMAGE_FORMAT_PNG         ImageFormat = 2
 	ImageFormat_IMAGE_FORMAT_WEBP        ImageFormat = 3
+	ImageFormat_IMAGE_FORMAT_AVIF        ImageFormat = 4
 )
 
 // Enum value maps for ImageFormat.
@@ -38,12 +39,14 @@ var (
 		1: "IMAGE_FORMAT_JPG",
 		2: "IMAGE_FORMAT_PNG",
 		3: "IMAGE_FORMAT_WEBP",
+		4: "IMAGE_FORMAT_AVIF",
 	}
 	ImageFormat_value = map[string]int32{
 		"IMAGE_FORMAT_UNSPECIFIED": 0,
 		"IMAGE_FORMAT_JPG":         1,
 		"IMAGE_FORMAT_PNG":         2,
 		"IMAGE_FORMAT_WEBP":        3,
+		"IMAGE_FORMAT_AVIF":        4,
 	}
 )
 
@@ -246,12 +249,13 @@ const file_com_entwico_rootpuller_common_image_proto_rawDesc = "" +
 	"\x06height\x18\x02 \x01(\x05R\x06height\"\x8d\x01\n" +
 	"\vBoundingBox\x12@\n" +
 	"\bposition\x18\x01 \x01(\v2$.com.entwico.rootpuller.common.PointR\bposition\x12<\n" +
-	"\x04size\x18\x02 \x01(\v2(.com.entwico.rootpuller.common.ImageSizeR\x04size*n\n" +
+	"\x04size\x18\x02 \x01(\v2(.com.entwico.rootpuller.common.ImageSizeR\x04size*\x85\x01\n" +
 	"\vImageFormat\x12\x1c\n" +
 	"\x18IMAGE_FORMAT_UNSPECIFIED\x10\x00\x12\x14\n" +
 	"\x10IMAGE_FORMAT_JPG\x10\x01\x12\x14\n" +
 	"\x10IMAGE_FORMAT_PNG\x10\x02\x12\x15\n" +
-	"\x11IMAGE_FORMAT_WEBP\x10\x03B\x9b\x02\n" +
+	"\x11IMAGE_FORMAT_WEBP\x10\x03\x12\x15\n" +
+	"\x11IMAGE_FORMAT_AVIF\x10\x04B\x9b\x02\n" +
 	"!com.com.entwico.rootpuller.commonB\n" +
 	"ImageProtoP\x01ZRgithub.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/common\xa2\x02\x04CERC\xaa\x02\x1dCom.Entwico.Rootpuller.Common\xca\x02\x1dCom\\Entwico\\Rootpuller\\Common\xe2\x02)Com\\Entwico\\Rootpuller\\Common\\GPBMetadata\xea\x02 Com::Entwico::Rootpuller::Commonb\x06proto3"
 

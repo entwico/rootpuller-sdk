@@ -161,6 +161,7 @@ var imageFormatToProto = map[rootpullersdk.ImageFormat]commonpb.ImageFormat{
 	rootpullersdk.ImageFormatJPG:         commonpb.ImageFormat_IMAGE_FORMAT_JPG,
 	rootpullersdk.ImageFormatPNG:         commonpb.ImageFormat_IMAGE_FORMAT_PNG,
 	rootpullersdk.ImageFormatWebP:        commonpb.ImageFormat_IMAGE_FORMAT_WEBP,
+	rootpullersdk.ImageFormatAVIF:        commonpb.ImageFormat_IMAGE_FORMAT_AVIF,
 }
 
 // ToProtoImageFormat maps a facade format to the proto enum; unknown

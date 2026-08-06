@@ -9,6 +9,7 @@ const (
 	ImageFormatJPG         ImageFormat = "jpg"
 	ImageFormatPNG         ImageFormat = "png"
 	ImageFormatWebP        ImageFormat = "webp"
+	ImageFormatAVIF        ImageFormat = "avif"
 )
 
 // Point is a 2D coordinate in pixels.

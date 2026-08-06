@@ -109,7 +109,7 @@ func SendFileChunks(f *rootpullersdk.File, send func(*commonpb.FileChunk) error)
 
 	data := f.Data
 
-	total := int32(len(data)) //nolint:gosec // test-fixture file sizes fit int32
+	total := int64(len(data))
 	for first := true; first || len(data) > 0; first = false {
 		n := min(len(data), chunkSize)
 

@@ -10,7 +10,6 @@ import (
 
 	rootpullersdk "github.com/entwico/rootpuller-sdk"
 	commonpb "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/common"
-	"github.com/entwico/rootpuller-sdk/internal/protoconv"
 	"github.com/entwico/rootpuller-sdk/internal/transport"
 )
 
@@ -84,7 +83,7 @@ func FileChunkFrames[Req any](u rootpullersdk.Upload, wrap func(*commonpb.FileCh
 				chunk := &commonpb.FileChunk{
 					Name:          u.Name,
 					MimeType:      u.MIMEType,
-					ContentLength: protoconv.ClampInt32(u.Size),
+					ContentLength: u.Size,
 					Data:          buf[:n:n],
 				}
 				// Send marshals before returning, so buf is reusable.
