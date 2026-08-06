@@ -19,7 +19,7 @@ type trailerRerank struct {
 	rerankconnect.UnimplementedRerankServiceHandler
 }
 
-func (h *trailerRerank) Rerank(_ context.Context, _ *connect.Request[rerankpb.RerankRequest]) (*connect.Response[rerankpb.RerankResponse], error) {
+func (*trailerRerank) Rerank(_ context.Context, _ *connect.Request[rerankpb.RerankRequest]) (*connect.Response[rerankpb.RerankResponse], error) {
 	resp := connect.NewResponse(&rerankpb.RerankResponse{})
 	resp.Trailer().Set("x-ratelimit-limit", "8")
 	resp.Trailer().Set("x-ratelimit-remaining", "3")
