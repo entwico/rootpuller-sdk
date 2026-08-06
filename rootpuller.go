@@ -50,9 +50,7 @@ func New(baseURL string, opts ...Option) (*Client, error) {
 		}
 	}
 
-	// Trailer capture sits outermost so a retried call reports the
-	// final attempt's trailers.
-	interceptors := []connect.Interceptor{transport.NewTrailerInterceptor(), transport.NewHeadersInterceptor()}
+	interceptors := []connect.Interceptor{transport.NewHeadersInterceptor()}
 	if cfg.tokenSource != nil {
 		interceptors = append(interceptors, transport.NewAuthInterceptor(cfg.tokenSource))
 	}

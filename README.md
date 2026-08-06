@@ -114,6 +114,27 @@ Image services take `rootpullersdk.Upload` (streaming) and return
 `rootpullersdk.File`; the SDK chunks uploads at 2 MiB and handles the
 half-close-before-response protocol the server requires.
 
+### Backpressure
+
+The five rootpuller-backed services (chunker, embedding, rerank,
+vectorops, chef) advertise their per-deployment capacity in-band
+(rate-limit trailers, shed statuses with retry hints). A `Backpressure`
+gate follows those signals — AIMD concurrency control, a shared shed
+pause, a deep-outage circuit breaker — so batch workloads pace themselves
+to the server. Create **one gate per deployment** and share it across the
+routable services targeting it:
+
+```go
+bp := rootpullersdk.NewBackpressure(rootpullersdk.BackpressureOptions{SeedConcurrency: 6})
+chk := chunker.NewService(sdk, chunker.WithDeployment("local"), chunker.WithBackpressure(bp))
+emb := embedding.NewService(sdk, embedding.WithDeployment("local"), embedding.WithBackpressure(bp))
+```
+
+`WithBackpressure` exists only on the five services that emit the
+signals. It composes with `WithRetry`: every retry attempt re-acquires a
+slot and waits out the shared shed pause. Streams hold one slot for
+their lifetime.
+
 ### Routing headers
 
 Scoped to the services that understand them, as construction options:

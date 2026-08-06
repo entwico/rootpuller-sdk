@@ -28,17 +28,3 @@ func ContextWithBot(ctx context.Context, name string) context.Context {
 // Ptr returns a pointer to v — a shorthand for filling the optional
 // (pointer-typed) fields of request structs: rootpullersdk.Ptr(512).
 func Ptr[T any](v T) *T { return new(v) }
-
-// Trailers receives the response trailers of a unary call when the
-// caller opted in via CaptureTrailers. The server reports adaptive
-// rate-limit capacity in the "x-ratelimit-limit" and
-// "x-ratelimit-remaining" trailers.
-type Trailers = transport.Trailers
-
-// CaptureTrailers returns a context that makes the next unary SDK call
-// on it record its response trailers into the returned Trailers — the
-// hook for client-side adaptive concurrency control. With WithRetry
-// enabled, the final attempt's trailers are reported.
-func CaptureTrailers(ctx context.Context) (context.Context, *Trailers) {
-	return transport.CaptureTrailers(ctx)
-}

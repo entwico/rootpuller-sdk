@@ -22,10 +22,19 @@ type Service struct {
 	rpc          rerankconnect.RerankServiceClient
 	deployment   string
 	defaultModel string
+	backpressure *rootpullersdk.Backpressure
 }
 
 // Option configures a Service at construction.
 type Option func(*Service)
+
+// WithBackpressure routes every call through the shared admission gate.
+// The server pools capacity per deployment across the rootpuller-backed
+// services, so pass the SAME *rootpullersdk.Backpressure to every
+// routable service client targeting one deployment.
+func WithBackpressure(bp *rootpullersdk.Backpressure) Option {
+	return func(s *Service) { s.backpressure = bp }
+}
 
 // WithDeployment sends the rootpuller-deployment routing header (e.g.
 // "local", "cloudrun") on every call. A per-call
@@ -42,12 +51,22 @@ func WithDefaultModel(modelID string) Option {
 
 // NewService builds a RerankService client on the sdk connection.
 func NewService(sdk *rootpullersdk.Client, opts ...Option) *Service {
-	core := sdk.TransportCore()
-
-	s := &Service{rpc: rerankconnect.NewRerankServiceClient(core.HTTPClient, core.BaseURL, core.ClientOpts...)}
+	s := &Service{}
 	for _, opt := range opts {
 		opt(s)
 	}
+
+	core := sdk.TransportCore()
+
+	clientOpts := core.ClientOpts
+	if s.backpressure != nil {
+		// The gate runs innermost so every retry attempt re-acquires a
+		// slot and respects the shared shed pause.
+		clientOpts = append(clientOpts[:len(clientOpts):len(clientOpts)],
+			connect.WithInterceptors(transport.NewBackpressureInterceptor(s.backpressure.Gate())))
+	}
+
+	s.rpc = rerankconnect.NewRerankServiceClient(core.HTTPClient, core.BaseURL, clientOpts...)
 
 	return s
 }
