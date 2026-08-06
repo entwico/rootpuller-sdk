@@ -19,7 +19,8 @@ import (
 // Client calls the RerankService. Obtain one from
 // rootpuller.Client.Rerank.
 type Client struct {
-	rpc rerankconnect.RerankServiceClient
+	rpc        rerankconnect.RerankServiceClient
+	deployment string
 }
 
 // NewFromCore is the internal constructor used by rootpuller.New.
@@ -27,9 +28,21 @@ func NewFromCore(core *transport.Core) *Client {
 	return &Client{rpc: rerankconnect.NewRerankServiceClient(core.HTTPClient, core.BaseURL, core.ClientOpts...)}
 }
 
+// WithDeployment returns a client that sends the rootpuller-deployment
+// routing header (e.g. "local", "cloudrun") on every call. A per-call
+// rootpuller.ContextWithDeployment value still wins.
+func (c *Client) WithDeployment(name string) *Client {
+	derived := *c
+	derived.deployment = name
+
+	return &derived
+}
+
 // Rerank calls RerankService/Rerank: scores the request's documents
 // against its query and returns them sorted by descending relevance.
 func (c *Client) Rerank(ctx context.Context, req *Request) (*Response, error) {
+	ctx = transport.EnsureDeployment(ctx, c.deployment)
+
 	model, err := req.Model.toProto()
 	if err != nil {
 		return nil, err
@@ -73,6 +86,8 @@ func (c *Client) Rerank(ctx context.Context, req *Request) (*Response, error) {
 // ListModels calls RerankService/ListModels: lists the reranker models
 // available on the server.
 func (c *Client) ListModels(ctx context.Context) ([]ModelInfo, error) {
+	ctx = transport.EnsureDeployment(ctx, c.deployment)
+
 	resp, err := c.rpc.ListModels(ctx, connect.NewRequest(&emptypb.Empty{}))
 	if err != nil {
 		return nil, transport.WrapError(err, rerankconnect.RerankServiceListModelsProcedure)

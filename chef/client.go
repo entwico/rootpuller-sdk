@@ -18,7 +18,8 @@ import (
 // Client calls the DocumentProcessingService. Obtain one from
 // rootpuller.Client.Chef.
 type Client struct {
-	rpc chefconnect.DocumentProcessingServiceClient
+	rpc        chefconnect.DocumentProcessingServiceClient
+	deployment string
 }
 
 // NewFromCore is the internal constructor used by rootpuller.New.
@@ -26,9 +27,21 @@ func NewFromCore(core *transport.Core) *Client {
 	return &Client{rpc: chefconnect.NewDocumentProcessingServiceClient(core.HTTPClient, core.BaseURL, core.ClientOpts...)}
 }
 
+// WithDeployment returns a client that sends the rootpuller-deployment
+// routing header (e.g. "local", "cloudrun") on every call. A per-call
+// rootpuller.ContextWithDeployment value still wins.
+func (c *Client) WithDeployment(name string) *Client {
+	derived := *c
+	derived.deployment = name
+
+	return &derived
+}
+
 // ProcessText calls DocumentProcessingService/ProcessText: cleans up raw
 // text and assigns it a document ID.
 func (c *Client) ProcessText(ctx context.Context, text string) (*TextResult, error) {
+	ctx = transport.EnsureDeployment(ctx, c.deployment)
+
 	resp, err := c.rpc.ProcessText(ctx, connect.NewRequest(&chefpb.ProcessTextRequest{Text: text}))
 	if err != nil {
 		return nil, transport.WrapError(err, chefconnect.DocumentProcessingServiceProcessTextProcedure)
@@ -45,6 +58,8 @@ func (c *Client) ProcessText(ctx context.Context, text string) (*TextResult, err
 // tables found in content and renders each as markdown. The zero
 // sourceType keeps the server default (markdown).
 func (c *Client) ProcessTable(ctx context.Context, content string, sourceType TableSourceType) ([]MarkdownTable, error) {
+	ctx = transport.EnsureDeployment(ctx, c.deployment)
+
 	st, err := sourceType.toProto()
 	if err != nil {
 		return nil, err
@@ -64,6 +79,8 @@ func (c *Client) ProcessTable(ctx context.Context, content string, sourceType Ta
 // decomposes a markdown document into tables, code blocks, images, and
 // text chunks.
 func (c *Client) ProcessMarkdown(ctx context.Context, req *MarkdownRequest) (*MarkdownResult, error) {
+	ctx = transport.EnsureDeployment(ctx, c.deployment)
+
 	msg := &chefpb.ProcessMarkdownRequest{Text: req.Text, Tokenizer: req.Tokenizer}
 
 	resp, err := c.rpc.ProcessMarkdown(ctx, connect.NewRequest(msg))
@@ -86,6 +103,8 @@ func (c *Client) ProcessMarkdown(ctx context.Context, req *MarkdownRequest) (*Ma
 // the tokenizers available for markdown chunk token counting, for
 // client-side discovery of MarkdownRequest.Tokenizer values.
 func (c *Client) ListTokenizers(ctx context.Context) ([]TokenizerInfo, error) {
+	ctx = transport.EnsureDeployment(ctx, c.deployment)
+
 	resp, err := c.rpc.ListTokenizers(ctx, connect.NewRequest(&emptypb.Empty{}))
 	if err != nil {
 		return nil, transport.WrapError(err, chefconnect.DocumentProcessingServiceListTokenizersProcedure)
