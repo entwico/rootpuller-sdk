@@ -72,7 +72,20 @@ var (
 	ErrUnavailable       error = &sentinelError{connect.CodeUnavailable}
 	ErrDeadlineExceeded  error = &sentinelError{connect.CodeDeadlineExceeded}
 	ErrCanceled          error = &sentinelError{connect.CodeCanceled}
+	ErrAborted           error = &sentinelError{connect.CodeAborted}
+	ErrInternal          error = &sentinelError{connect.CodeInternal}
 )
+
+// IsTransient reports whether err is a failure that is typically worth
+// retrying: server backpressure, temporary unavailability, deadline
+// expiry, or an aborted operation. It matches the retry classification
+// rootpuller-api's own backends use.
+func IsTransient(err error) bool {
+	return errors.Is(err, ErrUnavailable) ||
+		errors.Is(err, ErrDeadlineExceeded) ||
+		errors.Is(err, ErrResourceExhausted) ||
+		errors.Is(err, ErrAborted)
+}
 
 // ErrMissingTerminal reports a webcontent/scrape event stream that ended
 // without the protocol's mandatory done or error terminal frame. Treat it
