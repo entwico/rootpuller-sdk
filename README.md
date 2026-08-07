@@ -192,10 +192,11 @@ task lint         # golangci-lint + facade no-gen-leak check
 task check-drift  # regenerate and fail on diff (CI)
 ```
 
-The generated stubs live in `internal/gen` and are committed; CI
-regenerates nightly from proto `main` and fails on drift — a facade
-compile failure is the semantic drift alarm. Fix by running
-`task generate`, updating the affected facade converters, and committing.
+The generated stubs live in `internal/gen` and are committed. Run
+`task check-drift` to regenerate from proto `main` and fail on any diff —
+a facade compile failure after regenerating is the semantic drift alarm;
+fix by updating the affected facade converters and committing. (There is
+no CI at the moment, so run this before releasing.)
 
 Integration smoke test against a live server:
 
