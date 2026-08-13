@@ -1,8 +1,13 @@
 // Package webcontent wraps
 // com.entwico.rootpuller.webcontent.WebContentService: fetching web pages
-// with pluggable engines (basic HTTP, headless browser, anti-bot) and
-// extracting structured content (Estratto/trafilatura) from fetched or
-// uploaded HTML.
+// with engines of escalating capability (plain HTTP, headless browser,
+// full browser with fingerprint control) and extracting structured
+// content (Estratto/trafilatura) from fetched or uploaded HTML.
+//
+// Fetches run under a named crawler identity when one is selected with
+// WithBot: the server resolves the bot's User-Agent, signs session
+// requests per Web Bot Auth (RFC 9421), and can enforce robots.txt
+// compliance for that identity. See the repository README for details.
 package webcontent
 
 import (

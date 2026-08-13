@@ -143,10 +143,36 @@ Scoped to the services that understand them, as construction options:
 - `rootpuller-deployment` (chunker, embedding, rerank, vectorops, chef):
   `chunker.WithDeployment("cloudrun")` etc.
 - `rootpuller-bot` (webcontent, scrape): `webcontent.WithBot("crawler-a")`
-  — one option accepted by both `NewService` and `NewScrapeService`.
+  — one option accepted by both `NewService` and `NewScrapeService`. This
+  selects a server-side crawler identity, not just routing — see the next
+  section.
 
 Per-call overrides win: `rootpullersdk.ContextWithDeployment(ctx, "local")`,
 `rootpullersdk.ContextWithBot(ctx, "crawler-b")`.
+
+### Crawler identity (Web Bot Auth)
+
+The webcontent/scrape services are designed to fetch as a **named,
+verifiable crawler**, not anonymously. `webcontent.WithBot("crawler-a")`
+sends only the identity's name; everything else is resolved server-side
+in rootpuller-api, where the identity lives:
+
+- a per-bot **User-Agent** identifying the crawler on every request;
+- **Web Bot Auth request signing** — [RFC 9421](https://www.rfc-editor.org/rfc/rfc9421)
+  HTTP Message Signatures (Ed25519) on interactive fetch sessions, with
+  the public key published as a JWKS under the bot's
+  `/.well-known/http-message-signatures-directory` so origins and CDNs
+  can cryptographically verify who is fetching;
+- optional server-enforced **robots.txt compliance**: a bot configured
+  with `obeyRobots` has it stamped onto session fetches server-side.
+
+The SDK never carries keys or User-Agent strings, and a call without a
+bot selected is a plain unsigned fetch. Note that on the `Fetch`/`Crawl`
+paths robots.txt handling is client-controlled: the server default is
+**off**, so set `FetcherOptions.ObeyRobotsTxt` /
+`CrawlRules.ObeyRobotsTxt` explicitly when a workload must honor
+robots.txt (for AI-ingestion pipelines, honoring machine-readable
+opt-outs is what keeps you inside the EU text-and-data-mining exception).
 
 ### Errors
 

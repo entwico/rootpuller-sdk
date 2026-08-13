@@ -88,10 +88,13 @@ func (SitemapSeeds) isSeed() {}
 
 // CrawlRules bounds a crawl.
 type CrawlRules struct {
-	AllowedDomains       []string
-	DenyDomains          []string
-	MaxDepth             *int // 0 = seeds only; default 1
-	MaxPages             *int
+	AllowedDomains []string
+	DenyDomains    []string
+	MaxDepth       *int // 0 = seeds only; default 1
+	MaxPages       *int
+	// ObeyRobotsTxt gates every crawled URL on its site's robots.txt
+	// (RFC 9309). nil keeps the server default, which is FALSE: robots.txt
+	// is not consulted unless enabled here.
 	ObeyRobotsTxt        *bool
 	PerDomainConcurrency *int
 	DownloadDelay        *time.Duration // per-origin minimum delay

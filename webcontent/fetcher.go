@@ -87,7 +87,10 @@ type DynamicConfig struct {
 
 func (DynamicConfig) isEngineConfig() {}
 
-// StealthyConfig configures the anti-bot-evasion fetch engine.
+// StealthyConfig configures the hardened-browser fetch engine: a full
+// browser profile with explicit fingerprint control (viewport, locale,
+// timezone, OS) for pages that render incompletely or fail on the basic
+// and dynamic engines.
 type StealthyConfig struct {
 	Headless          *bool // default true
 	BlockImages       *bool
@@ -122,10 +125,15 @@ type FetcherOptions struct {
 	Engine Engine
 	// Config carries engine-specific options; its concrete type must
 	// match Engine when both are set.
-	Config           EngineConfig
-	Retries          *int
-	RetryDelay       *time.Duration // default 1s
-	UserAgent        *string
+	Config     EngineConfig
+	Retries    *int
+	RetryDelay *time.Duration // default 1s
+	UserAgent  *string
+	// ObeyRobotsTxt gates the fetch on the target's robots.txt (RFC 9309).
+	// nil keeps the server default, which is FALSE: robots.txt is not
+	// consulted unless enabled here. Independently, a bot identity
+	// configured server-side with obeyRobots has compliance enforced on
+	// interactive fetch sessions regardless of this field.
 	ObeyRobotsTxt    *bool
 	CrawlDelay       *time.Duration
 	DownloadDelay    *time.Duration
