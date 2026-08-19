@@ -13,6 +13,11 @@ import (
 const (
 	DeploymentHeader = "Rootpuller-Deployment"
 	BotHeader        = "Rootpuller-Bot"
+	// EscribaDeploymentHeader steers a transcription request at a specific
+	// escriba worker. Separate from DeploymentHeader on purpose: the two
+	// services are sized and placed independently, so pinning a rootpuller
+	// worker must not silently move transcription to another cluster.
+	EscribaDeploymentHeader = "Escriba-Deployment"
 )
 
 type ctxKey int
@@ -20,6 +25,7 @@ type ctxKey int
 const (
 	deploymentCtxKey ctxKey = iota
 	botCtxKey
+	escribaDeploymentCtxKey
 )
 
 // ContextWithDeployment returns a context that sets the
@@ -33,6 +39,27 @@ func ContextWithDeployment(ctx context.Context, name string) context.Context {
 // for calls made with it, overriding any service-client default.
 func ContextWithBot(ctx context.Context, name string) context.Context {
 	return context.WithValue(ctx, botCtxKey, name)
+}
+
+// ContextWithEscribaDeployment returns a context that sets the
+// escriba-deployment header for calls made with it, overriding any
+// service-client default.
+func ContextWithEscribaDeployment(ctx context.Context, name string) context.Context {
+	return context.WithValue(ctx, escribaDeploymentCtxKey, name)
+}
+
+// EnsureEscribaDeployment injects a service-client default unless the context
+// already carries an explicit value (which wins).
+func EnsureEscribaDeployment(ctx context.Context, name string) context.Context {
+	if name == "" {
+		return ctx
+	}
+
+	if _, ok := ctx.Value(escribaDeploymentCtxKey).(string); ok {
+		return ctx
+	}
+
+	return ContextWithEscribaDeployment(ctx, name)
 }
 
 // EnsureDeployment injects a service-client deployment default unless
@@ -102,5 +129,9 @@ func (*headersInterceptor) apply(ctx context.Context, h http.Header) {
 
 	if v, ok := ctx.Value(botCtxKey).(string); ok && v != "" {
 		h.Set(BotHeader, v)
+	}
+
+	if v, ok := ctx.Value(escribaDeploymentCtxKey).(string); ok && v != "" {
+		h.Set(EscribaDeploymentHeader, v)
 	}
 }

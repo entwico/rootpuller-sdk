@@ -25,6 +25,14 @@ func ContextWithBot(ctx context.Context, name string) context.Context {
 	return transport.ContextWithBot(ctx, name)
 }
 
+// ContextWithEscribaDeployment pins the escriba deployment for calls made with
+// this context, overriding any escriba.WithDeployment default. Use it to send
+// the same audio at different workers — a CPU deployment in one cluster against
+// a GPU deployment in another — without building a second client.
+func ContextWithEscribaDeployment(ctx context.Context, name string) context.Context {
+	return transport.ContextWithEscribaDeployment(ctx, name)
+}
+
 // Ptr returns a pointer to v — a shorthand for filling the optional
 // (pointer-typed) fields of request structs: rootpullersdk.Ptr(512).
 func Ptr[T any](v T) *T { return new(v) }

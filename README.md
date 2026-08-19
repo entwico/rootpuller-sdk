@@ -105,6 +105,41 @@ links only the service packages it imports.
 | `bgremover` | BackgroundRemoverService | background removal |
 | `painter` | ImagePainterService | Imagen 3 / gpt-image-1 generate/edit/outpaint |
 | `assetia` | MediaProcessingService | image crop/resize/convert/watermark, video transcode (H.265/AV1), previews, `ProbeMedia` |
+| `escriba` | TranscriptionService | `OpenLive` (full-duplex speech to text), `Transcribe`, `GetCapabilities`; deployment-routable |
+
+### Live transcription
+
+`escriba.OpenLive` returns a session you feed audio to while reading results:
+
+```go
+session, err := svc.OpenLive(ctx, escriba.LiveConfig{SampleRate: 16000, Language: "de"})
+defer session.Close()
+
+go func() {
+    for chunk := range microphone {   // ~100-250 ms of s16le mono PCM each
+        session.Send(chunk)
+    }
+    session.CloseSend()               // the speaker has finished
+}()
+
+for event, err := range session.Events(ctx) {
+    switch event.Kind {
+    case escriba.EventKindPartial:    // provisional — overwrite, never append
+    case escriba.EventKindCommitted:  // settled — append, grouped by Utterance
+    case escriba.EventKindRevision:   // replaces that utterance entirely
+    case escriba.EventKindComplete:   // authoritative transcript
+    }
+}
+```
+
+Two events carry different guarantees. `Partial` is the model's current guess
+at the tail and must be replaced wholesale; `Committed` is settled and never
+retracted. After an utterance closes, a `Revision` may supersede it with a
+higher-quality re-decode, so keep committed text grouped by utterance index
+rather than as one flat string. Revisions arrive out of band and are
+best-effort: a consumer that ignores them still shows correct, if slightly
+worse, text. `CloseSend` does not end the session — keep reading until
+`Complete`, which is the transcript worth persisting.
 
 Method shape everywhere: **required inputs positional, optional tuning in
 one trailing `*Options` (nil = all defaults)**. Construction-time
