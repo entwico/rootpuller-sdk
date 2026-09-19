@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.4.0 (2026-09-19)
+
+### Minor Changes
+
+- escriba.TranscribeRecording: transcribe a recording of any length, with optional speaker labels, OnProgress and OnSegment
+- rootpullertest.Escriba fakes TranscribeRecording via RecordingFunc
+- escriba.Capabilities reports MaxLongRecording, MaxRecordingBytes and SpeakerMethods
+
 ## v0.3.0 (2026-08-19)
 
 ### Minor Changes
