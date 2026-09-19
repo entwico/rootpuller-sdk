@@ -40,6 +40,9 @@ const (
 	// TranscriptionServiceTranscribeProcedure is the fully-qualified name of the TranscriptionService's
 	// Transcribe RPC.
 	TranscriptionServiceTranscribeProcedure = "/com.entwico.rootpuller.escriba.TranscriptionService/Transcribe"
+	// TranscriptionServiceTranscribeRecordingProcedure is the fully-qualified name of the
+	// TranscriptionService's TranscribeRecording RPC.
+	TranscriptionServiceTranscribeRecordingProcedure = "/com.entwico.rootpuller.escriba.TranscriptionService/TranscribeRecording"
 	// TranscriptionServiceGetCapabilitiesProcedure is the fully-qualified name of the
 	// TranscriptionService's GetCapabilities RPC.
 	TranscriptionServiceGetCapabilitiesProcedure = "/com.entwico.rootpuller.escriba.TranscriptionService/GetCapabilities"
@@ -65,9 +68,19 @@ type TranscriptionServiceClient interface {
 	//
 	// Intended for short recordings — voice notes, individual utterances captured
 	// client-side, language probes. It holds an inference slot for the whole
-	// decode, so long-form work belongs in a batch service with a job API rather
-	// than here.
+	// decode, so anything longer than Capabilities.max_recording_seconds belongs
+	// to TranscribeRecording.
 	Transcribe(context.Context) *connect.ClientStreamForClient[escriba.TranscribeRequest, escriba.TranscribeResponse]
+	// TranscribeRecording transcribes a complete recording of any length, with
+	// optional speaker labels, streaming progress and finished segments back
+	// while it works.
+	//
+	// The call IS the job: there is no job id to poll. Keep the stream open until
+	// RecordingComplete arrives; cancelling the call cancels the work. The worker
+	// processes one recording at a time and decodes it in short slices between
+	// live sessions' decodes, so a long recording never starves TranscribeLive —
+	// and may therefore wait in STAGE_QUEUED before it starts.
+	TranscribeRecording(context.Context) *connect.BidiStreamForClient[escriba.TranscribeRecordingRequest, escriba.TranscribeRecordingResponse]
 	// GetCapabilities reports the models this deployment serves and the limits a
 	// client must design around (session length, recording length, defaults).
 	// Intended for client-side discovery: call once at startup.
@@ -102,6 +115,12 @@ func NewTranscriptionServiceClient(httpClient connect.HTTPClient, baseURL string
 			connect.WithSchema(transcriptionServiceMethods.ByName("Transcribe")),
 			connect.WithClientOptions(opts...),
 		),
+		transcribeRecording: connect.NewClient[escriba.TranscribeRecordingRequest, escriba.TranscribeRecordingResponse](
+			httpClient,
+			baseURL+TranscriptionServiceTranscribeRecordingProcedure,
+			connect.WithSchema(transcriptionServiceMethods.ByName("TranscribeRecording")),
+			connect.WithClientOptions(opts...),
+		),
 		getCapabilities: connect.NewClient[emptypb.Empty, escriba.Capabilities](
 			httpClient,
 			baseURL+TranscriptionServiceGetCapabilitiesProcedure,
@@ -113,9 +132,10 @@ func NewTranscriptionServiceClient(httpClient connect.HTTPClient, baseURL string
 
 // transcriptionServiceClient implements TranscriptionServiceClient.
 type transcriptionServiceClient struct {
-	transcribeLive  *connect.Client[escriba.TranscribeLiveRequest, escriba.TranscribeLiveResponse]
-	transcribe      *connect.Client[escriba.TranscribeRequest, escriba.TranscribeResponse]
-	getCapabilities *connect.Client[emptypb.Empty, escriba.Capabilities]
+	transcribeLive      *connect.Client[escriba.TranscribeLiveRequest, escriba.TranscribeLiveResponse]
+	transcribe          *connect.Client[escriba.TranscribeRequest, escriba.TranscribeResponse]
+	transcribeRecording *connect.Client[escriba.TranscribeRecordingRequest, escriba.TranscribeRecordingResponse]
+	getCapabilities     *connect.Client[emptypb.Empty, escriba.Capabilities]
 }
 
 // TranscribeLive calls com.entwico.rootpuller.escriba.TranscriptionService.TranscribeLive.
@@ -126,6 +146,12 @@ func (c *transcriptionServiceClient) TranscribeLive(ctx context.Context) *connec
 // Transcribe calls com.entwico.rootpuller.escriba.TranscriptionService.Transcribe.
 func (c *transcriptionServiceClient) Transcribe(ctx context.Context) *connect.ClientStreamForClient[escriba.TranscribeRequest, escriba.TranscribeResponse] {
 	return c.transcribe.CallClientStream(ctx)
+}
+
+// TranscribeRecording calls
+// com.entwico.rootpuller.escriba.TranscriptionService.TranscribeRecording.
+func (c *transcriptionServiceClient) TranscribeRecording(ctx context.Context) *connect.BidiStreamForClient[escriba.TranscribeRecordingRequest, escriba.TranscribeRecordingResponse] {
+	return c.transcribeRecording.CallBidiStream(ctx)
 }
 
 // GetCapabilities calls com.entwico.rootpuller.escriba.TranscriptionService.GetCapabilities.
@@ -153,9 +179,19 @@ type TranscriptionServiceHandler interface {
 	//
 	// Intended for short recordings — voice notes, individual utterances captured
 	// client-side, language probes. It holds an inference slot for the whole
-	// decode, so long-form work belongs in a batch service with a job API rather
-	// than here.
+	// decode, so anything longer than Capabilities.max_recording_seconds belongs
+	// to TranscribeRecording.
 	Transcribe(context.Context, *connect.ClientStream[escriba.TranscribeRequest]) (*connect.Response[escriba.TranscribeResponse], error)
+	// TranscribeRecording transcribes a complete recording of any length, with
+	// optional speaker labels, streaming progress and finished segments back
+	// while it works.
+	//
+	// The call IS the job: there is no job id to poll. Keep the stream open until
+	// RecordingComplete arrives; cancelling the call cancels the work. The worker
+	// processes one recording at a time and decodes it in short slices between
+	// live sessions' decodes, so a long recording never starves TranscribeLive —
+	// and may therefore wait in STAGE_QUEUED before it starts.
+	TranscribeRecording(context.Context, *connect.BidiStream[escriba.TranscribeRecordingRequest, escriba.TranscribeRecordingResponse]) error
 	// GetCapabilities reports the models this deployment serves and the limits a
 	// client must design around (session length, recording length, defaults).
 	// Intended for client-side discovery: call once at startup.
@@ -185,6 +221,12 @@ func NewTranscriptionServiceHandler(svc TranscriptionServiceHandler, opts ...con
 		connect.WithSchema(transcriptionServiceMethods.ByName("Transcribe")),
 		connect.WithHandlerOptions(opts...),
 	)
+	transcriptionServiceTranscribeRecordingHandler := connect.NewBidiStreamHandler(
+		TranscriptionServiceTranscribeRecordingProcedure,
+		svc.TranscribeRecording,
+		connect.WithSchema(transcriptionServiceMethods.ByName("TranscribeRecording")),
+		connect.WithHandlerOptions(opts...),
+	)
 	transcriptionServiceGetCapabilitiesHandler := connect.NewUnaryHandler(
 		TranscriptionServiceGetCapabilitiesProcedure,
 		svc.GetCapabilities,
@@ -197,6 +239,8 @@ func NewTranscriptionServiceHandler(svc TranscriptionServiceHandler, opts ...con
 			transcriptionServiceTranscribeLiveHandler.ServeHTTP(w, r)
 		case TranscriptionServiceTranscribeProcedure:
 			transcriptionServiceTranscribeHandler.ServeHTTP(w, r)
+		case TranscriptionServiceTranscribeRecordingProcedure:
+			transcriptionServiceTranscribeRecordingHandler.ServeHTTP(w, r)
 		case TranscriptionServiceGetCapabilitiesProcedure:
 			transcriptionServiceGetCapabilitiesHandler.ServeHTTP(w, r)
 		default:
@@ -214,6 +258,10 @@ func (UnimplementedTranscriptionServiceHandler) TranscribeLive(context.Context, 
 
 func (UnimplementedTranscriptionServiceHandler) Transcribe(context.Context, *connect.ClientStream[escriba.TranscribeRequest]) (*connect.Response[escriba.TranscribeResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("com.entwico.rootpuller.escriba.TranscriptionService.Transcribe is not implemented"))
+}
+
+func (UnimplementedTranscriptionServiceHandler) TranscribeRecording(context.Context, *connect.BidiStream[escriba.TranscribeRecordingRequest, escriba.TranscribeRecordingResponse]) error {
+	return connect.NewError(connect.CodeUnimplemented, errors.New("com.entwico.rootpuller.escriba.TranscriptionService.TranscribeRecording is not implemented"))
 }
 
 func (UnimplementedTranscriptionServiceHandler) GetCapabilities(context.Context, *connect.Request[emptypb.Empty]) (*connect.Response[escriba.Capabilities], error) {

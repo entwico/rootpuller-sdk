@@ -105,7 +105,7 @@ links only the service packages it imports.
 | `bgremover` | BackgroundRemoverService | background removal |
 | `painter` | ImagePainterService | Imagen 3 / gpt-image-1 generate/edit/outpaint |
 | `assetia` | MediaProcessingService | image crop/resize/convert/watermark, video transcode (H.265/AV1), previews, `ProbeMedia` |
-| `escriba` | TranscriptionService | `OpenLive` (full-duplex speech to text), `Transcribe`, `GetCapabilities`; deployment-routable |
+| `escriba` | TranscriptionService | `OpenLive` (full-duplex speech to text), `Transcribe` (short clips), `TranscribeRecording` (any length, optional speaker labels, progress), `GetCapabilities`; deployment-routable |
 
 ### Live transcription
 
@@ -140,6 +140,34 @@ rather than as one flat string. Revisions arrive out of band and are
 best-effort: a consumer that ignores them still shows correct, if slightly
 worse, text. `CloseSend` does not end the session — keep reading until
 `Complete`, which is the transcript worth persisting.
+
+`escriba.TranscribeRecording` takes a complete recording of any length — video
+containers included — and returns when it is done. The call is the job: there is
+nothing to poll, and cancelling `ctx` cancels the work on the server.
+
+```go
+recording, err := svc.TranscribeRecording(ctx, rootpullersdk.Upload{Name: "call.m4a", Content: file},
+    &escriba.RecordingOptions{
+        Speakers:   &escriba.SpeakerOptions{Count: 2}, // nil for a plain transcript
+        OnProgress: func(p escriba.RecordingProgress) { log.Printf("%s %.0f%%", p.Stage, p.Percentage) },
+    })
+if err != nil { ... }
+
+for _, turn := range recording.Turns() { // consecutive segments of one speaker, merged
+    fmt.Printf("[%s] Speaker %d: %s\n", turn.Start, *turn.Speaker+1, turn.Text)
+}
+```
+
+The upload streams, so memory stays flat however large the file. A recording can
+take minutes and may first queue behind another (`RecordingStageQueued`): the
+server gives live sessions priority. Speakers are told apart, not identified —
+an index numbered by first appearance. `SpeakerMethodChannel` is exact and free
+for dual-channel call recordings; `SpeakerMethodDiarization` works on any audio
+but only on deployments that list it in `Capabilities.SpeakerMethods`
+(`CodeUnimplemented` otherwise). `Recording.Segments` is the subtitle-shaped
+view, `Recording.Turns()` the dialogue-shaped one. A full queue is
+`CodeResourceExhausted` with a retry hint; `CodeUnavailable` means the server
+lost the recording mid-flight and it has to be uploaded again.
 
 Method shape everywhere: **required inputs positional, optional tuning in
 one trailing `*Options` (nil = all defaults)**. Construction-time

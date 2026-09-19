@@ -333,6 +333,298 @@ func transcriptFromProto(msg *escribapb.TranscribeResponse) *Transcript {
 }
 
 // ---------------------------------------------------------------------------
+// recordings
+// ---------------------------------------------------------------------------
+
+// SpeakerMethod is how the speakers of a recording are told apart.
+type SpeakerMethod string
+
+const (
+	// SpeakerMethodDiarization clusters the voices in the recording. Works on
+	// any audio, costs a second model pass, and is only offered by deployments
+	// built for it — see Capabilities.SpeakerMethods.
+	SpeakerMethodDiarization SpeakerMethod = "diarization"
+
+	// SpeakerMethodChannel treats each audio channel as one speaker: exact and
+	// free, for dual-channel call recordings. Needs a stereo file.
+	SpeakerMethodChannel SpeakerMethod = "channel"
+)
+
+func (m SpeakerMethod) toProto() (escribapb.SpeakerLabeling_Method, error) {
+	switch m {
+	case "", SpeakerMethodDiarization:
+		return escribapb.SpeakerLabeling_METHOD_DIARIZATION, nil
+	case SpeakerMethodChannel:
+		return escribapb.SpeakerLabeling_METHOD_CHANNEL, nil
+	default:
+		return 0, invalidArgument("escriba: unknown speaker method " + string(m))
+	}
+}
+
+func speakerMethodFromProto(m escribapb.SpeakerLabeling_Method) (SpeakerMethod, bool) {
+	switch m {
+	case escribapb.SpeakerLabeling_METHOD_DIARIZATION:
+		return SpeakerMethodDiarization, true
+	case escribapb.SpeakerLabeling_METHOD_CHANNEL:
+		return SpeakerMethodChannel, true
+	case escribapb.SpeakerLabeling_METHOD_UNSPECIFIED:
+	}
+
+	// Unspecified, or a method added after this SDK version was built.
+	return "", false
+}
+
+// SpeakerOptions asks for a recording to be attributed to speakers. Speakers
+// are told apart, not identified: each gets an index, numbered by first
+// appearance.
+type SpeakerOptions struct {
+	// Method defaults to SpeakerMethodDiarization.
+	Method SpeakerMethod
+
+	// Count fixes the number of speakers when it is known, which is noticeably
+	// more accurate than letting the server estimate it. Diarization only, and
+	// exclusive with Min and Max.
+	Count int
+
+	// Min and Max bound the estimate when the exact count is not known. Zero
+	// leaves that side open. Diarization only.
+	Min int
+	Max int
+}
+
+func (o *SpeakerOptions) toProto() (*escribapb.SpeakerLabeling, error) {
+	if o == nil {
+		return nil, nil //nolint:nilnil // absent options are an absent message, not an error
+	}
+
+	method, err := o.Method.toProto()
+	if err != nil {
+		return nil, err
+	}
+
+	switch {
+	case o.Count < 0 || o.Min < 0 || o.Max < 0:
+		return nil, invalidArgument("escriba: speaker counts must not be negative")
+	case o.Count != 0 && (o.Min != 0 || o.Max != 0):
+		return nil, invalidArgument("escriba: SpeakerOptions.Count excludes Min and Max")
+	case o.Max != 0 && o.Min > o.Max:
+		return nil, invalidArgument("escriba: SpeakerOptions.Min must not exceed Max")
+	case o.Method == SpeakerMethodChannel && (o.Count != 0 || o.Min != 0 || o.Max != 0):
+		return nil, invalidArgument("escriba: speaker counts do not apply to SpeakerMethodChannel")
+	}
+
+	return &escribapb.SpeakerLabeling{
+		Method:       method,
+		SpeakerCount: int32(o.Count), //nolint:gosec // validated non-negative; a speaker count cannot overflow
+		MinSpeakers:  int32(o.Min),   //nolint:gosec // as above
+		MaxSpeakers:  int32(o.Max),   //nolint:gosec // as above
+	}, nil
+}
+
+// RecordingOptions tunes TranscribeRecording. All fields are optional.
+type RecordingOptions struct {
+	// Language pins the decoding language. Empty detects it and falls back to
+	// the deployment default when no probe is confident.
+	Language string
+
+	// Model pins a model; empty uses the deployment default.
+	Model string
+
+	// IncludeWords returns per-word timings on every segment.
+	IncludeWords bool
+
+	// Speakers requests speaker labels. Nil for a plain transcript.
+	Speakers *SpeakerOptions
+
+	// OnProgress, when set, is told where the server is. Called from the
+	// goroutine that called TranscribeRecording, so it must not block for long.
+	OnProgress func(RecordingProgress)
+
+	// OnSegment, when set, receives each finished segment as it arrives. The
+	// returned Recording carries all of them regardless.
+	OnSegment func(Segment)
+}
+
+func (o *RecordingOptions) toProto(s *Service) (*escribapb.TranscribeRecordingConfig, error) {
+	speakers, err := o.Speakers.toProto()
+	if err != nil {
+		return nil, err
+	}
+
+	cfg := &escribapb.TranscribeRecordingConfig{
+		Language:     s.languageOr(o.Language),
+		IncludeWords: o.IncludeWords,
+		Speakers:     speakers,
+	}
+	if model := s.modelOr(o.Model); model != "" {
+		cfg.Model = &escribapb.TranscriptionModelRef{ModelId: model}
+	}
+
+	return cfg, nil
+}
+
+// RecordingStage is the phase of work a RecordingProgress refers to.
+type RecordingStage string
+
+const (
+	// RecordingStageQueued: waiting for the server, which processes one
+	// recording at a time and gives live sessions priority over all of them.
+	RecordingStageQueued RecordingStage = "queued"
+
+	RecordingStageTranscribing RecordingStage = "transcribing"
+
+	// RecordingStageLabelingSpeakers only occurs with SpeakerMethodDiarization.
+	RecordingStageLabelingSpeakers RecordingStage = "labeling_speakers"
+)
+
+// RecordingProgress reports where the server is with a recording.
+type RecordingProgress struct {
+	Stage RecordingStage
+	// Percentage of the current stage, 0–100. Restarts at 0 on a stage change.
+	Percentage float32
+	// QueuePosition is the number of recordings ahead of this one. Meaningful
+	// only while Stage is RecordingStageQueued.
+	QueuePosition int
+}
+
+func recordingProgressFromProto(msg *escribapb.RecordingProgress) RecordingProgress {
+	stages := map[escribapb.RecordingProgress_Stage]RecordingStage{
+		escribapb.RecordingProgress_STAGE_QUEUED:            RecordingStageQueued,
+		escribapb.RecordingProgress_STAGE_TRANSCRIBING:      RecordingStageTranscribing,
+		escribapb.RecordingProgress_STAGE_LABELING_SPEAKERS: RecordingStageLabelingSpeakers,
+	}
+
+	return RecordingProgress{
+		Stage:         stages[msg.GetStage()],
+		Percentage:    msg.GetPercentage(),
+		QueuePosition: int(msg.GetQueuePosition()),
+	}
+}
+
+// Segment is one finished piece of a recording's transcript: a sentence or
+// phrase, in the unit a subtitle would use. A segment never spans a change of
+// speaker.
+type Segment struct {
+	Index int
+	Start time.Duration
+	End   time.Duration
+	Text  string
+	// Speaker is who said it: a 0-based index, numbered by first appearance.
+	// Nil when no speaker labels were requested.
+	Speaker *int
+	// Words is populated only when RecordingOptions.IncludeWords was set.
+	Words []Word
+}
+
+func segmentFromProto(msg *escribapb.TranscriptSegment) Segment {
+	segment := Segment{
+		Index: int(msg.GetIndex()),
+		Start: seconds(msg.GetStartSeconds()),
+		End:   seconds(msg.GetEndSeconds()),
+		Text:  msg.GetText(),
+	}
+
+	if msg.SpeakerIndex != nil {
+		speaker := int(msg.GetSpeakerIndex())
+		segment.Speaker = &speaker
+	}
+
+	for _, word := range msg.GetWords() {
+		segment.Words = append(segment.Words, Word{
+			Start: seconds(word.GetStartSeconds()),
+			End:   seconds(word.GetEndSeconds()),
+			Text:  word.GetText(),
+		})
+	}
+
+	return segment
+}
+
+// Speaker describes one speaker found in a recording.
+type Speaker struct {
+	Index int
+	// SpeakingTime is the total duration of this speaker's segments.
+	SpeakingTime time.Duration
+}
+
+// Recording is the result of TranscribeRecording.
+type Recording struct {
+	// Text is the full transcript, without speaker labels.
+	Text     string
+	Duration time.Duration
+	Language DetectedLanguage
+	// Model that produced this transcript. Persist it alongside the text to
+	// enable targeted recomputation when the model changes.
+	Model    string
+	Segments []Segment
+	// Speakers found, ordered by index. Empty when none were requested.
+	Speakers []Speaker
+
+	segmentCount int
+}
+
+// Turn is a run of consecutive segments by one speaker, merged for reading.
+type Turn struct {
+	// Speaker is nil when the recording has no speaker labels, in which case
+	// the whole transcript is a single turn.
+	Speaker *int
+	Start   time.Duration
+	End     time.Duration
+	Text    string
+}
+
+// Turns merges consecutive segments of the same speaker: the shape a dialogue
+// is read in, where Segments is the shape it is subtitled in.
+func (r *Recording) Turns() []Turn {
+	var turns []Turn
+
+	for _, segment := range r.Segments {
+		if last := len(turns) - 1; last >= 0 && sameSpeaker(turns[last].Speaker, segment.Speaker) {
+			turns[last].Text += " " + segment.Text
+			turns[last].End = segment.End
+
+			continue
+		}
+
+		turns = append(turns, Turn{
+			Speaker: segment.Speaker,
+			Start:   segment.Start,
+			End:     segment.End,
+			Text:    segment.Text,
+		})
+	}
+
+	return turns
+}
+
+func (r *Recording) applyComplete(msg *escribapb.RecordingComplete) {
+	r.Text = msg.GetText()
+	r.Duration = seconds(msg.GetDurationSeconds())
+	r.Language = DetectedLanguage{
+		Language:    msg.GetLanguage().GetLanguage(),
+		Probability: msg.GetLanguage().GetProbability(),
+		Detected:    msg.GetLanguage().GetDetected(),
+	}
+	r.Model = msg.GetModel().GetModelId()
+	r.segmentCount = int(msg.GetSegmentCount())
+
+	for _, speaker := range msg.GetSpeakers() {
+		r.Speakers = append(r.Speakers, Speaker{
+			Index:        int(speaker.GetSpeakerIndex()),
+			SpeakingTime: seconds(speaker.GetSpeakingSeconds()),
+		})
+	}
+}
+
+func sameSpeaker(a, b *int) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+
+	return *a == *b
+}
+
+// ---------------------------------------------------------------------------
 // discovery
 // ---------------------------------------------------------------------------
 
@@ -362,6 +654,15 @@ type Capabilities struct {
 	// RefinementEnabled is the default a live session inherits when
 	// LiveConfig.EnableRefinement is nil.
 	RefinementEnabled bool
+	// MaxLongRecording is the longest recording TranscribeRecording accepts.
+	// Zero means unlimited.
+	MaxLongRecording time.Duration
+	// MaxRecordingBytes is the largest upload TranscribeRecording accepts. Zero
+	// means unlimited.
+	MaxRecordingBytes int64
+	// SpeakerMethods are the speaker labelling methods this deployment offers.
+	// Asking for one that is not listed fails with CodeUnimplemented.
+	SpeakerMethods []SpeakerMethod
 }
 
 func capabilitiesFromProto(msg *escribapb.Capabilities) *Capabilities {
@@ -375,12 +676,24 @@ func capabilitiesFromProto(msg *escribapb.Capabilities) *Capabilities {
 		})
 	}
 
+	var methods []SpeakerMethod
+
+	for _, method := range msg.GetSpeakerMethods() {
+		// A method this SDK version cannot request is of no use to its caller.
+		if known, ok := speakerMethodFromProto(method); ok {
+			methods = append(methods, known)
+		}
+	}
+
 	return &Capabilities{
 		Models:            models,
 		DefaultLanguage:   msg.GetDefaultLanguage(),
 		MaxSession:        time.Duration(msg.GetMaxSessionSeconds()) * time.Second,
 		MaxRecording:      time.Duration(msg.GetMaxRecordingSeconds()) * time.Second,
 		RefinementEnabled: msg.GetRefinementEnabled(),
+		MaxLongRecording:  time.Duration(msg.GetMaxLongRecordingSeconds()) * time.Second,
+		MaxRecordingBytes: msg.GetMaxRecordingBytes(),
+		SpeakerMethods:    methods,
 	}
 }
 

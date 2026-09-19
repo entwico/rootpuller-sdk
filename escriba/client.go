@@ -1,6 +1,7 @@
 // Package escriba wraps com.entwico.rootpuller.escriba.TranscriptionService:
 // live microphone transcription over a bidirectional stream, one-shot
-// transcription of a complete recording, and capability discovery.
+// transcription of a short clip, transcription of a complete recording of any
+// length with optional speaker labels, and capability discovery.
 //
 // Live sessions distinguish provisional text from settled text, because the
 // server cannot know a word is final until it has heard enough to stop revising
@@ -67,8 +68,8 @@ func NewService(sdk *rootpullersdk.Client, opts ...Option) *Service {
 // Transcribe transcribes one complete recording.
 //
 // Intended for short recordings — voice notes, captured utterances, language
-// probes. The server holds an inference slot for the whole decode, so long-form
-// work belongs elsewhere.
+// probes. The server holds an inference slot for the whole decode, so anything
+// longer than Capabilities.MaxRecording belongs to TranscribeRecording.
 func (s *Service) Transcribe(
 	ctx context.Context,
 	audio rootpullersdk.Upload,

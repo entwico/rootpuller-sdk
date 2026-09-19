@@ -5,15 +5,19 @@
 //	ROOTPULLER_ADDR=http://localhost:8755 go test -tags integration ./integration
 //
 // ROOTPULLER_TOKEN adds a bearer token when the server has auth enabled.
+// ESCRIBA_RECORDING names an audio file for the recording test, which is skipped
+// without it; ESCRIBA_SPEAKERS=channel|diarization adds speaker labels.
 package integration
 
 import (
+	"fmt"
 	"os"
 	"testing"
 
 	rootpullersdk "github.com/entwico/rootpuller-sdk"
 	"github.com/entwico/rootpuller-sdk/chunker"
 	"github.com/entwico/rootpuller-sdk/embedding"
+	"github.com/entwico/rootpuller-sdk/escriba"
 )
 
 func newSDK(t *testing.T) *rootpullersdk.Client {
@@ -67,4 +71,47 @@ func TestEmbeddingListModels(t *testing.T) {
 	}
 
 	t.Logf("server offers %d embedding models", len(models))
+}
+
+func TestEscribaTranscribeRecording(t *testing.T) {
+	path := os.Getenv("ESCRIBA_RECORDING")
+	if path == "" {
+		t.Skip("ESCRIBA_RECORDING not set")
+	}
+
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+
+	opts := &escriba.RecordingOptions{
+		OnProgress: func(p escriba.RecordingProgress) { t.Logf("%s %.0f%%", p.Stage, p.Percentage) },
+	}
+	if method := os.Getenv("ESCRIBA_SPEAKERS"); method != "" {
+		opts.Speakers = &escriba.SpeakerOptions{Method: escriba.SpeakerMethod(method)}
+	}
+
+	recording, err := escriba.NewService(newSDK(t)).TranscribeRecording(t.Context(),
+		rootpullersdk.Upload{Name: path, Content: file}, opts)
+	if err != nil {
+		t.Fatalf("TranscribeRecording: %v", err)
+	}
+
+	if len(recording.Segments) == 0 || recording.Text == "" {
+		t.Fatalf("got an empty transcript for %s", path)
+	}
+
+	if opts.Speakers != nil && len(recording.Speakers) == 0 {
+		t.Error("asked for speaker labels, got no speakers")
+	}
+
+	for _, turn := range recording.Turns() {
+		who := "-"
+		if turn.Speaker != nil {
+			who = fmt.Sprintf("Speaker %d", *turn.Speaker+1)
+		}
+
+		t.Logf("[%s] %s: %s", turn.Start, who, turn.Text)
+	}
 }

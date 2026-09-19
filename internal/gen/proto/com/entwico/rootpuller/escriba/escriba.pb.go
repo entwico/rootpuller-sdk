@@ -129,6 +129,117 @@ func (TranscriptComplete_EndReason) EnumDescriptor() ([]byte, []int) {
 	return file_com_entwico_rootpuller_escriba_escriba_proto_rawDescGZIP(), []int{9, 0}
 }
 
+// Method is how speakers are told apart.
+type SpeakerLabeling_Method int32
+
+const (
+	SpeakerLabeling_METHOD_UNSPECIFIED SpeakerLabeling_Method = 0 // treated as DIARIZATION
+	// Acoustic clustering of the voices in the recording. Works on any audio,
+	// costs a second model pass, and is only offered by deployments built with
+	// the diarization extra (see Capabilities.speaker_methods).
+	SpeakerLabeling_METHOD_DIARIZATION SpeakerLabeling_Method = 1
+	// One speaker per audio channel. Exact, free, and only meaningful for
+	// dual-channel recordings such as telephony with each party on its own
+	// channel. Requires a stereo file.
+	SpeakerLabeling_METHOD_CHANNEL SpeakerLabeling_Method = 2
+)
+
+// Enum value maps for SpeakerLabeling_Method.
+var (
+	SpeakerLabeling_Method_name = map[int32]string{
+		0: "METHOD_UNSPECIFIED",
+		1: "METHOD_DIARIZATION",
+		2: "METHOD_CHANNEL",
+	}
+	SpeakerLabeling_Method_value = map[string]int32{
+		"METHOD_UNSPECIFIED": 0,
+		"METHOD_DIARIZATION": 1,
+		"METHOD_CHANNEL":     2,
+	}
+)
+
+func (x SpeakerLabeling_Method) Enum() *SpeakerLabeling_Method {
+	p := new(SpeakerLabeling_Method)
+	*p = x
+	return p
+}
+
+func (x SpeakerLabeling_Method) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (SpeakerLabeling_Method) Descriptor() protoreflect.EnumDescriptor {
+	return file_com_entwico_rootpuller_escriba_escriba_proto_enumTypes[2].Descriptor()
+}
+
+func (SpeakerLabeling_Method) Type() protoreflect.EnumType {
+	return &file_com_entwico_rootpuller_escriba_escriba_proto_enumTypes[2]
+}
+
+func (x SpeakerLabeling_Method) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use SpeakerLabeling_Method.Descriptor instead.
+func (SpeakerLabeling_Method) EnumDescriptor() ([]byte, []int) {
+	return file_com_entwico_rootpuller_escriba_escriba_proto_rawDescGZIP(), []int{16, 0}
+}
+
+// Stage is the phase of work the percentage refers to.
+type RecordingProgress_Stage int32
+
+const (
+	RecordingProgress_STAGE_UNSPECIFIED RecordingProgress_Stage = 0
+	// Waiting for the worker, which processes one recording at a time.
+	RecordingProgress_STAGE_QUEUED       RecordingProgress_Stage = 1
+	RecordingProgress_STAGE_TRANSCRIBING RecordingProgress_Stage = 2
+	// Only when speaker labels were requested with METHOD_DIARIZATION.
+	RecordingProgress_STAGE_LABELING_SPEAKERS RecordingProgress_Stage = 3
+)
+
+// Enum value maps for RecordingProgress_Stage.
+var (
+	RecordingProgress_Stage_name = map[int32]string{
+		0: "STAGE_UNSPECIFIED",
+		1: "STAGE_QUEUED",
+		2: "STAGE_TRANSCRIBING",
+		3: "STAGE_LABELING_SPEAKERS",
+	}
+	RecordingProgress_Stage_value = map[string]int32{
+		"STAGE_UNSPECIFIED":       0,
+		"STAGE_QUEUED":            1,
+		"STAGE_TRANSCRIBING":      2,
+		"STAGE_LABELING_SPEAKERS": 3,
+	}
+)
+
+func (x RecordingProgress_Stage) Enum() *RecordingProgress_Stage {
+	p := new(RecordingProgress_Stage)
+	*p = x
+	return p
+}
+
+func (x RecordingProgress_Stage) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (RecordingProgress_Stage) Descriptor() protoreflect.EnumDescriptor {
+	return file_com_entwico_rootpuller_escriba_escriba_proto_enumTypes[3].Descriptor()
+}
+
+func (RecordingProgress_Stage) Type() protoreflect.EnumType {
+	return &file_com_entwico_rootpuller_escriba_escriba_proto_enumTypes[3]
+}
+
+func (x RecordingProgress_Stage) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use RecordingProgress_Stage.Descriptor instead.
+func (RecordingProgress_Stage) EnumDescriptor() ([]byte, []int) {
+	return file_com_entwico_rootpuller_escriba_escriba_proto_rawDescGZIP(), []int{20, 0}
+}
+
 // TranscriptionModelRef identifies a locally-served Whisper model.
 //
 // Examples:
@@ -201,8 +312,7 @@ type TranscribeLiveConfig struct {
 	// 16 kHz and let the platform's own high-quality resampler do the work.
 	//
 	// Server validation:
-	//
-	//	outside 8000–192000                 → INVALID_ARGUMENT
+	//   outside 8000–192000                 → INVALID_ARGUMENT
 	SampleRate int32 `protobuf:"varint,1,opt,name=sample_rate,json=sampleRate,proto3" json:"sample_rate,omitempty"`
 	// language is a BCP-47-style code ("de", "en", "es"). Optional.
 	//
@@ -1413,6 +1523,765 @@ func (x *TranscribeResponse) GetModel() *TranscriptionModelRef {
 	return nil
 }
 
+// SpeakerLabeling asks for the transcript to be attributed to speakers.
+//
+// Speakers are anonymous: they are told apart, not identified. Each gets a
+// stable speaker_index for the recording, numbered by first appearance.
+type SpeakerLabeling struct {
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Method SpeakerLabeling_Method `protobuf:"varint,1,opt,name=method,proto3,enum=com.entwico.rootpuller.escriba.SpeakerLabeling_Method" json:"method,omitempty"`
+	// speaker_count fixes the number of speakers when it is known, which is
+	// noticeably more accurate than letting the server estimate it. Zero means
+	// unknown. DIARIZATION only; mutually exclusive with min/max.
+	SpeakerCount int32 `protobuf:"varint,2,opt,name=speaker_count,json=speakerCount,proto3" json:"speaker_count,omitempty"`
+	// min_speakers / max_speakers bound the estimate when the exact count is not
+	// known. Zero means unbounded. DIARIZATION only.
+	MinSpeakers   int32 `protobuf:"varint,3,opt,name=min_speakers,json=minSpeakers,proto3" json:"min_speakers,omitempty"`
+	MaxSpeakers   int32 `protobuf:"varint,4,opt,name=max_speakers,json=maxSpeakers,proto3" json:"max_speakers,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SpeakerLabeling) Reset() {
+	*x = SpeakerLabeling{}
+	mi := &file_com_entwico_rootpuller_escriba_escriba_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SpeakerLabeling) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SpeakerLabeling) ProtoMessage() {}
+
+func (x *SpeakerLabeling) ProtoReflect() protoreflect.Message {
+	mi := &file_com_entwico_rootpuller_escriba_escriba_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SpeakerLabeling.ProtoReflect.Descriptor instead.
+func (*SpeakerLabeling) Descriptor() ([]byte, []int) {
+	return file_com_entwico_rootpuller_escriba_escriba_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *SpeakerLabeling) GetMethod() SpeakerLabeling_Method {
+	if x != nil {
+		return x.Method
+	}
+	return SpeakerLabeling_METHOD_UNSPECIFIED
+}
+
+func (x *SpeakerLabeling) GetSpeakerCount() int32 {
+	if x != nil {
+		return x.SpeakerCount
+	}
+	return 0
+}
+
+func (x *SpeakerLabeling) GetMinSpeakers() int32 {
+	if x != nil {
+		return x.MinSpeakers
+	}
+	return 0
+}
+
+func (x *SpeakerLabeling) GetMaxSpeakers() int32 {
+	if x != nil {
+		return x.MaxSpeakers
+	}
+	return 0
+}
+
+// TranscribeRecordingConfig opens a recording transcription. Sent once, as the
+// first frame.
+type TranscribeRecordingConfig struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// language pins the decoding language. Optional; leave empty to detect, with
+	// exactly the semantics of TranscribeConfig.language. The outcome is reported
+	// in RecordingAccepted.language.
+	Language string `protobuf:"bytes,1,opt,name=language,proto3" json:"language,omitempty"`
+	// model optionally pins which locally-served model to use.
+	Model *TranscriptionModelRef `protobuf:"bytes,2,opt,name=model,proto3" json:"model,omitempty"`
+	// include_words returns per-word timings on every segment. Defaults to false.
+	IncludeWords bool `protobuf:"varint,3,opt,name=include_words,json=includeWords,proto3" json:"include_words,omitempty"`
+	// speakers requests speaker labels. Omit for a plain transcript.
+	Speakers      *SpeakerLabeling `protobuf:"bytes,4,opt,name=speakers,proto3" json:"speakers,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TranscribeRecordingConfig) Reset() {
+	*x = TranscribeRecordingConfig{}
+	mi := &file_com_entwico_rootpuller_escriba_escriba_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TranscribeRecordingConfig) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TranscribeRecordingConfig) ProtoMessage() {}
+
+func (x *TranscribeRecordingConfig) ProtoReflect() protoreflect.Message {
+	mi := &file_com_entwico_rootpuller_escriba_escriba_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TranscribeRecordingConfig.ProtoReflect.Descriptor instead.
+func (*TranscribeRecordingConfig) Descriptor() ([]byte, []int) {
+	return file_com_entwico_rootpuller_escriba_escriba_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *TranscribeRecordingConfig) GetLanguage() string {
+	if x != nil {
+		return x.Language
+	}
+	return ""
+}
+
+func (x *TranscribeRecordingConfig) GetModel() *TranscriptionModelRef {
+	if x != nil {
+		return x.Model
+	}
+	return nil
+}
+
+func (x *TranscribeRecordingConfig) GetIncludeWords() bool {
+	if x != nil {
+		return x.IncludeWords
+	}
+	return false
+}
+
+func (x *TranscribeRecordingConfig) GetSpeakers() *SpeakerLabeling {
+	if x != nil {
+		return x.Speakers
+	}
+	return nil
+}
+
+// TranscribeRecordingRequest is one frame of a recording transcription.
+//
+// Request stream:
+//  1. config  (exactly once, first)
+//  2. chunk   (one or more, concatenated in arrival order)
+//
+// The client half-closes after the last chunk. Any container ffmpeg can demux
+// is accepted, video included; the server decodes and resamples. The upload is
+// forwarded as it arrives rather than buffered, so its size is bounded by
+// Capabilities.max_recording_bytes and not by memory.
+//
+// Server validation:
+//
+//	first frame is not config           → INVALID_ARGUMENT
+//	a second config frame               → INVALID_ARGUMENT
+//	no chunks received                  → INVALID_ARGUMENT
+//	speaker_count together with min/max → INVALID_ARGUMENT
+//	min_speakers > max_speakers         → INVALID_ARGUMENT
+//	METHOD_CHANNEL on a non-stereo file → INVALID_ARGUMENT
+//	payload is not decodable audio      → INVALID_ARGUMENT
+//	speaker method not offered here     → UNIMPLEMENTED
+//	recording too long or too large     → RESOURCE_EXHAUSTED
+//	worker queue is full                → RESOURCE_EXHAUSTED (with RetryInfo)
+type TranscribeRecordingRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Frame:
+	//
+	//	*TranscribeRecordingRequest_Config
+	//	*TranscribeRecordingRequest_Chunk
+	Frame         isTranscribeRecordingRequest_Frame `protobuf_oneof:"frame"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TranscribeRecordingRequest) Reset() {
+	*x = TranscribeRecordingRequest{}
+	mi := &file_com_entwico_rootpuller_escriba_escriba_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TranscribeRecordingRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TranscribeRecordingRequest) ProtoMessage() {}
+
+func (x *TranscribeRecordingRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_com_entwico_rootpuller_escriba_escriba_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TranscribeRecordingRequest.ProtoReflect.Descriptor instead.
+func (*TranscribeRecordingRequest) Descriptor() ([]byte, []int) {
+	return file_com_entwico_rootpuller_escriba_escriba_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *TranscribeRecordingRequest) GetFrame() isTranscribeRecordingRequest_Frame {
+	if x != nil {
+		return x.Frame
+	}
+	return nil
+}
+
+func (x *TranscribeRecordingRequest) GetConfig() *TranscribeRecordingConfig {
+	if x != nil {
+		if x, ok := x.Frame.(*TranscribeRecordingRequest_Config); ok {
+			return x.Config
+		}
+	}
+	return nil
+}
+
+func (x *TranscribeRecordingRequest) GetChunk() *common.FileChunk {
+	if x != nil {
+		if x, ok := x.Frame.(*TranscribeRecordingRequest_Chunk); ok {
+			return x.Chunk
+		}
+	}
+	return nil
+}
+
+type isTranscribeRecordingRequest_Frame interface {
+	isTranscribeRecordingRequest_Frame()
+}
+
+type TranscribeRecordingRequest_Config struct {
+	Config *TranscribeRecordingConfig `protobuf:"bytes,1,opt,name=config,proto3,oneof"`
+}
+
+type TranscribeRecordingRequest_Chunk struct {
+	Chunk *common.FileChunk `protobuf:"bytes,2,opt,name=chunk,proto3,oneof"`
+}
+
+func (*TranscribeRecordingRequest_Config) isTranscribeRecordingRequest_Frame() {}
+
+func (*TranscribeRecordingRequest_Chunk) isTranscribeRecordingRequest_Frame() {}
+
+// RecordingAccepted reports that the upload was received and decoded. Always
+// the first response event. The recording may still be waiting for the worker:
+// see RecordingProgress.Stage.
+type RecordingAccepted struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// duration_seconds of the decoded audio.
+	DurationSeconds float64 `protobuf:"fixed64,1,opt,name=duration_seconds,json=durationSeconds,proto3" json:"duration_seconds,omitempty"`
+	// language in force for the whole recording. See DetectedLanguage.
+	Language *DetectedLanguage `protobuf:"bytes,2,opt,name=language,proto3" json:"language,omitempty"`
+	// model that will produce this transcript.
+	Model         *TranscriptionModelRef `protobuf:"bytes,3,opt,name=model,proto3" json:"model,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RecordingAccepted) Reset() {
+	*x = RecordingAccepted{}
+	mi := &file_com_entwico_rootpuller_escriba_escriba_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RecordingAccepted) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RecordingAccepted) ProtoMessage() {}
+
+func (x *RecordingAccepted) ProtoReflect() protoreflect.Message {
+	mi := &file_com_entwico_rootpuller_escriba_escriba_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RecordingAccepted.ProtoReflect.Descriptor instead.
+func (*RecordingAccepted) Descriptor() ([]byte, []int) {
+	return file_com_entwico_rootpuller_escriba_escriba_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *RecordingAccepted) GetDurationSeconds() float64 {
+	if x != nil {
+		return x.DurationSeconds
+	}
+	return 0
+}
+
+func (x *RecordingAccepted) GetLanguage() *DetectedLanguage {
+	if x != nil {
+		return x.Language
+	}
+	return nil
+}
+
+func (x *RecordingAccepted) GetModel() *TranscriptionModelRef {
+	if x != nil {
+		return x.Model
+	}
+	return nil
+}
+
+// RecordingProgress reports where the worker is. Emitted periodically; purely
+// informational, and safe to ignore.
+type RecordingProgress struct {
+	state protoimpl.MessageState  `protogen:"open.v1"`
+	Stage RecordingProgress_Stage `protobuf:"varint,1,opt,name=stage,proto3,enum=com.entwico.rootpuller.escriba.RecordingProgress_Stage" json:"stage,omitempty"`
+	// percentage of the current stage, 0–100. Restarts at 0 on a stage change.
+	Percentage float32 `protobuf:"fixed32,2,opt,name=percentage,proto3" json:"percentage,omitempty"`
+	// queue_position is the number of recordings ahead of this one. Meaningful
+	// only while stage is QUEUED.
+	QueuePosition int32 `protobuf:"varint,3,opt,name=queue_position,json=queuePosition,proto3" json:"queue_position,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RecordingProgress) Reset() {
+	*x = RecordingProgress{}
+	mi := &file_com_entwico_rootpuller_escriba_escriba_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RecordingProgress) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RecordingProgress) ProtoMessage() {}
+
+func (x *RecordingProgress) ProtoReflect() protoreflect.Message {
+	mi := &file_com_entwico_rootpuller_escriba_escriba_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RecordingProgress.ProtoReflect.Descriptor instead.
+func (*RecordingProgress) Descriptor() ([]byte, []int) {
+	return file_com_entwico_rootpuller_escriba_escriba_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *RecordingProgress) GetStage() RecordingProgress_Stage {
+	if x != nil {
+		return x.Stage
+	}
+	return RecordingProgress_STAGE_UNSPECIFIED
+}
+
+func (x *RecordingProgress) GetPercentage() float32 {
+	if x != nil {
+		return x.Percentage
+	}
+	return 0
+}
+
+func (x *RecordingProgress) GetQueuePosition() int32 {
+	if x != nil {
+		return x.QueuePosition
+	}
+	return 0
+}
+
+// TranscriptSegment is one finished piece of the transcript: a sentence or
+// phrase, in the unit a subtitle would use.
+//
+// Segments are final — unlike live transcription there is nothing provisional
+// here. They arrive in recording order and are append-only.
+type TranscriptSegment struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// index of this segment within the recording, contiguous from 0.
+	Index int32 `protobuf:"varint,1,opt,name=index,proto3" json:"index,omitempty"`
+	// Position within the recording.
+	StartSeconds float64 `protobuf:"fixed64,2,opt,name=start_seconds,json=startSeconds,proto3" json:"start_seconds,omitempty"`
+	EndSeconds   float64 `protobuf:"fixed64,3,opt,name=end_seconds,json=endSeconds,proto3" json:"end_seconds,omitempty"`
+	Text         string  `protobuf:"bytes,4,opt,name=text,proto3" json:"text,omitempty"`
+	// speaker_index identifies who said this segment. Set only when speaker
+	// labels were requested. 0-based, numbered by first appearance. A segment
+	// never spans a speaker change: the server splits at the change.
+	SpeakerIndex *int32 `protobuf:"varint,5,opt,name=speaker_index,json=speakerIndex,proto3,oneof" json:"speaker_index,omitempty"`
+	// words is populated only when TranscribeRecordingConfig.include_words is
+	// true.
+	Words         []*WordTiming `protobuf:"bytes,6,rep,name=words,proto3" json:"words,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TranscriptSegment) Reset() {
+	*x = TranscriptSegment{}
+	mi := &file_com_entwico_rootpuller_escriba_escriba_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TranscriptSegment) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TranscriptSegment) ProtoMessage() {}
+
+func (x *TranscriptSegment) ProtoReflect() protoreflect.Message {
+	mi := &file_com_entwico_rootpuller_escriba_escriba_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TranscriptSegment.ProtoReflect.Descriptor instead.
+func (*TranscriptSegment) Descriptor() ([]byte, []int) {
+	return file_com_entwico_rootpuller_escriba_escriba_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *TranscriptSegment) GetIndex() int32 {
+	if x != nil {
+		return x.Index
+	}
+	return 0
+}
+
+func (x *TranscriptSegment) GetStartSeconds() float64 {
+	if x != nil {
+		return x.StartSeconds
+	}
+	return 0
+}
+
+func (x *TranscriptSegment) GetEndSeconds() float64 {
+	if x != nil {
+		return x.EndSeconds
+	}
+	return 0
+}
+
+func (x *TranscriptSegment) GetText() string {
+	if x != nil {
+		return x.Text
+	}
+	return ""
+}
+
+func (x *TranscriptSegment) GetSpeakerIndex() int32 {
+	if x != nil && x.SpeakerIndex != nil {
+		return *x.SpeakerIndex
+	}
+	return 0
+}
+
+func (x *TranscriptSegment) GetWords() []*WordTiming {
+	if x != nil {
+		return x.Words
+	}
+	return nil
+}
+
+// SpeakerSummary describes one speaker found in the recording.
+type SpeakerSummary struct {
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	SpeakerIndex int32                  `protobuf:"varint,1,opt,name=speaker_index,json=speakerIndex,proto3" json:"speaker_index,omitempty"`
+	// speaking_seconds is the total duration of this speaker's segments.
+	SpeakingSeconds float64 `protobuf:"fixed64,2,opt,name=speaking_seconds,json=speakingSeconds,proto3" json:"speaking_seconds,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *SpeakerSummary) Reset() {
+	*x = SpeakerSummary{}
+	mi := &file_com_entwico_rootpuller_escriba_escriba_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SpeakerSummary) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SpeakerSummary) ProtoMessage() {}
+
+func (x *SpeakerSummary) ProtoReflect() protoreflect.Message {
+	mi := &file_com_entwico_rootpuller_escriba_escriba_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SpeakerSummary.ProtoReflect.Descriptor instead.
+func (*SpeakerSummary) Descriptor() ([]byte, []int) {
+	return file_com_entwico_rootpuller_escriba_escriba_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *SpeakerSummary) GetSpeakerIndex() int32 {
+	if x != nil {
+		return x.SpeakerIndex
+	}
+	return 0
+}
+
+func (x *SpeakerSummary) GetSpeakingSeconds() float64 {
+	if x != nil {
+		return x.SpeakingSeconds
+	}
+	return 0
+}
+
+// RecordingComplete is the final event. Together with the segments it is
+// everything needed to persist the transcript.
+type RecordingComplete struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Full transcript, segments joined in order, without speaker labels.
+	Text            string  `protobuf:"bytes,1,opt,name=text,proto3" json:"text,omitempty"`
+	DurationSeconds float64 `protobuf:"fixed64,2,opt,name=duration_seconds,json=durationSeconds,proto3" json:"duration_seconds,omitempty"`
+	// Repeated from RecordingAccepted so a caller persisting the result does not
+	// need to have kept that event.
+	Language *DetectedLanguage      `protobuf:"bytes,3,opt,name=language,proto3" json:"language,omitempty"`
+	Model    *TranscriptionModelRef `protobuf:"bytes,4,opt,name=model,proto3" json:"model,omitempty"`
+	// speakers found, ordered by speaker_index. Empty when no speaker labels
+	// were requested.
+	Speakers []*SpeakerSummary `protobuf:"bytes,5,rep,name=speakers,proto3" json:"speakers,omitempty"`
+	// segment_count is the number of TranscriptSegment events that preceded this
+	// one, so a caller can verify it saw them all.
+	SegmentCount  int32 `protobuf:"varint,6,opt,name=segment_count,json=segmentCount,proto3" json:"segment_count,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RecordingComplete) Reset() {
+	*x = RecordingComplete{}
+	mi := &file_com_entwico_rootpuller_escriba_escriba_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RecordingComplete) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RecordingComplete) ProtoMessage() {}
+
+func (x *RecordingComplete) ProtoReflect() protoreflect.Message {
+	mi := &file_com_entwico_rootpuller_escriba_escriba_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RecordingComplete.ProtoReflect.Descriptor instead.
+func (*RecordingComplete) Descriptor() ([]byte, []int) {
+	return file_com_entwico_rootpuller_escriba_escriba_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *RecordingComplete) GetText() string {
+	if x != nil {
+		return x.Text
+	}
+	return ""
+}
+
+func (x *RecordingComplete) GetDurationSeconds() float64 {
+	if x != nil {
+		return x.DurationSeconds
+	}
+	return 0
+}
+
+func (x *RecordingComplete) GetLanguage() *DetectedLanguage {
+	if x != nil {
+		return x.Language
+	}
+	return nil
+}
+
+func (x *RecordingComplete) GetModel() *TranscriptionModelRef {
+	if x != nil {
+		return x.Model
+	}
+	return nil
+}
+
+func (x *RecordingComplete) GetSpeakers() []*SpeakerSummary {
+	if x != nil {
+		return x.Speakers
+	}
+	return nil
+}
+
+func (x *RecordingComplete) GetSegmentCount() int32 {
+	if x != nil {
+		return x.SegmentCount
+	}
+	return 0
+}
+
+// TranscribeRecordingResponse is one event of a recording transcription.
+//
+// Response stream:
+//  1. accepted  (exactly once, first)
+//  2. progress / segment, interleaved
+//  3. complete  (exactly once, last)
+//
+// When the segments arrive depends on whether speaker labels were requested.
+// Without them, segments stream while the recording is still being transcribed,
+// interleaved with progress. With them, every segment arrives after the
+// LABELING_SPEAKERS stage, because a segment's boundaries depend on where the
+// speakers change and that is only known at the end. Client code is the same
+// either way: append segments as they come.
+type TranscribeRecordingResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Event:
+	//
+	//	*TranscribeRecordingResponse_Accepted
+	//	*TranscribeRecordingResponse_Progress
+	//	*TranscribeRecordingResponse_Segment
+	//	*TranscribeRecordingResponse_Complete
+	Event         isTranscribeRecordingResponse_Event `protobuf_oneof:"event"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TranscribeRecordingResponse) Reset() {
+	*x = TranscribeRecordingResponse{}
+	mi := &file_com_entwico_rootpuller_escriba_escriba_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TranscribeRecordingResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TranscribeRecordingResponse) ProtoMessage() {}
+
+func (x *TranscribeRecordingResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_com_entwico_rootpuller_escriba_escriba_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TranscribeRecordingResponse.ProtoReflect.Descriptor instead.
+func (*TranscribeRecordingResponse) Descriptor() ([]byte, []int) {
+	return file_com_entwico_rootpuller_escriba_escriba_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *TranscribeRecordingResponse) GetEvent() isTranscribeRecordingResponse_Event {
+	if x != nil {
+		return x.Event
+	}
+	return nil
+}
+
+func (x *TranscribeRecordingResponse) GetAccepted() *RecordingAccepted {
+	if x != nil {
+		if x, ok := x.Event.(*TranscribeRecordingResponse_Accepted); ok {
+			return x.Accepted
+		}
+	}
+	return nil
+}
+
+func (x *TranscribeRecordingResponse) GetProgress() *RecordingProgress {
+	if x != nil {
+		if x, ok := x.Event.(*TranscribeRecordingResponse_Progress); ok {
+			return x.Progress
+		}
+	}
+	return nil
+}
+
+func (x *TranscribeRecordingResponse) GetSegment() *TranscriptSegment {
+	if x != nil {
+		if x, ok := x.Event.(*TranscribeRecordingResponse_Segment); ok {
+			return x.Segment
+		}
+	}
+	return nil
+}
+
+func (x *TranscribeRecordingResponse) GetComplete() *RecordingComplete {
+	if x != nil {
+		if x, ok := x.Event.(*TranscribeRecordingResponse_Complete); ok {
+			return x.Complete
+		}
+	}
+	return nil
+}
+
+type isTranscribeRecordingResponse_Event interface {
+	isTranscribeRecordingResponse_Event()
+}
+
+type TranscribeRecordingResponse_Accepted struct {
+	Accepted *RecordingAccepted `protobuf:"bytes,1,opt,name=accepted,proto3,oneof"`
+}
+
+type TranscribeRecordingResponse_Progress struct {
+	Progress *RecordingProgress `protobuf:"bytes,2,opt,name=progress,proto3,oneof"`
+}
+
+type TranscribeRecordingResponse_Segment struct {
+	Segment *TranscriptSegment `protobuf:"bytes,3,opt,name=segment,proto3,oneof"`
+}
+
+type TranscribeRecordingResponse_Complete struct {
+	Complete *RecordingComplete `protobuf:"bytes,4,opt,name=complete,proto3,oneof"`
+}
+
+func (*TranscribeRecordingResponse_Accepted) isTranscribeRecordingResponse_Event() {}
+
+func (*TranscribeRecordingResponse_Progress) isTranscribeRecordingResponse_Event() {}
+
+func (*TranscribeRecordingResponse_Segment) isTranscribeRecordingResponse_Event() {}
+
+func (*TranscribeRecordingResponse_Complete) isTranscribeRecordingResponse_Event() {}
+
 // TranscriptionModelInfo describes one model the deployment can serve.
 //
 // Treat it as a snapshot — `loaded` reflects whether the model's weights are
@@ -1435,7 +2304,7 @@ type TranscriptionModelInfo struct {
 
 func (x *TranscriptionModelInfo) Reset() {
 	*x = TranscriptionModelInfo{}
-	mi := &file_com_entwico_rootpuller_escriba_escriba_proto_msgTypes[16]
+	mi := &file_com_entwico_rootpuller_escriba_escriba_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1447,7 +2316,7 @@ func (x *TranscriptionModelInfo) String() string {
 func (*TranscriptionModelInfo) ProtoMessage() {}
 
 func (x *TranscriptionModelInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_com_entwico_rootpuller_escriba_escriba_proto_msgTypes[16]
+	mi := &file_com_entwico_rootpuller_escriba_escriba_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1460,7 +2329,7 @@ func (x *TranscriptionModelInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TranscriptionModelInfo.ProtoReflect.Descriptor instead.
 func (*TranscriptionModelInfo) Descriptor() ([]byte, []int) {
-	return file_com_entwico_rootpuller_escriba_escriba_proto_rawDescGZIP(), []int{16}
+	return file_com_entwico_rootpuller_escriba_escriba_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *TranscriptionModelInfo) GetModel() *TranscriptionModelRef {
@@ -1510,13 +2379,24 @@ type Capabilities struct {
 	// refinement_enabled is the deployment default a live session inherits when
 	// TranscribeLiveConfig.enable_refinement is left unset.
 	RefinementEnabled bool `protobuf:"varint,5,opt,name=refinement_enabled,json=refinementEnabled,proto3" json:"refinement_enabled,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// max_long_recording_seconds is the longest recording TranscribeRecording
+	// accepts; longer ones are rejected with RESOURCE_EXHAUSTED. Zero means
+	// unlimited.
+	MaxLongRecordingSeconds int32 `protobuf:"varint,6,opt,name=max_long_recording_seconds,json=maxLongRecordingSeconds,proto3" json:"max_long_recording_seconds,omitempty"`
+	// max_recording_bytes is the largest upload TranscribeRecording accepts.
+	// Zero means unlimited.
+	MaxRecordingBytes int64 `protobuf:"varint,7,opt,name=max_recording_bytes,json=maxRecordingBytes,proto3" json:"max_recording_bytes,omitempty"`
+	// speaker_methods lists the SpeakerLabeling methods this deployment offers.
+	// Empty means TranscribeRecording cannot label speakers here; requesting a
+	// method that is not listed fails with UNIMPLEMENTED.
+	SpeakerMethods []SpeakerLabeling_Method `protobuf:"varint,8,rep,packed,name=speaker_methods,json=speakerMethods,proto3,enum=com.entwico.rootpuller.escriba.SpeakerLabeling_Method" json:"speaker_methods,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *Capabilities) Reset() {
 	*x = Capabilities{}
-	mi := &file_com_entwico_rootpuller_escriba_escriba_proto_msgTypes[17]
+	mi := &file_com_entwico_rootpuller_escriba_escriba_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1528,7 +2408,7 @@ func (x *Capabilities) String() string {
 func (*Capabilities) ProtoMessage() {}
 
 func (x *Capabilities) ProtoReflect() protoreflect.Message {
-	mi := &file_com_entwico_rootpuller_escriba_escriba_proto_msgTypes[17]
+	mi := &file_com_entwico_rootpuller_escriba_escriba_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1541,7 +2421,7 @@ func (x *Capabilities) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Capabilities.ProtoReflect.Descriptor instead.
 func (*Capabilities) Descriptor() ([]byte, []int) {
-	return file_com_entwico_rootpuller_escriba_escriba_proto_rawDescGZIP(), []int{17}
+	return file_com_entwico_rootpuller_escriba_escriba_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *Capabilities) GetModels() []*TranscriptionModelInfo {
@@ -1579,6 +2459,27 @@ func (x *Capabilities) GetRefinementEnabled() bool {
 	return false
 }
 
+func (x *Capabilities) GetMaxLongRecordingSeconds() int32 {
+	if x != nil {
+		return x.MaxLongRecordingSeconds
+	}
+	return 0
+}
+
+func (x *Capabilities) GetMaxRecordingBytes() int64 {
+	if x != nil {
+		return x.MaxRecordingBytes
+	}
+	return 0
+}
+
+func (x *Capabilities) GetSpeakerMethods() []SpeakerLabeling_Method {
+	if x != nil {
+		return x.SpeakerMethods
+	}
+	return nil
+}
+
 // One slice of captured audio, in the encoding declared by config.
 type TranscribeLiveRequest_AudioChunk struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -1592,7 +2493,7 @@ type TranscribeLiveRequest_AudioChunk struct {
 
 func (x *TranscribeLiveRequest_AudioChunk) Reset() {
 	*x = TranscribeLiveRequest_AudioChunk{}
-	mi := &file_com_entwico_rootpuller_escriba_escriba_proto_msgTypes[18]
+	mi := &file_com_entwico_rootpuller_escriba_escriba_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1604,7 +2505,7 @@ func (x *TranscribeLiveRequest_AudioChunk) String() string {
 func (*TranscribeLiveRequest_AudioChunk) ProtoMessage() {}
 
 func (x *TranscribeLiveRequest_AudioChunk) ProtoReflect() protoreflect.Message {
-	mi := &file_com_entwico_rootpuller_escriba_escriba_proto_msgTypes[18]
+	mi := &file_com_entwico_rootpuller_escriba_escriba_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1714,25 +2615,87 @@ const file_com_entwico_rootpuller_escriba_escriba_proto_rawDesc = "" +
 	"\x10duration_seconds\x18\x02 \x01(\x01R\x0fdurationSeconds\x12L\n" +
 	"\blanguage\x18\x03 \x01(\v20.com.entwico.rootpuller.escriba.DetectedLanguageR\blanguage\x12@\n" +
 	"\x05words\x18\x04 \x03(\v2*.com.entwico.rootpuller.escriba.WordTimingR\x05words\x12K\n" +
-	"\x05model\x18\x05 \x01(\v25.com.entwico.rootpuller.escriba.TranscriptionModelRefR\x05model\"\xc3\x01\n" +
+	"\x05model\x18\x05 \x01(\v25.com.entwico.rootpuller.escriba.TranscriptionModelRefR\x05model\"\x9a\x02\n" +
+	"\x0fSpeakerLabeling\x12N\n" +
+	"\x06method\x18\x01 \x01(\x0e26.com.entwico.rootpuller.escriba.SpeakerLabeling.MethodR\x06method\x12#\n" +
+	"\rspeaker_count\x18\x02 \x01(\x05R\fspeakerCount\x12!\n" +
+	"\fmin_speakers\x18\x03 \x01(\x05R\vminSpeakers\x12!\n" +
+	"\fmax_speakers\x18\x04 \x01(\x05R\vmaxSpeakers\"L\n" +
+	"\x06Method\x12\x16\n" +
+	"\x12METHOD_UNSPECIFIED\x10\x00\x12\x16\n" +
+	"\x12METHOD_DIARIZATION\x10\x01\x12\x12\n" +
+	"\x0eMETHOD_CHANNEL\x10\x02\"\xf6\x01\n" +
+	"\x19TranscribeRecordingConfig\x12\x1a\n" +
+	"\blanguage\x18\x01 \x01(\tR\blanguage\x12K\n" +
+	"\x05model\x18\x02 \x01(\v25.com.entwico.rootpuller.escriba.TranscriptionModelRefR\x05model\x12#\n" +
+	"\rinclude_words\x18\x03 \x01(\bR\fincludeWords\x12K\n" +
+	"\bspeakers\x18\x04 \x01(\v2/.com.entwico.rootpuller.escriba.SpeakerLabelingR\bspeakers\"\xbc\x01\n" +
+	"\x1aTranscribeRecordingRequest\x12S\n" +
+	"\x06config\x18\x01 \x01(\v29.com.entwico.rootpuller.escriba.TranscribeRecordingConfigH\x00R\x06config\x12@\n" +
+	"\x05chunk\x18\x02 \x01(\v2(.com.entwico.rootpuller.common.FileChunkH\x00R\x05chunkB\a\n" +
+	"\x05frame\"\xd9\x01\n" +
+	"\x11RecordingAccepted\x12)\n" +
+	"\x10duration_seconds\x18\x01 \x01(\x01R\x0fdurationSeconds\x12L\n" +
+	"\blanguage\x18\x02 \x01(\v20.com.entwico.rootpuller.escriba.DetectedLanguageR\blanguage\x12K\n" +
+	"\x05model\x18\x03 \x01(\v25.com.entwico.rootpuller.escriba.TranscriptionModelRefR\x05model\"\x90\x02\n" +
+	"\x11RecordingProgress\x12M\n" +
+	"\x05stage\x18\x01 \x01(\x0e27.com.entwico.rootpuller.escriba.RecordingProgress.StageR\x05stage\x12\x1e\n" +
+	"\n" +
+	"percentage\x18\x02 \x01(\x02R\n" +
+	"percentage\x12%\n" +
+	"\x0equeue_position\x18\x03 \x01(\x05R\rqueuePosition\"e\n" +
+	"\x05Stage\x12\x15\n" +
+	"\x11STAGE_UNSPECIFIED\x10\x00\x12\x10\n" +
+	"\fSTAGE_QUEUED\x10\x01\x12\x16\n" +
+	"\x12STAGE_TRANSCRIBING\x10\x02\x12\x1b\n" +
+	"\x17STAGE_LABELING_SPEAKERS\x10\x03\"\x81\x02\n" +
+	"\x11TranscriptSegment\x12\x14\n" +
+	"\x05index\x18\x01 \x01(\x05R\x05index\x12#\n" +
+	"\rstart_seconds\x18\x02 \x01(\x01R\fstartSeconds\x12\x1f\n" +
+	"\vend_seconds\x18\x03 \x01(\x01R\n" +
+	"endSeconds\x12\x12\n" +
+	"\x04text\x18\x04 \x01(\tR\x04text\x12(\n" +
+	"\rspeaker_index\x18\x05 \x01(\x05H\x00R\fspeakerIndex\x88\x01\x01\x12@\n" +
+	"\x05words\x18\x06 \x03(\v2*.com.entwico.rootpuller.escriba.WordTimingR\x05wordsB\x10\n" +
+	"\x0e_speaker_index\"`\n" +
+	"\x0eSpeakerSummary\x12#\n" +
+	"\rspeaker_index\x18\x01 \x01(\x05R\fspeakerIndex\x12)\n" +
+	"\x10speaking_seconds\x18\x02 \x01(\x01R\x0fspeakingSeconds\"\xde\x02\n" +
+	"\x11RecordingComplete\x12\x12\n" +
+	"\x04text\x18\x01 \x01(\tR\x04text\x12)\n" +
+	"\x10duration_seconds\x18\x02 \x01(\x01R\x0fdurationSeconds\x12L\n" +
+	"\blanguage\x18\x03 \x01(\v20.com.entwico.rootpuller.escriba.DetectedLanguageR\blanguage\x12K\n" +
+	"\x05model\x18\x04 \x01(\v25.com.entwico.rootpuller.escriba.TranscriptionModelRefR\x05model\x12J\n" +
+	"\bspeakers\x18\x05 \x03(\v2..com.entwico.rootpuller.escriba.SpeakerSummaryR\bspeakers\x12#\n" +
+	"\rsegment_count\x18\x06 \x01(\x05R\fsegmentCount\"\xe8\x02\n" +
+	"\x1bTranscribeRecordingResponse\x12O\n" +
+	"\baccepted\x18\x01 \x01(\v21.com.entwico.rootpuller.escriba.RecordingAcceptedH\x00R\baccepted\x12O\n" +
+	"\bprogress\x18\x02 \x01(\v21.com.entwico.rootpuller.escriba.RecordingProgressH\x00R\bprogress\x12M\n" +
+	"\asegment\x18\x03 \x01(\v21.com.entwico.rootpuller.escriba.TranscriptSegmentH\x00R\asegment\x12O\n" +
+	"\bcomplete\x18\x04 \x01(\v21.com.entwico.rootpuller.escriba.RecordingCompleteH\x00R\bcompleteB\a\n" +
+	"\x05event\"\xc3\x01\n" +
 	"\x16TranscriptionModelInfo\x12K\n" +
 	"\x05model\x18\x01 \x01(\v25.com.entwico.rootpuller.escriba.TranscriptionModelRefR\x05model\x12\"\n" +
 	"\fmultilingual\x18\x02 \x01(\bR\fmultilingual\x12\x16\n" +
 	"\x06loaded\x18\x03 \x01(\bR\x06loaded\x12 \n" +
-	"\vdescription\x18\x04 \x01(\tR\vdescription\"\x9c\x02\n" +
+	"\vdescription\x18\x04 \x01(\tR\vdescription\"\xea\x03\n" +
 	"\fCapabilities\x12N\n" +
 	"\x06models\x18\x01 \x03(\v26.com.entwico.rootpuller.escriba.TranscriptionModelInfoR\x06models\x12)\n" +
 	"\x10default_language\x18\x02 \x01(\tR\x0fdefaultLanguage\x12.\n" +
 	"\x13max_session_seconds\x18\x03 \x01(\x05R\x11maxSessionSeconds\x122\n" +
 	"\x15max_recording_seconds\x18\x04 \x01(\x05R\x13maxRecordingSeconds\x12-\n" +
-	"\x12refinement_enabled\x18\x05 \x01(\bR\x11refinementEnabled*M\n" +
+	"\x12refinement_enabled\x18\x05 \x01(\bR\x11refinementEnabled\x12;\n" +
+	"\x1amax_long_recording_seconds\x18\x06 \x01(\x05R\x17maxLongRecordingSeconds\x12.\n" +
+	"\x13max_recording_bytes\x18\a \x01(\x03R\x11maxRecordingBytes\x12_\n" +
+	"\x0fspeaker_methods\x18\b \x03(\x0e26.com.entwico.rootpuller.escriba.SpeakerLabeling.MethodR\x0espeakerMethods*M\n" +
 	"\rAudioEncoding\x12\x1e\n" +
 	"\x1aAUDIO_ENCODING_UNSPECIFIED\x10\x00\x12\x1c\n" +
-	"\x18AUDIO_ENCODING_PCM_S16LE\x10\x012\xec\x02\n" +
+	"\x18AUDIO_ENCODING_PCM_S16LE\x10\x012\x81\x04\n" +
 	"\x14TranscriptionService\x12\x83\x01\n" +
 	"\x0eTranscribeLive\x125.com.entwico.rootpuller.escriba.TranscribeLiveRequest\x1a6.com.entwico.rootpuller.escriba.TranscribeLiveResponse(\x010\x01\x12u\n" +
 	"\n" +
-	"Transcribe\x121.com.entwico.rootpuller.escriba.TranscribeRequest\x1a2.com.entwico.rootpuller.escriba.TranscribeResponse(\x01\x12W\n" +
+	"Transcribe\x121.com.entwico.rootpuller.escriba.TranscribeRequest\x1a2.com.entwico.rootpuller.escriba.TranscribeResponse(\x01\x12\x92\x01\n" +
+	"\x13TranscribeRecording\x12:.com.entwico.rootpuller.escriba.TranscribeRecordingRequest\x1a;.com.entwico.rootpuller.escriba.TranscribeRecordingResponse(\x010\x01\x12W\n" +
 	"\x0fGetCapabilities\x12\x16.google.protobuf.Empty\x1a,.com.entwico.rootpuller.escriba.CapabilitiesB\xa3\x02\n" +
 	"\"com.com.entwico.rootpuller.escribaB\fEscribaProtoP\x01ZSgithub.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/escriba\xa2\x02\x04CERE\xaa\x02\x1eCom.Entwico.Rootpuller.Escriba\xca\x02\x1eCom\\Entwico\\Rootpuller\\Escriba\xe2\x02*Com\\Entwico\\Rootpuller\\Escriba\\GPBMetadata\xea\x02!Com::Entwico::Rootpuller::Escribab\x06proto3"
 
@@ -1748,66 +2711,96 @@ func file_com_entwico_rootpuller_escriba_escriba_proto_rawDescGZIP() []byte {
 	return file_com_entwico_rootpuller_escriba_escriba_proto_rawDescData
 }
 
-var file_com_entwico_rootpuller_escriba_escriba_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_com_entwico_rootpuller_escriba_escriba_proto_msgTypes = make([]protoimpl.MessageInfo, 19)
+var file_com_entwico_rootpuller_escriba_escriba_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
+var file_com_entwico_rootpuller_escriba_escriba_proto_msgTypes = make([]protoimpl.MessageInfo, 28)
 var file_com_entwico_rootpuller_escriba_escriba_proto_goTypes = []any{
 	(AudioEncoding)(0),                       // 0: com.entwico.rootpuller.escriba.AudioEncoding
 	(TranscriptComplete_EndReason)(0),        // 1: com.entwico.rootpuller.escriba.TranscriptComplete.EndReason
-	(*TranscriptionModelRef)(nil),            // 2: com.entwico.rootpuller.escriba.TranscriptionModelRef
-	(*TranscribeLiveConfig)(nil),             // 3: com.entwico.rootpuller.escriba.TranscribeLiveConfig
-	(*TranscribeLiveRequest)(nil),            // 4: com.entwico.rootpuller.escriba.TranscribeLiveRequest
-	(*SessionReady)(nil),                     // 5: com.entwico.rootpuller.escriba.SessionReady
-	(*PartialText)(nil),                      // 6: com.entwico.rootpuller.escriba.PartialText
-	(*CommittedText)(nil),                    // 7: com.entwico.rootpuller.escriba.CommittedText
-	(*UtteranceEnd)(nil),                     // 8: com.entwico.rootpuller.escriba.UtteranceEnd
-	(*UtteranceRevision)(nil),                // 9: com.entwico.rootpuller.escriba.UtteranceRevision
-	(*UtteranceText)(nil),                    // 10: com.entwico.rootpuller.escriba.UtteranceText
-	(*TranscriptComplete)(nil),               // 11: com.entwico.rootpuller.escriba.TranscriptComplete
-	(*TranscribeLiveResponse)(nil),           // 12: com.entwico.rootpuller.escriba.TranscribeLiveResponse
-	(*DetectedLanguage)(nil),                 // 13: com.entwico.rootpuller.escriba.DetectedLanguage
-	(*TranscribeConfig)(nil),                 // 14: com.entwico.rootpuller.escriba.TranscribeConfig
-	(*TranscribeRequest)(nil),                // 15: com.entwico.rootpuller.escriba.TranscribeRequest
-	(*WordTiming)(nil),                       // 16: com.entwico.rootpuller.escriba.WordTiming
-	(*TranscribeResponse)(nil),               // 17: com.entwico.rootpuller.escriba.TranscribeResponse
-	(*TranscriptionModelInfo)(nil),           // 18: com.entwico.rootpuller.escriba.TranscriptionModelInfo
-	(*Capabilities)(nil),                     // 19: com.entwico.rootpuller.escriba.Capabilities
-	(*TranscribeLiveRequest_AudioChunk)(nil), // 20: com.entwico.rootpuller.escriba.TranscribeLiveRequest.AudioChunk
-	(*common.FileChunk)(nil),                 // 21: com.entwico.rootpuller.common.FileChunk
-	(*emptypb.Empty)(nil),                    // 22: google.protobuf.Empty
+	(SpeakerLabeling_Method)(0),              // 2: com.entwico.rootpuller.escriba.SpeakerLabeling.Method
+	(RecordingProgress_Stage)(0),             // 3: com.entwico.rootpuller.escriba.RecordingProgress.Stage
+	(*TranscriptionModelRef)(nil),            // 4: com.entwico.rootpuller.escriba.TranscriptionModelRef
+	(*TranscribeLiveConfig)(nil),             // 5: com.entwico.rootpuller.escriba.TranscribeLiveConfig
+	(*TranscribeLiveRequest)(nil),            // 6: com.entwico.rootpuller.escriba.TranscribeLiveRequest
+	(*SessionReady)(nil),                     // 7: com.entwico.rootpuller.escriba.SessionReady
+	(*PartialText)(nil),                      // 8: com.entwico.rootpuller.escriba.PartialText
+	(*CommittedText)(nil),                    // 9: com.entwico.rootpuller.escriba.CommittedText
+	(*UtteranceEnd)(nil),                     // 10: com.entwico.rootpuller.escriba.UtteranceEnd
+	(*UtteranceRevision)(nil),                // 11: com.entwico.rootpuller.escriba.UtteranceRevision
+	(*UtteranceText)(nil),                    // 12: com.entwico.rootpuller.escriba.UtteranceText
+	(*TranscriptComplete)(nil),               // 13: com.entwico.rootpuller.escriba.TranscriptComplete
+	(*TranscribeLiveResponse)(nil),           // 14: com.entwico.rootpuller.escriba.TranscribeLiveResponse
+	(*DetectedLanguage)(nil),                 // 15: com.entwico.rootpuller.escriba.DetectedLanguage
+	(*TranscribeConfig)(nil),                 // 16: com.entwico.rootpuller.escriba.TranscribeConfig
+	(*TranscribeRequest)(nil),                // 17: com.entwico.rootpuller.escriba.TranscribeRequest
+	(*WordTiming)(nil),                       // 18: com.entwico.rootpuller.escriba.WordTiming
+	(*TranscribeResponse)(nil),               // 19: com.entwico.rootpuller.escriba.TranscribeResponse
+	(*SpeakerLabeling)(nil),                  // 20: com.entwico.rootpuller.escriba.SpeakerLabeling
+	(*TranscribeRecordingConfig)(nil),        // 21: com.entwico.rootpuller.escriba.TranscribeRecordingConfig
+	(*TranscribeRecordingRequest)(nil),       // 22: com.entwico.rootpuller.escriba.TranscribeRecordingRequest
+	(*RecordingAccepted)(nil),                // 23: com.entwico.rootpuller.escriba.RecordingAccepted
+	(*RecordingProgress)(nil),                // 24: com.entwico.rootpuller.escriba.RecordingProgress
+	(*TranscriptSegment)(nil),                // 25: com.entwico.rootpuller.escriba.TranscriptSegment
+	(*SpeakerSummary)(nil),                   // 26: com.entwico.rootpuller.escriba.SpeakerSummary
+	(*RecordingComplete)(nil),                // 27: com.entwico.rootpuller.escriba.RecordingComplete
+	(*TranscribeRecordingResponse)(nil),      // 28: com.entwico.rootpuller.escriba.TranscribeRecordingResponse
+	(*TranscriptionModelInfo)(nil),           // 29: com.entwico.rootpuller.escriba.TranscriptionModelInfo
+	(*Capabilities)(nil),                     // 30: com.entwico.rootpuller.escriba.Capabilities
+	(*TranscribeLiveRequest_AudioChunk)(nil), // 31: com.entwico.rootpuller.escriba.TranscribeLiveRequest.AudioChunk
+	(*common.FileChunk)(nil),                 // 32: com.entwico.rootpuller.common.FileChunk
+	(*emptypb.Empty)(nil),                    // 33: google.protobuf.Empty
 }
 var file_com_entwico_rootpuller_escriba_escriba_proto_depIdxs = []int32{
 	0,  // 0: com.entwico.rootpuller.escriba.TranscribeLiveConfig.encoding:type_name -> com.entwico.rootpuller.escriba.AudioEncoding
-	2,  // 1: com.entwico.rootpuller.escriba.TranscribeLiveConfig.model:type_name -> com.entwico.rootpuller.escriba.TranscriptionModelRef
-	3,  // 2: com.entwico.rootpuller.escriba.TranscribeLiveRequest.config:type_name -> com.entwico.rootpuller.escriba.TranscribeLiveConfig
-	20, // 3: com.entwico.rootpuller.escriba.TranscribeLiveRequest.audio:type_name -> com.entwico.rootpuller.escriba.TranscribeLiveRequest.AudioChunk
-	2,  // 4: com.entwico.rootpuller.escriba.SessionReady.model:type_name -> com.entwico.rootpuller.escriba.TranscriptionModelRef
-	10, // 5: com.entwico.rootpuller.escriba.TranscriptComplete.utterances:type_name -> com.entwico.rootpuller.escriba.UtteranceText
+	4,  // 1: com.entwico.rootpuller.escriba.TranscribeLiveConfig.model:type_name -> com.entwico.rootpuller.escriba.TranscriptionModelRef
+	5,  // 2: com.entwico.rootpuller.escriba.TranscribeLiveRequest.config:type_name -> com.entwico.rootpuller.escriba.TranscribeLiveConfig
+	31, // 3: com.entwico.rootpuller.escriba.TranscribeLiveRequest.audio:type_name -> com.entwico.rootpuller.escriba.TranscribeLiveRequest.AudioChunk
+	4,  // 4: com.entwico.rootpuller.escriba.SessionReady.model:type_name -> com.entwico.rootpuller.escriba.TranscriptionModelRef
+	12, // 5: com.entwico.rootpuller.escriba.TranscriptComplete.utterances:type_name -> com.entwico.rootpuller.escriba.UtteranceText
 	1,  // 6: com.entwico.rootpuller.escriba.TranscriptComplete.reason:type_name -> com.entwico.rootpuller.escriba.TranscriptComplete.EndReason
-	5,  // 7: com.entwico.rootpuller.escriba.TranscribeLiveResponse.ready:type_name -> com.entwico.rootpuller.escriba.SessionReady
-	6,  // 8: com.entwico.rootpuller.escriba.TranscribeLiveResponse.partial:type_name -> com.entwico.rootpuller.escriba.PartialText
-	7,  // 9: com.entwico.rootpuller.escriba.TranscribeLiveResponse.committed:type_name -> com.entwico.rootpuller.escriba.CommittedText
-	8,  // 10: com.entwico.rootpuller.escriba.TranscribeLiveResponse.utterance_end:type_name -> com.entwico.rootpuller.escriba.UtteranceEnd
-	9,  // 11: com.entwico.rootpuller.escriba.TranscribeLiveResponse.revision:type_name -> com.entwico.rootpuller.escriba.UtteranceRevision
-	11, // 12: com.entwico.rootpuller.escriba.TranscribeLiveResponse.complete:type_name -> com.entwico.rootpuller.escriba.TranscriptComplete
-	2,  // 13: com.entwico.rootpuller.escriba.TranscribeConfig.model:type_name -> com.entwico.rootpuller.escriba.TranscriptionModelRef
-	14, // 14: com.entwico.rootpuller.escriba.TranscribeRequest.config:type_name -> com.entwico.rootpuller.escriba.TranscribeConfig
-	21, // 15: com.entwico.rootpuller.escriba.TranscribeRequest.chunk:type_name -> com.entwico.rootpuller.common.FileChunk
-	13, // 16: com.entwico.rootpuller.escriba.TranscribeResponse.language:type_name -> com.entwico.rootpuller.escriba.DetectedLanguage
-	16, // 17: com.entwico.rootpuller.escriba.TranscribeResponse.words:type_name -> com.entwico.rootpuller.escriba.WordTiming
-	2,  // 18: com.entwico.rootpuller.escriba.TranscribeResponse.model:type_name -> com.entwico.rootpuller.escriba.TranscriptionModelRef
-	2,  // 19: com.entwico.rootpuller.escriba.TranscriptionModelInfo.model:type_name -> com.entwico.rootpuller.escriba.TranscriptionModelRef
-	18, // 20: com.entwico.rootpuller.escriba.Capabilities.models:type_name -> com.entwico.rootpuller.escriba.TranscriptionModelInfo
-	4,  // 21: com.entwico.rootpuller.escriba.TranscriptionService.TranscribeLive:input_type -> com.entwico.rootpuller.escriba.TranscribeLiveRequest
-	15, // 22: com.entwico.rootpuller.escriba.TranscriptionService.Transcribe:input_type -> com.entwico.rootpuller.escriba.TranscribeRequest
-	22, // 23: com.entwico.rootpuller.escriba.TranscriptionService.GetCapabilities:input_type -> google.protobuf.Empty
-	12, // 24: com.entwico.rootpuller.escriba.TranscriptionService.TranscribeLive:output_type -> com.entwico.rootpuller.escriba.TranscribeLiveResponse
-	17, // 25: com.entwico.rootpuller.escriba.TranscriptionService.Transcribe:output_type -> com.entwico.rootpuller.escriba.TranscribeResponse
-	19, // 26: com.entwico.rootpuller.escriba.TranscriptionService.GetCapabilities:output_type -> com.entwico.rootpuller.escriba.Capabilities
-	24, // [24:27] is the sub-list for method output_type
-	21, // [21:24] is the sub-list for method input_type
-	21, // [21:21] is the sub-list for extension type_name
-	21, // [21:21] is the sub-list for extension extendee
-	0,  // [0:21] is the sub-list for field type_name
+	7,  // 7: com.entwico.rootpuller.escriba.TranscribeLiveResponse.ready:type_name -> com.entwico.rootpuller.escriba.SessionReady
+	8,  // 8: com.entwico.rootpuller.escriba.TranscribeLiveResponse.partial:type_name -> com.entwico.rootpuller.escriba.PartialText
+	9,  // 9: com.entwico.rootpuller.escriba.TranscribeLiveResponse.committed:type_name -> com.entwico.rootpuller.escriba.CommittedText
+	10, // 10: com.entwico.rootpuller.escriba.TranscribeLiveResponse.utterance_end:type_name -> com.entwico.rootpuller.escriba.UtteranceEnd
+	11, // 11: com.entwico.rootpuller.escriba.TranscribeLiveResponse.revision:type_name -> com.entwico.rootpuller.escriba.UtteranceRevision
+	13, // 12: com.entwico.rootpuller.escriba.TranscribeLiveResponse.complete:type_name -> com.entwico.rootpuller.escriba.TranscriptComplete
+	4,  // 13: com.entwico.rootpuller.escriba.TranscribeConfig.model:type_name -> com.entwico.rootpuller.escriba.TranscriptionModelRef
+	16, // 14: com.entwico.rootpuller.escriba.TranscribeRequest.config:type_name -> com.entwico.rootpuller.escriba.TranscribeConfig
+	32, // 15: com.entwico.rootpuller.escriba.TranscribeRequest.chunk:type_name -> com.entwico.rootpuller.common.FileChunk
+	15, // 16: com.entwico.rootpuller.escriba.TranscribeResponse.language:type_name -> com.entwico.rootpuller.escriba.DetectedLanguage
+	18, // 17: com.entwico.rootpuller.escriba.TranscribeResponse.words:type_name -> com.entwico.rootpuller.escriba.WordTiming
+	4,  // 18: com.entwico.rootpuller.escriba.TranscribeResponse.model:type_name -> com.entwico.rootpuller.escriba.TranscriptionModelRef
+	2,  // 19: com.entwico.rootpuller.escriba.SpeakerLabeling.method:type_name -> com.entwico.rootpuller.escriba.SpeakerLabeling.Method
+	4,  // 20: com.entwico.rootpuller.escriba.TranscribeRecordingConfig.model:type_name -> com.entwico.rootpuller.escriba.TranscriptionModelRef
+	20, // 21: com.entwico.rootpuller.escriba.TranscribeRecordingConfig.speakers:type_name -> com.entwico.rootpuller.escriba.SpeakerLabeling
+	21, // 22: com.entwico.rootpuller.escriba.TranscribeRecordingRequest.config:type_name -> com.entwico.rootpuller.escriba.TranscribeRecordingConfig
+	32, // 23: com.entwico.rootpuller.escriba.TranscribeRecordingRequest.chunk:type_name -> com.entwico.rootpuller.common.FileChunk
+	15, // 24: com.entwico.rootpuller.escriba.RecordingAccepted.language:type_name -> com.entwico.rootpuller.escriba.DetectedLanguage
+	4,  // 25: com.entwico.rootpuller.escriba.RecordingAccepted.model:type_name -> com.entwico.rootpuller.escriba.TranscriptionModelRef
+	3,  // 26: com.entwico.rootpuller.escriba.RecordingProgress.stage:type_name -> com.entwico.rootpuller.escriba.RecordingProgress.Stage
+	18, // 27: com.entwico.rootpuller.escriba.TranscriptSegment.words:type_name -> com.entwico.rootpuller.escriba.WordTiming
+	15, // 28: com.entwico.rootpuller.escriba.RecordingComplete.language:type_name -> com.entwico.rootpuller.escriba.DetectedLanguage
+	4,  // 29: com.entwico.rootpuller.escriba.RecordingComplete.model:type_name -> com.entwico.rootpuller.escriba.TranscriptionModelRef
+	26, // 30: com.entwico.rootpuller.escriba.RecordingComplete.speakers:type_name -> com.entwico.rootpuller.escriba.SpeakerSummary
+	23, // 31: com.entwico.rootpuller.escriba.TranscribeRecordingResponse.accepted:type_name -> com.entwico.rootpuller.escriba.RecordingAccepted
+	24, // 32: com.entwico.rootpuller.escriba.TranscribeRecordingResponse.progress:type_name -> com.entwico.rootpuller.escriba.RecordingProgress
+	25, // 33: com.entwico.rootpuller.escriba.TranscribeRecordingResponse.segment:type_name -> com.entwico.rootpuller.escriba.TranscriptSegment
+	27, // 34: com.entwico.rootpuller.escriba.TranscribeRecordingResponse.complete:type_name -> com.entwico.rootpuller.escriba.RecordingComplete
+	4,  // 35: com.entwico.rootpuller.escriba.TranscriptionModelInfo.model:type_name -> com.entwico.rootpuller.escriba.TranscriptionModelRef
+	29, // 36: com.entwico.rootpuller.escriba.Capabilities.models:type_name -> com.entwico.rootpuller.escriba.TranscriptionModelInfo
+	2,  // 37: com.entwico.rootpuller.escriba.Capabilities.speaker_methods:type_name -> com.entwico.rootpuller.escriba.SpeakerLabeling.Method
+	6,  // 38: com.entwico.rootpuller.escriba.TranscriptionService.TranscribeLive:input_type -> com.entwico.rootpuller.escriba.TranscribeLiveRequest
+	17, // 39: com.entwico.rootpuller.escriba.TranscriptionService.Transcribe:input_type -> com.entwico.rootpuller.escriba.TranscribeRequest
+	22, // 40: com.entwico.rootpuller.escriba.TranscriptionService.TranscribeRecording:input_type -> com.entwico.rootpuller.escriba.TranscribeRecordingRequest
+	33, // 41: com.entwico.rootpuller.escriba.TranscriptionService.GetCapabilities:input_type -> google.protobuf.Empty
+	14, // 42: com.entwico.rootpuller.escriba.TranscriptionService.TranscribeLive:output_type -> com.entwico.rootpuller.escriba.TranscribeLiveResponse
+	19, // 43: com.entwico.rootpuller.escriba.TranscriptionService.Transcribe:output_type -> com.entwico.rootpuller.escriba.TranscribeResponse
+	28, // 44: com.entwico.rootpuller.escriba.TranscriptionService.TranscribeRecording:output_type -> com.entwico.rootpuller.escriba.TranscribeRecordingResponse
+	30, // 45: com.entwico.rootpuller.escriba.TranscriptionService.GetCapabilities:output_type -> com.entwico.rootpuller.escriba.Capabilities
+	42, // [42:46] is the sub-list for method output_type
+	38, // [38:42] is the sub-list for method input_type
+	38, // [38:38] is the sub-list for extension type_name
+	38, // [38:38] is the sub-list for extension extendee
+	0,  // [0:38] is the sub-list for field type_name
 }
 
 func init() { file_com_entwico_rootpuller_escriba_escriba_proto_init() }
@@ -1832,13 +2825,24 @@ func file_com_entwico_rootpuller_escriba_escriba_proto_init() {
 		(*TranscribeRequest_Config)(nil),
 		(*TranscribeRequest_Chunk)(nil),
 	}
+	file_com_entwico_rootpuller_escriba_escriba_proto_msgTypes[18].OneofWrappers = []any{
+		(*TranscribeRecordingRequest_Config)(nil),
+		(*TranscribeRecordingRequest_Chunk)(nil),
+	}
+	file_com_entwico_rootpuller_escriba_escriba_proto_msgTypes[21].OneofWrappers = []any{}
+	file_com_entwico_rootpuller_escriba_escriba_proto_msgTypes[24].OneofWrappers = []any{
+		(*TranscribeRecordingResponse_Accepted)(nil),
+		(*TranscribeRecordingResponse_Progress)(nil),
+		(*TranscribeRecordingResponse_Segment)(nil),
+		(*TranscribeRecordingResponse_Complete)(nil),
+	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_com_entwico_rootpuller_escriba_escriba_proto_rawDesc), len(file_com_entwico_rootpuller_escriba_escriba_proto_rawDesc)),
-			NumEnums:      2,
-			NumMessages:   19,
+			NumEnums:      4,
+			NumMessages:   28,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

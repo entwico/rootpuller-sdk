@@ -137,7 +137,7 @@ func TestNewHTTPClientH2CTunnelsThroughEnvProxy(t *testing.T) {
 		t.Fatalf("build request: %v", err)
 	}
 
-	resp, err := client.Do(req) //nolint:gosec // constant test URL, not SSRF
+	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatalf("request through proxy: %v", err)
 	}

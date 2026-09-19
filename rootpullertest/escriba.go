@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"time"
 
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -26,11 +27,20 @@ type LiveScript struct {
 	Complete escriba.Complete
 }
 
+// RecordingScript is what a fake recording sends back once the upload is in.
+// The fake frames it the way the server does: accepted first, then Progress in
+// order, then one segment event per Recording.Segments entry, then complete —
+// so a script only says what the transcript is.
+type RecordingScript struct {
+	Progress  []escriba.RecordingProgress
+	Recording escriba.Recording
+}
+
 // Escriba is a fake TranscriptionService.
 //
 // Nil hooks return a canned session (ready, partial, committed, utterance end,
 // revision, complete) so a consumer can exercise revision handling without
-// writing a script.
+// writing a script, and a canned two-speaker recording likewise.
 type Escriba struct {
 	// LiveFunc returns the script for one live session. It receives the config
 	// the client sent and the audio it streamed before half-closing.
@@ -38,6 +48,10 @@ type Escriba struct {
 
 	// TranscribeFunc answers a one-shot transcription.
 	TranscribeFunc func(opts escriba.TranscribeOptions, audio []byte) (escriba.Transcript, error)
+
+	// RecordingFunc returns the script for one recording. It receives the
+	// options the client sent (callbacks excluded) and the reassembled upload.
+	RecordingFunc func(opts escriba.RecordingOptions, audio []byte) (RecordingScript, error)
 
 	// Capabilities is returned by GetCapabilities.
 	Capabilities escriba.Capabilities
@@ -203,6 +217,103 @@ func (h *escribaHandler) Transcribe(
 	return connect.NewResponse(transcribeResponse(transcript)), nil
 }
 
+// TranscribeRecording enforces config-first, reassembles the chunks, and only
+// answers after the half-close, as the server does.
+func (h *escribaHandler) TranscribeRecording(
+	_ context.Context,
+	stream *connect.BidiStream[escribapb.TranscribeRecordingRequest, escribapb.TranscribeRecordingResponse],
+) error {
+	var (
+		cfg   *escribapb.TranscribeRecordingConfig
+		audio []byte
+	)
+
+	for {
+		req, err := stream.Receive()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+
+			return err
+		}
+
+		switch frame := req.GetFrame().(type) {
+		case *escribapb.TranscribeRecordingRequest_Config:
+			if cfg != nil {
+				return invalidArgument(errDuplicateParamsFrame)
+			}
+
+			cfg = frame.Config
+
+		case *escribapb.TranscribeRecordingRequest_Chunk:
+			if cfg == nil {
+				return errBeforeParams("chunk")
+			}
+
+			if len(frame.Chunk.GetData()) > streamio.MaxChunkBytes {
+				return invalidArgument(errChunkTooLarge)
+			}
+
+			audio = append(audio, frame.Chunk.GetData()...)
+
+		default:
+			return invalidArgument(errUnexpectedVariant)
+		}
+	}
+
+	if cfg == nil {
+		return invalidArgument(errMissingParams)
+	}
+
+	script := cannedRecording()
+
+	if h.fake.RecordingFunc != nil {
+		got, err := h.fake.RecordingFunc(recordingOptionsFromProto(cfg), audio)
+		if err != nil {
+			return err
+		}
+
+		script = got
+	}
+
+	for _, resp := range recordingResponses(script) {
+		if err := stream.Send(resp); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// cannedRecording is a two-speaker call, enough to exercise turn handling.
+func cannedRecording() RecordingScript {
+	first, second := 0, 1
+
+	return RecordingScript{
+		Progress: []escriba.RecordingProgress{
+			{Stage: escriba.RecordingStageQueued, QueuePosition: 1},
+			{Stage: escriba.RecordingStageTranscribing, Percentage: 100},
+			{Stage: escriba.RecordingStageLabelingSpeakers, Percentage: 100},
+		},
+		Recording: escriba.Recording{
+			Text:     "Praxis Dr. Weber. Guten Tag. Ich brauche einen Termin.",
+			Duration: 6 * time.Second,
+			Language: escriba.DetectedLanguage{Language: "de", Probability: 0.98, Detected: true},
+			Model:    "small",
+			Segments: []escriba.Segment{
+				{Index: 0, Start: 0, End: 2 * time.Second, Text: "Praxis Dr. Weber.", Speaker: &first},
+				{Index: 1, Start: 2 * time.Second, End: 3 * time.Second, Text: "Guten Tag.", Speaker: &first},
+				{Index: 2, Start: 4 * time.Second, End: 6 * time.Second, Text: "Ich brauche einen Termin.", Speaker: &second},
+			},
+			Speakers: []escriba.Speaker{
+				{Index: 0, SpeakingTime: 3 * time.Second},
+				{Index: 1, SpeakingTime: 2 * time.Second},
+			},
+		},
+	}
+}
+
 func (h *escribaHandler) GetCapabilities(
 	_ context.Context,
 	_ *connect.Request[emptypb.Empty],
@@ -354,6 +465,123 @@ func transcribeResponse(transcript escriba.Transcript) *escribapb.TranscribeResp
 	}
 }
 
+func recordingOptionsFromProto(cfg *escribapb.TranscribeRecordingConfig) escriba.RecordingOptions {
+	opts := escriba.RecordingOptions{
+		Language:     cfg.GetLanguage(),
+		Model:        cfg.GetModel().GetModelId(),
+		IncludeWords: cfg.GetIncludeWords(),
+	}
+
+	speakers := cfg.GetSpeakers()
+	if speakers == nil {
+		return opts
+	}
+
+	opts.Speakers = &escriba.SpeakerOptions{
+		Method: escriba.SpeakerMethodDiarization,
+		Count:  int(speakers.GetSpeakerCount()),
+		Min:    int(speakers.GetMinSpeakers()),
+		Max:    int(speakers.GetMaxSpeakers()),
+	}
+	if speakers.GetMethod() == escribapb.SpeakerLabeling_METHOD_CHANNEL {
+		opts.Speakers.Method = escriba.SpeakerMethodChannel
+	}
+
+	return opts
+}
+
+func detectedLanguageProto(language escriba.DetectedLanguage) *escribapb.DetectedLanguage {
+	return &escribapb.DetectedLanguage{
+		Language:    language.Language,
+		Probability: language.Probability,
+		Detected:    language.Detected,
+	}
+}
+
+func recordingResponses(script RecordingScript) []*escribapb.TranscribeRecordingResponse {
+	recording := script.Recording
+	model := &escribapb.TranscriptionModelRef{ModelId: recording.Model}
+
+	responses := []*escribapb.TranscribeRecordingResponse{{
+		Event: &escribapb.TranscribeRecordingResponse_Accepted{
+			Accepted: &escribapb.RecordingAccepted{
+				DurationSeconds: recording.Duration.Seconds(),
+				Language:        detectedLanguageProto(recording.Language),
+				Model:           model,
+			},
+		},
+	}}
+
+	stages := map[escriba.RecordingStage]escribapb.RecordingProgress_Stage{
+		escriba.RecordingStageQueued:           escribapb.RecordingProgress_STAGE_QUEUED,
+		escriba.RecordingStageTranscribing:     escribapb.RecordingProgress_STAGE_TRANSCRIBING,
+		escriba.RecordingStageLabelingSpeakers: escribapb.RecordingProgress_STAGE_LABELING_SPEAKERS,
+	}
+
+	for _, progress := range script.Progress {
+		responses = append(responses, &escribapb.TranscribeRecordingResponse{
+			Event: &escribapb.TranscribeRecordingResponse_Progress{
+				Progress: &escribapb.RecordingProgress{
+					Stage:         stages[progress.Stage],
+					Percentage:    progress.Percentage,
+					QueuePosition: int32(progress.QueuePosition), //nolint:gosec // test data
+				},
+			},
+		})
+	}
+
+	for _, segment := range recording.Segments {
+		responses = append(responses, &escribapb.TranscribeRecordingResponse{
+			Event: &escribapb.TranscribeRecordingResponse_Segment{Segment: segmentProto(segment)},
+		})
+	}
+
+	speakers := make([]*escribapb.SpeakerSummary, 0, len(recording.Speakers))
+	for _, speaker := range recording.Speakers {
+		speakers = append(speakers, &escribapb.SpeakerSummary{
+			SpeakerIndex:    int32(speaker.Index), //nolint:gosec // test data
+			SpeakingSeconds: speaker.SpeakingTime.Seconds(),
+		})
+	}
+
+	return append(responses, &escribapb.TranscribeRecordingResponse{
+		Event: &escribapb.TranscribeRecordingResponse_Complete{
+			Complete: &escribapb.RecordingComplete{
+				Text:            recording.Text,
+				DurationSeconds: recording.Duration.Seconds(),
+				Language:        detectedLanguageProto(recording.Language),
+				Model:           model,
+				Speakers:        speakers,
+				SegmentCount:    int32(len(recording.Segments)), //nolint:gosec // test data
+			},
+		},
+	})
+}
+
+func segmentProto(segment escriba.Segment) *escribapb.TranscriptSegment {
+	out := &escribapb.TranscriptSegment{
+		Index:        int32(segment.Index), //nolint:gosec // test data
+		StartSeconds: segment.Start.Seconds(),
+		EndSeconds:   segment.End.Seconds(),
+		Text:         segment.Text,
+	}
+
+	if segment.Speaker != nil {
+		speaker := int32(*segment.Speaker) //nolint:gosec // test data
+		out.SpeakerIndex = &speaker
+	}
+
+	for _, word := range segment.Words {
+		out.Words = append(out.Words, &escribapb.WordTiming{
+			StartSeconds: word.Start.Seconds(),
+			EndSeconds:   word.End.Seconds(),
+			Text:         word.Text,
+		})
+	}
+
+	return out
+}
+
 func capabilitiesResponse(caps escriba.Capabilities) *escribapb.Capabilities {
 	models := make([]*escribapb.TranscriptionModelInfo, 0, len(caps.Models))
 	for _, model := range caps.Models {
@@ -371,5 +599,24 @@ func capabilitiesResponse(caps escriba.Capabilities) *escribapb.Capabilities {
 		MaxSessionSeconds:   int32(caps.MaxSession.Seconds()),
 		MaxRecordingSeconds: int32(caps.MaxRecording.Seconds()),
 		RefinementEnabled:   caps.RefinementEnabled,
+
+		MaxLongRecordingSeconds: int32(caps.MaxLongRecording.Seconds()),
+		MaxRecordingBytes:       caps.MaxRecordingBytes,
+		SpeakerMethods:          speakerMethodsProto(caps.SpeakerMethods),
 	}
+}
+
+func speakerMethodsProto(methods []escriba.SpeakerMethod) []escribapb.SpeakerLabeling_Method {
+	out := make([]escribapb.SpeakerLabeling_Method, 0, len(methods))
+
+	for _, method := range methods {
+		switch method {
+		case escriba.SpeakerMethodDiarization:
+			out = append(out, escribapb.SpeakerLabeling_METHOD_DIARIZATION)
+		case escriba.SpeakerMethodChannel:
+			out = append(out, escribapb.SpeakerLabeling_METHOD_CHANNEL)
+		}
+	}
+
+	return out
 }

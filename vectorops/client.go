@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"iter"
+	"slices"
 
 	"connectrpc.com/connect"
 
@@ -57,7 +58,7 @@ func NewService(sdk *rootpullersdk.Client, opts ...Option) *Service {
 	if s.backpressure != nil {
 		// The gate runs innermost so every retry attempt re-acquires a
 		// slot and respects the shared shed pause.
-		clientOpts = append(clientOpts[:len(clientOpts):len(clientOpts)],
+		clientOpts = append(slices.Clip(clientOpts),
 			connect.WithInterceptors(transport.NewBackpressureInterceptor(s.backpressure.Gate())))
 	}
 
