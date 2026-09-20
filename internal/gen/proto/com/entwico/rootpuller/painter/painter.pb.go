@@ -751,9 +751,8 @@ type PerImageMetadata struct {
 	SafetyBlocked bool    `protobuf:"varint,4,opt,name=safety_blocked,json=safetyBlocked,proto3" json:"safety_blocked,omitempty"`
 	SafetyReason  *string `protobuf:"bytes,5,opt,name=safety_reason,json=safetyReason,proto3,oneof" json:"safety_reason,omitempty"`
 	// Backend-rewritten prompt when applicable:
-	//
-	//	Google: result of enhance_prompt = true
-	//	OpenAI: revised_prompt returned by gpt-image-1
+	//   Google: result of enhance_prompt = true
+	//   OpenAI: revised_prompt returned by gpt-image-1
 	RevisedPrompt *string `protobuf:"bytes,6,opt,name=revised_prompt,json=revisedPrompt,proto3,oneof" json:"revised_prompt,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -847,14 +846,11 @@ type GenerationMetadata struct {
 	// usage reports billed tokens and the monetary cost of the call.
 	//
 	// OpenAI gpt-image-1:  input_tokens (text + image), output_tokens
-	//
-	//	(image tokens), and cost_micros derived from
-	//	the per-token rate.
-	//
+	//                      (image tokens), and cost_micros derived from
+	//                      the per-token rate.
 	// Google Imagen:       input_tokens / output_tokens are zero — Imagen
-	//
-	//	is billed per image. cost_micros is computed
-	//	from num_images and the model's per-image rate.
+	//                      is billed per image. cost_micros is computed
+	//                      from num_images and the model's per-image rate.
 	Usage         *common.Usage `protobuf:"bytes,7,opt,name=usage,proto3" json:"usage,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

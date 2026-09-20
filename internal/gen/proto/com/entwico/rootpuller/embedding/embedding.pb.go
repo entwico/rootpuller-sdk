@@ -434,10 +434,9 @@ type EmbeddingOptions struct {
 	// similarity search.
 	//
 	// Native dimensions and safe truncation targets:
-	//
-	//	BGE-M3:                    1024  → safe targets: 512, 256
-	//	Qwen3-Embedding-0.6B:      1024  → safe targets: 512, 256, 128, 32
-	//	Google text-embedding-004:  768  → safe targets: down to 1
+	//   BGE-M3:                    1024  → safe targets: 512, 256
+	//   Qwen3-Embedding-0.6B:      1024  → safe targets: 512, 256, 128, 32
+	//   Google text-embedding-004:  768  → safe targets: down to 1
 	//
 	// Leave unset (0) to use the model's full native dimension.
 	// Server MUST return INVALID_ARGUMENT if the model does not support MRL
@@ -447,10 +446,9 @@ type EmbeddingOptions struct {
 	//
 	// Texts longer than this value are silently truncated. Leave unset to use
 	// the model's default maximum context length:
-	//
-	//	BGE-M3:                    8,192 tokens
-	//	Qwen3-Embedding-0.6B:     32,768 tokens
-	//	Google text-embedding-004: 2,048 tokens
+	//   BGE-M3:                    8,192 tokens
+	//   Qwen3-Embedding-0.6B:     32,768 tokens
+	//   Google text-embedding-004: 2,048 tokens
 	//
 	// For content gap analysis on short German article titles or summaries,
 	// 512 is sufficient and reduces inference time on ARM CPU.
@@ -546,9 +544,8 @@ type TextInput struct {
 	// templates that reference them. Unknown keys are ignored.
 	//
 	// Reserved keys (interpreted by templates / backends):
-	//
-	//	"title" — {title} placeholder for EmbeddingGemma RETRIEVAL_DOCUMENT
-	//	          and Google Gemini Embedding's title parameter.
+	//   "title" — {title} placeholder for EmbeddingGemma RETRIEVAL_DOCUMENT
+	//             and Google Gemini Embedding's title parameter.
 	Metadata      map[string]string `protobuf:"bytes,2,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -656,8 +653,7 @@ type EmbedRequest struct {
 	// original order.
 	//
 	// Server validation:
-	//
-	//	empty list                                    → INVALID_ARGUMENT
+	//   empty list                                    → INVALID_ARGUMENT
 	Inputs []*TextInput `protobuf:"bytes,1,rep,name=inputs,proto3" json:"inputs,omitempty"`
 	// model identifies which model to use and where to run it.
 	// See ModelRef for examples and server validation rules.
@@ -1196,17 +1192,14 @@ type EmbedResponse struct {
 	Task EmbeddingTask `protobuf:"varint,4,opt,name=task,proto3,enum=com.entwico.rootpuller.embedding.EmbeddingTask" json:"task,omitempty"`
 	// dense_dimension is the length of each DenseVector or TokenVector in this
 	// response. Use when setting up Qdrant collections:
-	//
-	//	VectorParams(size=response.dense_dimension, distance=Distance.COSINE)
-	//
+	//   VectorParams(size=response.dense_dimension, distance=Distance.COSINE)
 	// Zero when mode is SPARSE (no dense vectors produced).
 	DenseDimension int32 `protobuf:"varint,5,opt,name=dense_dimension,json=denseDimension,proto3" json:"dense_dimension,omitempty"`
 	// usage reports the billed tokens and monetary cost of this call.
 	//
 	// Unary Embed:      reflects the whole batch.
 	// Streaming Embed:  per-message usage covering only that message's text;
-	//
-	//	sum across the stream for the batch total.
+	//                   sum across the stream for the batch total.
 	//
 	// Local backends report tokens but leave cost_micros = 0.
 	Usage         *common.Usage `protobuf:"bytes,6,opt,name=usage,proto3" json:"usage,omitempty"`

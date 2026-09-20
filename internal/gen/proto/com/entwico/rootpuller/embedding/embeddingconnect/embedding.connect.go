@@ -72,11 +72,10 @@ type VectorEmbeddingServiceClient interface {
 	//   - Displaying real-time ingestion progress to the user.
 	//
 	// Implementation note for the server:
-	//
-	//	Internally batch texts (e.g. groups of 8) for ONNX inference efficiency,
-	//	but yield individual EmbedResponse messages so the client can act
-	//	on each result immediately. This balances inference throughput against
-	//	streaming responsiveness.
+	//   Internally batch texts (e.g. groups of 8) for ONNX inference efficiency,
+	//   but yield individual EmbedResponse messages so the client can act
+	//   on each result immediately. This balances inference throughput against
+	//   streaming responsiveness.
 	//
 	// Each streamed EmbedResponse contains exactly one EmbeddingResult.
 	// buf:lint:ignore RPC_REQUEST_RESPONSE_UNIQUE
@@ -182,11 +181,10 @@ type VectorEmbeddingServiceHandler interface {
 	//   - Displaying real-time ingestion progress to the user.
 	//
 	// Implementation note for the server:
-	//
-	//	Internally batch texts (e.g. groups of 8) for ONNX inference efficiency,
-	//	but yield individual EmbedResponse messages so the client can act
-	//	on each result immediately. This balances inference throughput against
-	//	streaming responsiveness.
+	//   Internally batch texts (e.g. groups of 8) for ONNX inference efficiency,
+	//   but yield individual EmbedResponse messages so the client can act
+	//   on each result immediately. This balances inference throughput against
+	//   streaming responsiveness.
 	//
 	// Each streamed EmbedResponse contains exactly one EmbeddingResult.
 	// buf:lint:ignore RPC_REQUEST_RESPONSE_UNIQUE

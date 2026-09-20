@@ -248,8 +248,7 @@ type RerankRequest struct {
 	// so the caller can map scores back to its own candidate objects.
 	//
 	// Server validation:
-	//
-	//	empty list                          → INVALID_ARGUMENT
+	//   empty list                          → INVALID_ARGUMENT
 	Documents []string `protobuf:"bytes,2,rep,name=documents,proto3" json:"documents,omitempty"`
 	// model identifies which locally-served reranker to use.
 	// See RerankModelRef for examples and server validation rules.

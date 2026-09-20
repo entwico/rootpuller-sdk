@@ -152,12 +152,12 @@ func (UnimplementedWebContentServiceHandler) ExtractContent(context.Context, *co
 // ScrapeServiceClient is a client for the com.entwico.rootpuller.webcontent.ScrapeService service.
 type ScrapeServiceClient interface {
 	// Protocol:
-	//  1. Client sends init; server validates (INVALID_ARGUMENT on failure).
-	//  2. Client sends instruction frames; server emits a frame sequence
-	//     per instruction, all sharing correlation_id, terminated by
-	//     done | error. Frames across correlation_ids may interleave when
-	//     the engine allows concurrent fetches.
-	//  3. Client half-closes; server drains in-flight fetches and closes.
+	//   1. Client sends init; server validates (INVALID_ARGUMENT on failure).
+	//   2. Client sends instruction frames; server emits a frame sequence
+	//      per instruction, all sharing correlation_id, terminated by
+	//      done | error. Frames across correlation_ids may interleave when
+	//      the engine allows concurrent fetches.
+	//   3. Client half-closes; server drains in-flight fetches and closes.
 	//
 	// Use for: login walls, cookie-stateful pagination, warm-one-browser
 	// patterns — anything where next URL depends on a previous response.
@@ -243,12 +243,12 @@ func (c *scrapeServiceClient) Map(ctx context.Context, req *connect.Request[webc
 // service.
 type ScrapeServiceHandler interface {
 	// Protocol:
-	//  1. Client sends init; server validates (INVALID_ARGUMENT on failure).
-	//  2. Client sends instruction frames; server emits a frame sequence
-	//     per instruction, all sharing correlation_id, terminated by
-	//     done | error. Frames across correlation_ids may interleave when
-	//     the engine allows concurrent fetches.
-	//  3. Client half-closes; server drains in-flight fetches and closes.
+	//   1. Client sends init; server validates (INVALID_ARGUMENT on failure).
+	//   2. Client sends instruction frames; server emits a frame sequence
+	//      per instruction, all sharing correlation_id, terminated by
+	//      done | error. Frames across correlation_ids may interleave when
+	//      the engine allows concurrent fetches.
+	//   3. Client half-closes; server drains in-flight fetches and closes.
 	//
 	// Use for: login walls, cookie-stateful pagination, warm-one-browser
 	// patterns — anything where next URL depends on a previous response.

@@ -560,13 +560,7 @@ type CompleteResponse struct {
 	state   protoimpl.MessageState `protogen:"open.v1"`
 	Content string                 `protobuf:"bytes,1,opt,name=content,proto3" json:"content,omitempty"`
 	Model   string                 `protobuf:"bytes,2,opt,name=model,proto3" json:"model,omitempty"`
-	// Deprecated: read from `usage.input_tokens` instead. Retained for
-	// wire-compat with older clients.
-	InputTokens int32 `protobuf:"varint,3,opt,name=input_tokens,json=inputTokens,proto3" json:"input_tokens,omitempty"`
-	// Deprecated: read from `usage.output_tokens` instead. Retained for
-	// wire-compat with older clients.
-	OutputTokens int32         `protobuf:"varint,4,opt,name=output_tokens,json=outputTokens,proto3" json:"output_tokens,omitempty"`
-	Usage        *common.Usage `protobuf:"bytes,5,opt,name=usage,proto3" json:"usage,omitempty"`
+	Usage   *common.Usage          `protobuf:"bytes,5,opt,name=usage,proto3" json:"usage,omitempty"`
 	// The model's reasoning/thinking text, when the provider returns it and
 	// reasoning was enabled. Empty otherwise (e.g. OpenAI does not expose it).
 	Thinking      string `protobuf:"bytes,6,opt,name=thinking,proto3" json:"thinking,omitempty"`
@@ -616,20 +610,6 @@ func (x *CompleteResponse) GetModel() string {
 		return x.Model
 	}
 	return ""
-}
-
-func (x *CompleteResponse) GetInputTokens() int32 {
-	if x != nil {
-		return x.InputTokens
-	}
-	return 0
-}
-
-func (x *CompleteResponse) GetOutputTokens() int32 {
-	if x != nil {
-		return x.OutputTokens
-	}
-	return 0
 }
 
 func (x *CompleteResponse) GetUsage() *common.Usage {
@@ -907,14 +887,12 @@ const file_com_entwico_rootpuller_completion_completion_proto_rawDesc = "" +
 	"\x0fAttachmentChunk\x12#\n" +
 	"\rattachment_id\x18\x01 \x01(\tR\fattachmentId\x12\x12\n" +
 	"\x04data\x18\x02 \x01(\fR\x04dataB\a\n" +
-	"\x05frame\"\xe2\x01\n" +
+	"\x05frame\"\xc3\x01\n" +
 	"\x10CompleteResponse\x12\x18\n" +
 	"\acontent\x18\x01 \x01(\tR\acontent\x12\x14\n" +
-	"\x05model\x18\x02 \x01(\tR\x05model\x12!\n" +
-	"\finput_tokens\x18\x03 \x01(\x05R\vinputTokens\x12#\n" +
-	"\routput_tokens\x18\x04 \x01(\x05R\foutputTokens\x12:\n" +
+	"\x05model\x18\x02 \x01(\tR\x05model\x12:\n" +
 	"\x05usage\x18\x05 \x01(\v2$.com.entwico.rootpuller.common.UsageR\x05usage\x12\x1a\n" +
-	"\bthinking\x18\x06 \x01(\tR\bthinking\"i\n" +
+	"\bthinking\x18\x06 \x01(\tR\bthinkingJ\x04\b\x03\x10\x04J\x04\b\x04\x10\x05R\finput_tokensR\routput_tokens\"i\n" +
 	"\x16CompleteUploadResponse\x12O\n" +
 	"\bresponse\x18\x01 \x01(\v23.com.entwico.rootpuller.completion.CompleteResponseR\bresponse*\x91\x01\n" +
 	"\bProvider\x12\x18\n" +
