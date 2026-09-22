@@ -16,6 +16,7 @@ import (
 
 	rootpullersdk "github.com/entwico/rootpuller-sdk"
 	"github.com/entwico/rootpuller-sdk/chunker"
+	"github.com/entwico/rootpuller-sdk/decision"
 	"github.com/entwico/rootpuller-sdk/embedding"
 	"github.com/entwico/rootpuller-sdk/escriba"
 )
@@ -60,6 +61,32 @@ func TestChunkToken(t *testing.T) {
 	}
 
 	t.Logf("got %d chunks", len(chunks[0]))
+}
+
+func TestDecide(t *testing.T) {
+	svc := decision.NewService(newSDK(t))
+
+	// the gateway default provider (Laya) answers; the worker needs the
+	// laya-multilingual image mounted
+	resp, err := svc.Decide(t.Context(),
+		map[string]any{"subject": "Duplicate charge", "body": "I was charged twice for my subscription."},
+		map[string]decision.Question{
+			"department": decision.Choice("Which team should handle this?", map[string]string{
+				"billing":   "payments, invoices, refunds",
+				"technical": "bugs, outages, errors",
+			}),
+			"severity": decision.Score("How severe is the issue?", "minor", "moderate", "critical"),
+			"urgent":   decision.Noul("Does the message convey urgency?"),
+		}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(resp.Answers) != 3 {
+		t.Fatalf("got %d answers, want 3: %+v", len(resp.Answers), resp.Answers)
+	}
+
+	t.Logf("model %+v, department %q, usage %+v", resp.Model, resp.Answers["department"].Choice.Choice, resp.Usage)
 }
 
 func TestEmbeddingListModels(t *testing.T) {

@@ -95,6 +95,7 @@ links only the service packages it imports.
 | `chunker` | TextChunkerService | 8 chunking strategies; `ChunkToken(ctx, texts, opts)` |
 | `embedding` | VectorEmbeddingService | `Embed`, `EmbedStream` (Go iterator), `ListModels` |
 | `rerank` | RerankService | `Rerank(ctx, query, documents, opts)` |
+| `decision` | DecisionService | `Decide(ctx, state, questions, opts)` typed choice/score/noul answers with calibrated probabilities, Laya (local) or Jev (hosted); `ListModels` |
 | `completion` | CompletionService | `Complete`, `CompleteWithAttachments`, generic `JSON[T]` |
 | `search` | SearchService | Brave/Serper web/news/image/video search |
 | `chef` | DocumentProcessingService | text/table/markdown processing |
@@ -106,6 +107,30 @@ links only the service packages it imports.
 | `painter` | ImagePainterService | Imagen 3 / gpt-image-1 generate/edit/outpaint |
 | `assetia` | MediaProcessingService | image crop/resize/convert/watermark, video transcode (H.265/AV1), previews, `ProbeMedia` |
 | `escriba` | TranscriptionService | `OpenLive` (full-duplex speech to text), `Transcribe` (short clips), `TranscribeRecording` (any length, optional speaker labels, progress), `GetCapabilities`; deployment-routable |
+
+### Decisions
+
+`decision` asks typed questions about a state and returns calibrated
+probabilities in one forward pass, no generated text. The gateway answers
+with Laya (open weights, local worker) by default; pick Jev (TypeSafe,
+hosted) per client or per call:
+
+```go
+decider := decision.NewService(sdk, decision.WithDeployment("local"))
+resp, err := decider.Decide(ctx,
+    ticket, // a string, or anything that marshals to a JSON object/array
+    map[string]decision.Question{
+        "department": decision.Choice("Which team should handle this?", map[string]string{
+            "billing":   "payments, invoices, refunds",
+            "technical": "bugs, outages, errors",
+        }),
+        "severity": decision.Score("How severe is it?", "minor", "moderate", "critical"),
+        "urgent":   decision.Noul("Does the message convey urgency?"),
+    },
+    &decision.Options{Model: decision.ModelRef{Provider: decision.ProviderJev}},
+)
+dep := resp.Answers["department"].Choice // .Choice, .Probabilities, .Confidence
+```
 
 ### Live transcription
 
@@ -180,8 +205,8 @@ half-close-before-response protocol the server requires.
 
 ### Backpressure
 
-The five rootpuller-backed services (chunker, embedding, rerank,
-vectorops, chef) advertise their per-deployment capacity in-band
+The six rootpuller-backed services (chunker, embedding, rerank,
+decision, vectorops, chef) advertise their per-deployment capacity in-band
 (rate-limit trailers, shed statuses with retry hints). A `Backpressure`
 gate follows those signals — AIMD concurrency control, a shared shed
 pause, a deep-outage circuit breaker — so batch workloads pace themselves
@@ -194,7 +219,7 @@ chk := chunker.NewService(sdk, chunker.WithDeployment("local"), chunker.WithBack
 emb := embedding.NewService(sdk, embedding.WithDeployment("local"), embedding.WithBackpressure(bp))
 ```
 
-`WithBackpressure` exists only on the five services that emit the
+`WithBackpressure` exists only on the six services that emit the
 signals. It composes with `WithRetry`: every retry attempt re-acquires a
 slot and waits out the shared shed pause. Streams hold one slot for
 their lifetime.
@@ -203,7 +228,8 @@ their lifetime.
 
 Scoped to the services that understand them, as construction options:
 
-- `rootpuller-deployment` (chunker, embedding, rerank, vectorops, chef):
+- `rootpuller-deployment` (chunker, embedding, rerank, decision, vectorops,
+  chef; for decision only the local Laya provider is routed):
   `chunker.WithDeployment("cloudrun")` etc.
 - `rootpuller-bot` (webcontent, scrape): `webcontent.WithBot("crawler-a")`
   — one option accepted by both `NewService` and `NewScrapeService`. This

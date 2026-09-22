@@ -10,8 +10,9 @@ import (
 // for calls made with the returned context, overriding any
 // WithDeployment default on the service client. The header selects
 // between configured backend deployments (e.g. "local", "cloudrun") and
-// is only meaningful for the chunker, embedding, and vectorops services
-// (see their WithDeployment methods for client-scoped defaults).
+// is only meaningful for the chunker, embedding, rerank, decision,
+// vectorops, and chef services (see their WithDeployment methods for
+// client-scoped defaults).
 func ContextWithDeployment(ctx context.Context, name string) context.Context {
 	return transport.ContextWithDeployment(ctx, name)
 }
