@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.6.0 (2026-10-16)
+
+### Minor Changes
+
+- composer: new package wrapping ComposerService — Plan, ComposeSong (multi-take, decoder choice, sampling overrides, instrumental), Transcribe and GetCapabilities, plus the rootpullertest.Composer fake
+
 ## v0.5.0 (2026-09-23)
 
 ### Minor Changes
