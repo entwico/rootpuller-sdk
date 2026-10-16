@@ -251,8 +251,7 @@ func (h *webContentHandler) ExtractContent(_ context.Context, stream *connect.Bi
 
 	artifacts, err := extract(facadeKind, html)
 	if err != nil {
-		var ce *webcontent.ContentError
-		if errors.As(err, &ce) {
+		if ce, ok := errors.AsType[*webcontent.ContentError](err); ok {
 			return stream.Send(&webcontentpb.ExtractContentResponse{
 				Message: &webcontentpb.ExtractContentResponse_Error{Error: contentErrorToProto(ce)},
 			})

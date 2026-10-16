@@ -502,7 +502,9 @@ func recordingResponses(script RecordingScript) []*escribapb.TranscribeRecording
 	recording := script.Recording
 	model := &escribapb.TranscriptionModelRef{ModelId: recording.Model}
 
-	responses := []*escribapb.TranscribeRecordingResponse{{
+	// accepted, the progress and segment events, then complete
+	responses := make([]*escribapb.TranscribeRecordingResponse, 0, 2+len(script.Progress)+len(recording.Segments))
+	responses = append(responses, &escribapb.TranscribeRecordingResponse{
 		Event: &escribapb.TranscribeRecordingResponse_Accepted{
 			Accepted: &escribapb.RecordingAccepted{
 				DurationSeconds: recording.Duration.Seconds(),
@@ -510,7 +512,7 @@ func recordingResponses(script RecordingScript) []*escribapb.TranscribeRecording
 				Model:           model,
 			},
 		},
-	}}
+	})
 
 	stages := map[escriba.RecordingStage]escribapb.RecordingProgress_Stage{
 		escriba.RecordingStageQueued:           escribapb.RecordingProgress_STAGE_QUEUED,
