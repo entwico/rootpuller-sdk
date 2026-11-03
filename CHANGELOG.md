@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.7.0 (2026-11-03)
+
+### Minor Changes
+
+- painter: `GenerateComfy` and `EditComfy` select the self-hosted ComfyUI models (`ComfyModelQwenImage`, `ComfyModelMOSSImage`, `ComfyModelKrea2Turbo`); `GenerateOptions.References` sends ordered reference images (`<image1>`, `<image2>`, …); `painter.WithComfyUIDeployment` and `rootpullersdk.ContextWithComfyUIDeployment` pick the ComfyUI deployment; `rootpullertest.Painter.GenerateRequestFunc` exposes references and the deployment header to tests
+
 ## v0.6.0 (2026-10-16)
 
 ### Minor Changes
