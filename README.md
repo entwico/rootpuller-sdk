@@ -105,6 +105,7 @@ links only the service packages it imports.
 | `facefixer` | FaceFixerService | restore/colorize/inpaint faces |
 | `bgremover` | BackgroundRemoverService | background removal |
 | `painter` | ImagePainterService | Google / OpenAI generate/edit/outpaint; self-hosted ComfyUI models (comfy backend) with reference images |
+| `video` | VideoGeneratorService | `Generate` (LTX 2.5 clips with sound from text, a first frame, or first and last frame), `GenerateTalking` (portrait + voice track → lip-synced talking head); ComfyUI-deployment-routable |
 | `assetia` | MediaProcessingService | image crop/resize/convert/watermark, video transcode (H.265/AV1), previews, `ProbeMedia` |
 | `escriba` | TranscriptionService | `OpenLive` (full-duplex speech to text), `Transcribe` (short clips), `TranscribeRecording` (any length, optional speaker labels, progress), `GetCapabilities`; deployment-routable |
 
