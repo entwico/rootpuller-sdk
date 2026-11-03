@@ -26,6 +26,13 @@ func ContextWithBot(ctx context.Context, name string) context.Context {
 	return transport.ContextWithBot(ctx, name)
 }
 
+// ContextWithComfyUIDeployment pins the ComfyUI deployment for painter calls
+// on the comfy backend made with this context, overriding any
+// painter.WithComfyUIDeployment default.
+func ContextWithComfyUIDeployment(ctx context.Context, name string) context.Context {
+	return transport.ContextWithComfyUIDeployment(ctx, name)
+}
+
 // ContextWithEscribaDeployment pins the escriba deployment for calls made with
 // this context, overriding any escriba.WithDeployment default. Use it to send
 // the same audio at different workers — a CPU deployment in one cluster against

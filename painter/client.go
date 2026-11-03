@@ -1,10 +1,12 @@
 // Package painter wraps com.entwico.rootpuller.painter.
 // ImagePainterService: AI image generation, editing, and outpainting on
-// the Google Imagen and OpenAI backends.
+// the Google and OpenAI backends, plus generation and editing with
+// self-hosted open-weight models on the comfy backend.
 package painter
 
 import (
 	"context"
+	"fmt"
 	"iter"
 
 	rootpullersdk "github.com/entwico/rootpuller-sdk"
@@ -12,15 +14,25 @@ import (
 	painterpb "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/painter"
 	"github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/painter/painterconnect"
 	"github.com/entwico/rootpuller-sdk/internal/streamio"
+	"github.com/entwico/rootpuller-sdk/internal/transport"
 )
 
 // Service calls the ImagePainterService.
 type Service struct {
-	rpc painterconnect.ImagePainterServiceClient
+	rpc               painterconnect.ImagePainterServiceClient
+	comfyUIDeployment string
 }
 
 // Option configures a Service at construction.
 type Option func(*Service)
+
+// WithComfyUIDeployment routes this service's comfy-backend calls at a
+// named ComfyUI deployment. A per-call
+// rootpullersdk.ContextWithComfyUIDeployment overrides it. Leave unset to use
+// whichever deployment the server treats as default.
+func WithComfyUIDeployment(name string) Option {
+	return func(s *Service) { s.comfyUIDeployment = name }
+}
 
 // NewService builds an ImagePainterService client on the sdk connection.
 func NewService(sdk *rootpullersdk.Client, opts ...Option) *Service {
@@ -34,9 +46,9 @@ func NewService(sdk *rootpullersdk.Client, opts ...Option) *Service {
 	return s
 }
 
-// Generate calls ImagePainterService/GenerateImage: it sends exactly one
-// params frame, half-closes (there is no upload), and collects the
-// response stream. Progress frames go to opts.OnProgress when set; the
+// Generate calls ImagePainterService/GenerateImage: it sends the params
+// frame, then each of opts.References in order (comfy backend only), and
+// half-closes, then collects the response stream. Progress frames go to opts.OnProgress when set; the
 // metadata frame and the reassembled images form the Result.
 func (s *Service) Generate(ctx context.Context, prompt string, opts *GenerateOptions) (*Result, error) {
 	if opts == nil {
@@ -48,11 +60,13 @@ func (s *Service) Generate(ctx context.Context, prompt string, opts *GenerateOpt
 		return nil, err
 	}
 
+	ctx = transport.EnsureComfyUIDeployment(ctx, s.comfyUIDeployment)
 	procedure := painterconnect.ImagePainterServiceGenerateImageProcedure
 	stream := s.rpc.GenerateImage(ctx)
 
 	frames := streamio.Frames(
 		&painterpb.GenerateImageRequest{Request: &painterpb.GenerateImageRequest_Params_{Params: params}},
+		referenceFrames(opts.References)...,
 	)
 
 	var (
@@ -96,6 +110,7 @@ func (s *Service) Edit(ctx context.Context, prompt string, image rootpullersdk.U
 		return nil, err
 	}
 
+	ctx = transport.EnsureComfyUIDeployment(ctx, s.comfyUIDeployment)
 	procedure := painterconnect.ImagePainterServiceEditImageProcedure
 	stream := s.rpc.EditImage(ctx)
 
@@ -189,6 +204,22 @@ func (s *Service) Outpaint(ctx context.Context, prompt string, image rootpullers
 	}
 
 	return buildResult(&collector, meta)
+}
+
+// referenceFrames streams each reference as its own named file. The server
+// starts a new reference whenever the chunk name changes, so names are made
+// unique by position: two uploads both called "photo.jpg" stay two images.
+func referenceFrames(refs []rootpullersdk.Upload) []iter.Seq2[*painterpb.GenerateImageRequest, error] {
+	frames := make([]iter.Seq2[*painterpb.GenerateImageRequest, error], 0, len(refs))
+
+	for i, ref := range refs {
+		ref.Name = fmt.Sprintf("ref_%d_%s", i+1, ref.Name)
+		frames = append(frames, streamio.FileChunkFrames(ref, func(chunk *commonpb.FileChunk) *painterpb.GenerateImageRequest {
+			return &painterpb.GenerateImageRequest{Request: &painterpb.GenerateImageRequest_ReferenceImage{ReferenceImage: chunk}}
+		}))
+	}
+
+	return frames
 }
 
 func buildResult(collector *streamio.FileCollector, meta Metadata) (*Result, error) {

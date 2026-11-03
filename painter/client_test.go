@@ -40,8 +40,8 @@ func TestGenerateMultiImageDemux(t *testing.T) {
 			gotPrompt = prompt
 
 			return []rootpullersdk.File{
-				{Name: "image_0.png", MIMEType: "image/png", Data: payload0},
-				{Name: "image_1.png", MIMEType: "image/png", Data: payload1},
+				{Name: image0PNG, MIMEType: mimePNG, Data: payload0},
+				{Name: "image_1.png", MIMEType: mimePNG, Data: payload1},
 			}, nil
 		},
 		Metadata: &painter.Metadata{
@@ -80,7 +80,7 @@ func TestGenerateMultiImageDemux(t *testing.T) {
 		t.Fatalf("got %d images, want 2", len(result.Images))
 	}
 
-	if result.Images[0].Name != "image_0.png" || !bytes.Equal(result.Images[0].Data, payload0) {
+	if result.Images[0].Name != image0PNG || !bytes.Equal(result.Images[0].Data, payload0) {
 		t.Errorf("image 0 mismatch: name %q, %d bytes", result.Images[0].Name, len(result.Images[0].Data))
 	}
 
@@ -143,20 +143,20 @@ func TestEditWithMaskOrdering(t *testing.T) {
 			gotImage = image
 			gotMask = mask
 
-			return []rootpullersdk.File{{Name: "image_0.png", MIMEType: "image/png", Data: []byte{0x01, 0x02}}}, nil
+			return []rootpullersdk.File{{Name: image0PNG, MIMEType: mimePNG, Data: []byte{0x01, 0x02}}}, nil
 		},
 	})
 
 	svc := newService(t, srv.URL)
 
 	result, err := svc.Edit(t.Context(), "remove the lamp post",
-		rootpullersdk.UploadBytes("photo.png", "image/png", imageData),
+		rootpullersdk.UploadBytes("photo.png", mimePNG, imageData),
 		&painter.EditOptions{
 			Backend: painter.EditGoogle{
 				EditMode:     painter.GoogleEditModeInpaintRemoval,
 				MaskDilation: new(8),
 			},
-			Mask: new(rootpullersdk.UploadBytes("mask.png", "image/png", maskData)),
+			Mask: new(rootpullersdk.UploadBytes("mask.png", mimePNG, maskData)),
 		},
 	)
 	if err != nil {
@@ -197,14 +197,14 @@ func TestOutpaintRoundTrip(t *testing.T) {
 			gotPrompt = prompt
 			gotImage = image
 
-			return []rootpullersdk.File{{Name: "image_0.png", MIMEType: "image/png", Data: []byte{0x99}}}, nil
+			return []rootpullersdk.File{{Name: image0PNG, MIMEType: mimePNG, Data: []byte{0x99}}}, nil
 		},
 	})
 
 	svc := newService(t, srv.URL)
 
 	result, err := svc.Outpaint(t.Context(), "extend the beach",
-		rootpullersdk.UploadBytes("beach.png", "image/png", []byte{0x10, 0x20, 0x30}),
+		rootpullersdk.UploadBytes("beach.png", mimePNG, []byte{0x10, 0x20, 0x30}),
 		&painter.OutpaintOptions{
 			Extend:  painter.Extend{Top: 64, Bottom: 64, Left: 128, Right: 128},
 			Backend: painter.OutpaintOpenAI{Quality: painter.OpenAIQualityHigh},
@@ -222,7 +222,7 @@ func TestOutpaintRoundTrip(t *testing.T) {
 		t.Errorf("server saw image %q with %d bytes", gotImage.Name, len(gotImage.Data))
 	}
 
-	if len(result.Images) != 1 || result.Images[0].Name != "image_0.png" {
+	if len(result.Images) != 1 || result.Images[0].Name != image0PNG {
 		t.Fatalf("unexpected result images: %+v", result.Images)
 	}
 

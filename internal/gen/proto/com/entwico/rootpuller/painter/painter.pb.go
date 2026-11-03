@@ -400,6 +400,57 @@ func (OpenAIOutputFormat) EnumDescriptor() ([]byte, []int) {
 	return file_com_entwico_rootpuller_painter_painter_proto_rawDescGZIP(), []int{6}
 }
 
+// Output container. The server re-encodes every image, so outputs carry no
+// workflow metadata.
+type ComfyOutputFormat int32
+
+const (
+	ComfyOutputFormat_COMFY_OUTPUT_FORMAT_UNSPECIFIED ComfyOutputFormat = 0 // server default: PNG
+	ComfyOutputFormat_COMFY_OUTPUT_FORMAT_PNG         ComfyOutputFormat = 1
+	ComfyOutputFormat_COMFY_OUTPUT_FORMAT_JPEG        ComfyOutputFormat = 2 // quality 92
+)
+
+// Enum value maps for ComfyOutputFormat.
+var (
+	ComfyOutputFormat_name = map[int32]string{
+		0: "COMFY_OUTPUT_FORMAT_UNSPECIFIED",
+		1: "COMFY_OUTPUT_FORMAT_PNG",
+		2: "COMFY_OUTPUT_FORMAT_JPEG",
+	}
+	ComfyOutputFormat_value = map[string]int32{
+		"COMFY_OUTPUT_FORMAT_UNSPECIFIED": 0,
+		"COMFY_OUTPUT_FORMAT_PNG":         1,
+		"COMFY_OUTPUT_FORMAT_JPEG":        2,
+	}
+)
+
+func (x ComfyOutputFormat) Enum() *ComfyOutputFormat {
+	p := new(ComfyOutputFormat)
+	*p = x
+	return p
+}
+
+func (x ComfyOutputFormat) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (ComfyOutputFormat) Descriptor() protoreflect.EnumDescriptor {
+	return file_com_entwico_rootpuller_painter_painter_proto_enumTypes[7].Descriptor()
+}
+
+func (ComfyOutputFormat) Type() protoreflect.EnumType {
+	return &file_com_entwico_rootpuller_painter_painter_proto_enumTypes[7]
+}
+
+func (x ComfyOutputFormat) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use ComfyOutputFormat.Descriptor instead.
+func (ComfyOutputFormat) EnumDescriptor() ([]byte, []int) {
+	return file_com_entwico_rootpuller_painter_painter_proto_rawDescGZIP(), []int{7}
+}
+
 type GenerationProgress_Stage int32
 
 const (
@@ -439,11 +490,11 @@ func (x GenerationProgress_Stage) String() string {
 }
 
 func (GenerationProgress_Stage) Descriptor() protoreflect.EnumDescriptor {
-	return file_com_entwico_rootpuller_painter_painter_proto_enumTypes[7].Descriptor()
+	return file_com_entwico_rootpuller_painter_painter_proto_enumTypes[8].Descriptor()
 }
 
 func (GenerationProgress_Stage) Type() protoreflect.EnumType {
-	return &file_com_entwico_rootpuller_painter_painter_proto_enumTypes[7]
+	return &file_com_entwico_rootpuller_painter_painter_proto_enumTypes[8]
 }
 
 func (x GenerationProgress_Stage) Number() protoreflect.EnumNumber {
@@ -463,6 +514,10 @@ const (
 	GenerationMetadata_BACKEND_UNSPECIFIED GenerationMetadata_Backend = 0
 	GenerationMetadata_BACKEND_GOOGLE      GenerationMetadata_Backend = 1
 	GenerationMetadata_BACKEND_OPENAI      GenerationMetadata_Backend = 2
+	// Self-hosted model on a ComfyUI deployment. Images are never
+	// safety-blocked (the models have no safety filter) and usage is unset
+	// (a self-hosted GPU has no per-call price).
+	GenerationMetadata_BACKEND_COMFY GenerationMetadata_Backend = 3
 )
 
 // Enum value maps for GenerationMetadata_Backend.
@@ -471,11 +526,13 @@ var (
 		0: "BACKEND_UNSPECIFIED",
 		1: "BACKEND_GOOGLE",
 		2: "BACKEND_OPENAI",
+		3: "BACKEND_COMFY",
 	}
 	GenerationMetadata_Backend_value = map[string]int32{
 		"BACKEND_UNSPECIFIED": 0,
 		"BACKEND_GOOGLE":      1,
 		"BACKEND_OPENAI":      2,
+		"BACKEND_COMFY":       3,
 	}
 )
 
@@ -490,11 +547,11 @@ func (x GenerationMetadata_Backend) String() string {
 }
 
 func (GenerationMetadata_Backend) Descriptor() protoreflect.EnumDescriptor {
-	return file_com_entwico_rootpuller_painter_painter_proto_enumTypes[8].Descriptor()
+	return file_com_entwico_rootpuller_painter_painter_proto_enumTypes[9].Descriptor()
 }
 
 func (GenerationMetadata_Backend) Type() protoreflect.EnumType {
-	return &file_com_entwico_rootpuller_painter_painter_proto_enumTypes[8]
+	return &file_com_entwico_rootpuller_painter_painter_proto_enumTypes[9]
 }
 
 func (x GenerationMetadata_Backend) Number() protoreflect.EnumNumber {
@@ -549,11 +606,11 @@ func (x GenerateImageRequest_Google_AspectRatio) String() string {
 }
 
 func (GenerateImageRequest_Google_AspectRatio) Descriptor() protoreflect.EnumDescriptor {
-	return file_com_entwico_rootpuller_painter_painter_proto_enumTypes[9].Descriptor()
+	return file_com_entwico_rootpuller_painter_painter_proto_enumTypes[10].Descriptor()
 }
 
 func (GenerateImageRequest_Google_AspectRatio) Type() protoreflect.EnumType {
-	return &file_com_entwico_rootpuller_painter_painter_proto_enumTypes[9]
+	return &file_com_entwico_rootpuller_painter_painter_proto_enumTypes[10]
 }
 
 func (x GenerateImageRequest_Google_AspectRatio) Number() protoreflect.EnumNumber {
@@ -599,11 +656,11 @@ func (x GenerateImageRequest_OpenAI_Moderation) String() string {
 }
 
 func (GenerateImageRequest_OpenAI_Moderation) Descriptor() protoreflect.EnumDescriptor {
-	return file_com_entwico_rootpuller_painter_painter_proto_enumTypes[10].Descriptor()
+	return file_com_entwico_rootpuller_painter_painter_proto_enumTypes[11].Descriptor()
 }
 
 func (GenerateImageRequest_OpenAI_Moderation) Type() protoreflect.EnumType {
-	return &file_com_entwico_rootpuller_painter_painter_proto_enumTypes[10]
+	return &file_com_entwico_rootpuller_painter_painter_proto_enumTypes[11]
 }
 
 func (x GenerateImageRequest_OpenAI_Moderation) Number() protoreflect.EnumNumber {
@@ -653,11 +710,11 @@ func (x EditImageRequest_Google_EditMode) String() string {
 }
 
 func (EditImageRequest_Google_EditMode) Descriptor() protoreflect.EnumDescriptor {
-	return file_com_entwico_rootpuller_painter_painter_proto_enumTypes[11].Descriptor()
+	return file_com_entwico_rootpuller_painter_painter_proto_enumTypes[12].Descriptor()
 }
 
 func (EditImageRequest_Google_EditMode) Type() protoreflect.EnumType {
-	return &file_com_entwico_rootpuller_painter_painter_proto_enumTypes[11]
+	return &file_com_entwico_rootpuller_painter_painter_proto_enumTypes[12]
 }
 
 func (x EditImageRequest_Google_EditMode) Number() protoreflect.EnumNumber {
@@ -938,11 +995,12 @@ func (x *GenerationMetadata) GetUsage() *common.Usage {
 type GenerateImageRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Wrapped in an outer oneof for forward compatibility with future
-	// request variants (e.g. reference-conditioned generation).
+	// request variants.
 	//
 	// Types that are valid to be assigned to Request:
 	//
 	//	*GenerateImageRequest_Params_
+	//	*GenerateImageRequest_ReferenceImage
 	Request       isGenerateImageRequest_Request `protobuf_oneof:"request"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -994,6 +1052,15 @@ func (x *GenerateImageRequest) GetParams() *GenerateImageRequest_Params {
 	return nil
 }
 
+func (x *GenerateImageRequest) GetReferenceImage() *common.FileChunk {
+	if x != nil {
+		if x, ok := x.Request.(*GenerateImageRequest_ReferenceImage); ok {
+			return x.ReferenceImage
+		}
+	}
+	return nil
+}
+
 type isGenerateImageRequest_Request interface {
 	isGenerateImageRequest_Request()
 }
@@ -1002,7 +1069,16 @@ type GenerateImageRequest_Params_ struct {
 	Params *GenerateImageRequest_Params `protobuf:"bytes,1,opt,name=params,proto3,oneof"`
 }
 
+type GenerateImageRequest_ReferenceImage struct {
+	// Reference image for models that accept them (comfy backend only).
+	// Each reference is one or more chunks sharing a FileChunk.name; a new
+	// name starts the next reference. Order defines <image1>, <image2>, ….
+	ReferenceImage *common.FileChunk `protobuf:"bytes,2,opt,name=reference_image,json=referenceImage,proto3,oneof"`
+}
+
 func (*GenerateImageRequest_Params_) isGenerateImageRequest_Request() {}
+
+func (*GenerateImageRequest_ReferenceImage) isGenerateImageRequest_Request() {}
 
 // Response stream layout:
 //  1. zero or more GenerationProgress
@@ -1739,9 +1815,102 @@ func (x *GenerateImageRequest_OpenAI) GetUser() string {
 	return ""
 }
 
+// Self-hosted open-weight model options. Sampling settings (steps, cfg,
+// sampler) are fixed per model on the server.
+type GenerateImageRequest_Comfy struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Model name, e.g. "qwen-image-2.1", "moss-image", "krea-2-turbo".
+	// Must be served by the chosen deployment.
+	Model string `protobuf:"bytes,1,opt,name=model,proto3" json:"model,omitempty"`
+	// 1–4. Default: 1. Each image is a separate job with seed + index.
+	NumberOfImages *int32 `protobuf:"varint,2,opt,name=number_of_images,json=numberOfImages,proto3,oneof" json:"number_of_images,omitempty"`
+	// Seed of the first image; image i uses seed + i. Default: random.
+	Seed *int64 `protobuf:"varint,3,opt,name=seed,proto3,oneof" json:"seed,omitempty"`
+	// Output size in pixels, multiples of 16. Default: per model
+	// (e.g. 1152×1536 portrait).
+	Width         *int32             `protobuf:"varint,4,opt,name=width,proto3,oneof" json:"width,omitempty"`
+	Height        *int32             `protobuf:"varint,5,opt,name=height,proto3,oneof" json:"height,omitempty"`
+	OutputFormat  *ComfyOutputFormat `protobuf:"varint,6,opt,name=output_format,json=outputFormat,proto3,enum=com.entwico.rootpuller.painter.ComfyOutputFormat,oneof" json:"output_format,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GenerateImageRequest_Comfy) Reset() {
+	*x = GenerateImageRequest_Comfy{}
+	mi := &file_com_entwico_rootpuller_painter_painter_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GenerateImageRequest_Comfy) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GenerateImageRequest_Comfy) ProtoMessage() {}
+
+func (x *GenerateImageRequest_Comfy) ProtoReflect() protoreflect.Message {
+	mi := &file_com_entwico_rootpuller_painter_painter_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GenerateImageRequest_Comfy.ProtoReflect.Descriptor instead.
+func (*GenerateImageRequest_Comfy) Descriptor() ([]byte, []int) {
+	return file_com_entwico_rootpuller_painter_painter_proto_rawDescGZIP(), []int{3, 2}
+}
+
+func (x *GenerateImageRequest_Comfy) GetModel() string {
+	if x != nil {
+		return x.Model
+	}
+	return ""
+}
+
+func (x *GenerateImageRequest_Comfy) GetNumberOfImages() int32 {
+	if x != nil && x.NumberOfImages != nil {
+		return *x.NumberOfImages
+	}
+	return 0
+}
+
+func (x *GenerateImageRequest_Comfy) GetSeed() int64 {
+	if x != nil && x.Seed != nil {
+		return *x.Seed
+	}
+	return 0
+}
+
+func (x *GenerateImageRequest_Comfy) GetWidth() int32 {
+	if x != nil && x.Width != nil {
+		return *x.Width
+	}
+	return 0
+}
+
+func (x *GenerateImageRequest_Comfy) GetHeight() int32 {
+	if x != nil && x.Height != nil {
+		return *x.Height
+	}
+	return 0
+}
+
+func (x *GenerateImageRequest_Comfy) GetOutputFormat() ComfyOutputFormat {
+	if x != nil && x.OutputFormat != nil {
+		return *x.OutputFormat
+	}
+	return ComfyOutputFormat_COMFY_OUTPUT_FORMAT_UNSPECIFIED
+}
+
 type GenerateImageRequest_Params struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Universal — every backend accepts a prompt.
+	// Universal — every backend accepts a prompt. With references, refer to
+	// them as <image1>, <image2>, … in the order they are streamed.
 	Prompt string `protobuf:"bytes,1,opt,name=prompt,proto3" json:"prompt,omitempty"`
 	// Backend-specific tuning. Setting this oneof also selects which
 	// backend serves the request.
@@ -1750,6 +1919,7 @@ type GenerateImageRequest_Params struct {
 	//
 	//	*GenerateImageRequest_Params_Google
 	//	*GenerateImageRequest_Params_Openai
+	//	*GenerateImageRequest_Params_Comfy
 	Backend       isGenerateImageRequest_Params_Backend `protobuf_oneof:"backend"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1757,7 +1927,7 @@ type GenerateImageRequest_Params struct {
 
 func (x *GenerateImageRequest_Params) Reset() {
 	*x = GenerateImageRequest_Params{}
-	mi := &file_com_entwico_rootpuller_painter_painter_proto_msgTypes[11]
+	mi := &file_com_entwico_rootpuller_painter_painter_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1769,7 +1939,7 @@ func (x *GenerateImageRequest_Params) String() string {
 func (*GenerateImageRequest_Params) ProtoMessage() {}
 
 func (x *GenerateImageRequest_Params) ProtoReflect() protoreflect.Message {
-	mi := &file_com_entwico_rootpuller_painter_painter_proto_msgTypes[11]
+	mi := &file_com_entwico_rootpuller_painter_painter_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1782,7 +1952,7 @@ func (x *GenerateImageRequest_Params) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GenerateImageRequest_Params.ProtoReflect.Descriptor instead.
 func (*GenerateImageRequest_Params) Descriptor() ([]byte, []int) {
-	return file_com_entwico_rootpuller_painter_painter_proto_rawDescGZIP(), []int{3, 2}
+	return file_com_entwico_rootpuller_painter_painter_proto_rawDescGZIP(), []int{3, 3}
 }
 
 func (x *GenerateImageRequest_Params) GetPrompt() string {
@@ -1817,6 +1987,15 @@ func (x *GenerateImageRequest_Params) GetOpenai() *GenerateImageRequest_OpenAI {
 	return nil
 }
 
+func (x *GenerateImageRequest_Params) GetComfy() *GenerateImageRequest_Comfy {
+	if x != nil {
+		if x, ok := x.Backend.(*GenerateImageRequest_Params_Comfy); ok {
+			return x.Comfy
+		}
+	}
+	return nil
+}
+
 type isGenerateImageRequest_Params_Backend interface {
 	isGenerateImageRequest_Params_Backend()
 }
@@ -1829,9 +2008,15 @@ type GenerateImageRequest_Params_Openai struct {
 	Openai *GenerateImageRequest_OpenAI `protobuf:"bytes,3,opt,name=openai,proto3,oneof"`
 }
 
+type GenerateImageRequest_Params_Comfy struct {
+	Comfy *GenerateImageRequest_Comfy `protobuf:"bytes,4,opt,name=comfy,proto3,oneof"`
+}
+
 func (*GenerateImageRequest_Params_Google) isGenerateImageRequest_Params_Backend() {}
 
 func (*GenerateImageRequest_Params_Openai) isGenerateImageRequest_Params_Backend() {}
+
+func (*GenerateImageRequest_Params_Comfy) isGenerateImageRequest_Params_Backend() {}
 
 // Google edit options. Drives the Imagen capability model.
 //
@@ -1861,7 +2046,7 @@ type EditImageRequest_Google struct {
 
 func (x *EditImageRequest_Google) Reset() {
 	*x = EditImageRequest_Google{}
-	mi := &file_com_entwico_rootpuller_painter_painter_proto_msgTypes[12]
+	mi := &file_com_entwico_rootpuller_painter_painter_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1873,7 +2058,7 @@ func (x *EditImageRequest_Google) String() string {
 func (*EditImageRequest_Google) ProtoMessage() {}
 
 func (x *EditImageRequest_Google) ProtoReflect() protoreflect.Message {
-	mi := &file_com_entwico_rootpuller_painter_painter_proto_msgTypes[12]
+	mi := &file_com_entwico_rootpuller_painter_painter_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1979,7 +2164,7 @@ type EditImageRequest_OpenAI struct {
 
 func (x *EditImageRequest_OpenAI) Reset() {
 	*x = EditImageRequest_OpenAI{}
-	mi := &file_com_entwico_rootpuller_painter_painter_proto_msgTypes[13]
+	mi := &file_com_entwico_rootpuller_painter_painter_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1991,7 +2176,7 @@ func (x *EditImageRequest_OpenAI) String() string {
 func (*EditImageRequest_OpenAI) ProtoMessage() {}
 
 func (x *EditImageRequest_OpenAI) ProtoReflect() protoreflect.Message {
-	mi := &file_com_entwico_rootpuller_painter_painter_proto_msgTypes[13]
+	mi := &file_com_entwico_rootpuller_painter_painter_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2063,6 +2248,96 @@ func (x *EditImageRequest_OpenAI) GetUser() string {
 	return ""
 }
 
+// Self-hosted open-weight model options for a layout-keeping edit.
+type EditImageRequest_Comfy struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Model name; must support editing, e.g. "qwen-image-2.1".
+	Model string `protobuf:"bytes,1,opt,name=model,proto3" json:"model,omitempty"`
+	// 1–4. Default: 1. Each image is a separate job with seed + index.
+	NumberOfImages *int32 `protobuf:"varint,2,opt,name=number_of_images,json=numberOfImages,proto3,oneof" json:"number_of_images,omitempty"`
+	// Seed of the first image; image i uses seed + i. Default: random.
+	Seed *int64 `protobuf:"varint,3,opt,name=seed,proto3,oneof" json:"seed,omitempty"`
+	// Output size in pixels, multiples of 16. Default: the input image's
+	// size rounded to multiples of 16.
+	Width         *int32             `protobuf:"varint,4,opt,name=width,proto3,oneof" json:"width,omitempty"`
+	Height        *int32             `protobuf:"varint,5,opt,name=height,proto3,oneof" json:"height,omitempty"`
+	OutputFormat  *ComfyOutputFormat `protobuf:"varint,6,opt,name=output_format,json=outputFormat,proto3,enum=com.entwico.rootpuller.painter.ComfyOutputFormat,oneof" json:"output_format,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *EditImageRequest_Comfy) Reset() {
+	*x = EditImageRequest_Comfy{}
+	mi := &file_com_entwico_rootpuller_painter_painter_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *EditImageRequest_Comfy) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*EditImageRequest_Comfy) ProtoMessage() {}
+
+func (x *EditImageRequest_Comfy) ProtoReflect() protoreflect.Message {
+	mi := &file_com_entwico_rootpuller_painter_painter_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use EditImageRequest_Comfy.ProtoReflect.Descriptor instead.
+func (*EditImageRequest_Comfy) Descriptor() ([]byte, []int) {
+	return file_com_entwico_rootpuller_painter_painter_proto_rawDescGZIP(), []int{5, 2}
+}
+
+func (x *EditImageRequest_Comfy) GetModel() string {
+	if x != nil {
+		return x.Model
+	}
+	return ""
+}
+
+func (x *EditImageRequest_Comfy) GetNumberOfImages() int32 {
+	if x != nil && x.NumberOfImages != nil {
+		return *x.NumberOfImages
+	}
+	return 0
+}
+
+func (x *EditImageRequest_Comfy) GetSeed() int64 {
+	if x != nil && x.Seed != nil {
+		return *x.Seed
+	}
+	return 0
+}
+
+func (x *EditImageRequest_Comfy) GetWidth() int32 {
+	if x != nil && x.Width != nil {
+		return *x.Width
+	}
+	return 0
+}
+
+func (x *EditImageRequest_Comfy) GetHeight() int32 {
+	if x != nil && x.Height != nil {
+		return *x.Height
+	}
+	return 0
+}
+
+func (x *EditImageRequest_Comfy) GetOutputFormat() ComfyOutputFormat {
+	if x != nil && x.OutputFormat != nil {
+		return *x.OutputFormat
+	}
+	return ComfyOutputFormat_COMFY_OUTPUT_FORMAT_UNSPECIFIED
+}
+
 type EditImageRequest_Params struct {
 	state  protoimpl.MessageState `protogen:"open.v1"`
 	Prompt string                 `protobuf:"bytes,1,opt,name=prompt,proto3" json:"prompt,omitempty"`
@@ -2070,6 +2345,7 @@ type EditImageRequest_Params struct {
 	//
 	//	*EditImageRequest_Params_Google
 	//	*EditImageRequest_Params_Openai
+	//	*EditImageRequest_Params_Comfy
 	Backend       isEditImageRequest_Params_Backend `protobuf_oneof:"backend"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -2077,7 +2353,7 @@ type EditImageRequest_Params struct {
 
 func (x *EditImageRequest_Params) Reset() {
 	*x = EditImageRequest_Params{}
-	mi := &file_com_entwico_rootpuller_painter_painter_proto_msgTypes[14]
+	mi := &file_com_entwico_rootpuller_painter_painter_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2089,7 +2365,7 @@ func (x *EditImageRequest_Params) String() string {
 func (*EditImageRequest_Params) ProtoMessage() {}
 
 func (x *EditImageRequest_Params) ProtoReflect() protoreflect.Message {
-	mi := &file_com_entwico_rootpuller_painter_painter_proto_msgTypes[14]
+	mi := &file_com_entwico_rootpuller_painter_painter_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2102,7 +2378,7 @@ func (x *EditImageRequest_Params) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EditImageRequest_Params.ProtoReflect.Descriptor instead.
 func (*EditImageRequest_Params) Descriptor() ([]byte, []int) {
-	return file_com_entwico_rootpuller_painter_painter_proto_rawDescGZIP(), []int{5, 2}
+	return file_com_entwico_rootpuller_painter_painter_proto_rawDescGZIP(), []int{5, 3}
 }
 
 func (x *EditImageRequest_Params) GetPrompt() string {
@@ -2137,6 +2413,15 @@ func (x *EditImageRequest_Params) GetOpenai() *EditImageRequest_OpenAI {
 	return nil
 }
 
+func (x *EditImageRequest_Params) GetComfy() *EditImageRequest_Comfy {
+	if x != nil {
+		if x, ok := x.Backend.(*EditImageRequest_Params_Comfy); ok {
+			return x.Comfy
+		}
+	}
+	return nil
+}
+
 type isEditImageRequest_Params_Backend interface {
 	isEditImageRequest_Params_Backend()
 }
@@ -2149,9 +2434,15 @@ type EditImageRequest_Params_Openai struct {
 	Openai *EditImageRequest_OpenAI `protobuf:"bytes,3,opt,name=openai,proto3,oneof"`
 }
 
+type EditImageRequest_Params_Comfy struct {
+	Comfy *EditImageRequest_Comfy `protobuf:"bytes,4,opt,name=comfy,proto3,oneof"`
+}
+
 func (*EditImageRequest_Params_Google) isEditImageRequest_Params_Backend() {}
 
 func (*EditImageRequest_Params_Openai) isEditImageRequest_Params_Backend() {}
+
+func (*EditImageRequest_Params_Comfy) isEditImageRequest_Params_Backend() {}
 
 // Google outpaint options. Server pins editMode = OUTPAINT internally,
 // so there is no edit_mode field here (unlike EditImageRequest).
@@ -2172,7 +2463,7 @@ type OutpaintImageRequest_Google struct {
 
 func (x *OutpaintImageRequest_Google) Reset() {
 	*x = OutpaintImageRequest_Google{}
-	mi := &file_com_entwico_rootpuller_painter_painter_proto_msgTypes[15]
+	mi := &file_com_entwico_rootpuller_painter_painter_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2184,7 +2475,7 @@ func (x *OutpaintImageRequest_Google) String() string {
 func (*OutpaintImageRequest_Google) ProtoMessage() {}
 
 func (x *OutpaintImageRequest_Google) ProtoReflect() protoreflect.Message {
-	mi := &file_com_entwico_rootpuller_painter_painter_proto_msgTypes[15]
+	mi := &file_com_entwico_rootpuller_painter_painter_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2279,7 +2570,7 @@ type OutpaintImageRequest_OpenAI struct {
 
 func (x *OutpaintImageRequest_OpenAI) Reset() {
 	*x = OutpaintImageRequest_OpenAI{}
-	mi := &file_com_entwico_rootpuller_painter_painter_proto_msgTypes[16]
+	mi := &file_com_entwico_rootpuller_painter_painter_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2291,7 +2582,7 @@ func (x *OutpaintImageRequest_OpenAI) String() string {
 func (*OutpaintImageRequest_OpenAI) ProtoMessage() {}
 
 func (x *OutpaintImageRequest_OpenAI) ProtoReflect() protoreflect.Message {
-	mi := &file_com_entwico_rootpuller_painter_painter_proto_msgTypes[16]
+	mi := &file_com_entwico_rootpuller_painter_painter_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2381,7 +2672,7 @@ type OutpaintImageRequest_Params struct {
 
 func (x *OutpaintImageRequest_Params) Reset() {
 	*x = OutpaintImageRequest_Params{}
-	mi := &file_com_entwico_rootpuller_painter_painter_proto_msgTypes[17]
+	mi := &file_com_entwico_rootpuller_painter_painter_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2393,7 +2684,7 @@ func (x *OutpaintImageRequest_Params) String() string {
 func (*OutpaintImageRequest_Params) ProtoMessage() {}
 
 func (x *OutpaintImageRequest_Params) ProtoReflect() protoreflect.Message {
-	mi := &file_com_entwico_rootpuller_painter_painter_proto_msgTypes[17]
+	mi := &file_com_entwico_rootpuller_painter_painter_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2513,7 +2804,7 @@ const file_com_entwico_rootpuller_painter_painter_proto_rawDesc = "" +
 	"\x0erevised_prompt\x18\x06 \x01(\tH\x02R\rrevisedPrompt\x88\x01\x01B\a\n" +
 	"\x05_seedB\x10\n" +
 	"\x0e_safety_reasonB\x11\n" +
-	"\x0f_revised_prompt\"\xb5\x03\n" +
+	"\x0f_revised_prompt\"\xc8\x03\n" +
 	"\x12GenerationMetadata\x12T\n" +
 	"\abackend\x18\x01 \x01(\x0e2:.com.entwico.rootpuller.painter.GenerationMetadata.BackendR\abackend\x12\x14\n" +
 	"\x05model\x18\x02 \x01(\tR\x05model\x12,\n" +
@@ -2522,13 +2813,15 @@ const file_com_entwico_rootpuller_painter_painter_proto_rawDesc = "" +
 	"num_images\x18\x04 \x01(\x05R\tnumImages\x12H\n" +
 	"\x06images\x18\x05 \x03(\v20.com.entwico.rootpuller.painter.PerImageMetadataR\x06images\x12\x14\n" +
 	"\x05notes\x18\x06 \x03(\tR\x05notes\x12:\n" +
-	"\x05usage\x18\a \x01(\v2$.com.entwico.rootpuller.common.UsageR\x05usage\"J\n" +
+	"\x05usage\x18\a \x01(\v2$.com.entwico.rootpuller.common.UsageR\x05usage\"]\n" +
 	"\aBackend\x12\x17\n" +
 	"\x13BACKEND_UNSPECIFIED\x10\x00\x12\x12\n" +
 	"\x0eBACKEND_GOOGLE\x10\x01\x12\x12\n" +
-	"\x0eBACKEND_OPENAI\x10\x02\"\x9d\x11\n" +
+	"\x0eBACKEND_OPENAI\x10\x02\x12\x11\n" +
+	"\rBACKEND_COMFY\x10\x03\"\x88\x15\n" +
 	"\x14GenerateImageRequest\x12U\n" +
-	"\x06params\x18\x01 \x01(\v2;.com.entwico.rootpuller.painter.GenerateImageRequest.ParamsH\x00R\x06params\x1a\xbe\b\n" +
+	"\x06params\x18\x01 \x01(\v2;.com.entwico.rootpuller.painter.GenerateImageRequest.ParamsH\x00R\x06params\x12S\n" +
+	"\x0freference_image\x18\x02 \x01(\v2(.com.entwico.rootpuller.common.FileChunkH\x00R\x0ereferenceImage\x1a\xbe\b\n" +
 	"\x06Google\x12\x19\n" +
 	"\x05model\x18\x01 \x01(\tH\x00R\x05model\x88\x01\x01\x12-\n" +
 	"\x10number_of_images\x18\x02 \x01(\x05H\x01R\x0enumberOfImages\x88\x01\x01\x12o\n" +
@@ -2589,11 +2882,24 @@ const file_com_entwico_rootpuller_painter_painter_proto_rawDesc = "" +
 	"\x0e_output_formatB\x15\n" +
 	"\x13_output_compressionB\r\n" +
 	"\v_moderationB\a\n" +
-	"\x05_user\x1a\xd9\x01\n" +
+	"\x05_user\x1a\xbf\x02\n" +
+	"\x05Comfy\x12\x14\n" +
+	"\x05model\x18\x01 \x01(\tR\x05model\x12-\n" +
+	"\x10number_of_images\x18\x02 \x01(\x05H\x00R\x0enumberOfImages\x88\x01\x01\x12\x17\n" +
+	"\x04seed\x18\x03 \x01(\x03H\x01R\x04seed\x88\x01\x01\x12\x19\n" +
+	"\x05width\x18\x04 \x01(\x05H\x02R\x05width\x88\x01\x01\x12\x1b\n" +
+	"\x06height\x18\x05 \x01(\x05H\x03R\x06height\x88\x01\x01\x12[\n" +
+	"\routput_format\x18\x06 \x01(\x0e21.com.entwico.rootpuller.painter.ComfyOutputFormatH\x04R\foutputFormat\x88\x01\x01B\x13\n" +
+	"\x11_number_of_imagesB\a\n" +
+	"\x05_seedB\b\n" +
+	"\x06_widthB\t\n" +
+	"\a_heightB\x10\n" +
+	"\x0e_output_format\x1a\xad\x02\n" +
 	"\x06Params\x12\x16\n" +
 	"\x06prompt\x18\x01 \x01(\tR\x06prompt\x12U\n" +
 	"\x06google\x18\x02 \x01(\v2;.com.entwico.rootpuller.painter.GenerateImageRequest.GoogleH\x00R\x06google\x12U\n" +
-	"\x06openai\x18\x03 \x01(\v2;.com.entwico.rootpuller.painter.GenerateImageRequest.OpenAIH\x00R\x06openaiB\t\n" +
+	"\x06openai\x18\x03 \x01(\v2;.com.entwico.rootpuller.painter.GenerateImageRequest.OpenAIH\x00R\x06openai\x12R\n" +
+	"\x05comfy\x18\x04 \x01(\v2:.com.entwico.rootpuller.painter.GenerateImageRequest.ComfyH\x00R\x05comfyB\t\n" +
 	"\abackendB\t\n" +
 	"\arequest\"\x87\x02\n" +
 	"\x15GenerateImageResponse\x12P\n" +
@@ -2601,7 +2907,7 @@ const file_com_entwico_rootpuller_painter_painter_proto_rawDesc = "" +
 	"\bmetadata\x18\x02 \x01(\v22.com.entwico.rootpuller.painter.GenerationMetadataH\x00R\bmetadata\x12>\n" +
 	"\x04file\x18\x03 \x01(\v2(.com.entwico.rootpuller.common.FileChunkH\x00R\x04fileB\n" +
 	"\n" +
-	"\bresponse\"\xff\x0f\n" +
+	"\bresponse\"\x91\x13\n" +
 	"\x10EditImageRequest\x12Q\n" +
 	"\x06params\x18\x01 \x01(\v27.com.entwico.rootpuller.painter.EditImageRequest.ParamsH\x00R\x06params\x12K\n" +
 	"\vinput_image\x18\x02 \x01(\v2(.com.entwico.rootpuller.common.FileChunkH\x00R\n" +
@@ -2655,11 +2961,24 @@ const file_com_entwico_rootpuller_painter_painter_proto_rawDesc = "" +
 	"\v_backgroundB\x10\n" +
 	"\x0e_output_formatB\x15\n" +
 	"\x13_output_compressionB\a\n" +
-	"\x05_user\x1a\xd1\x01\n" +
+	"\x05_user\x1a\xbf\x02\n" +
+	"\x05Comfy\x12\x14\n" +
+	"\x05model\x18\x01 \x01(\tR\x05model\x12-\n" +
+	"\x10number_of_images\x18\x02 \x01(\x05H\x00R\x0enumberOfImages\x88\x01\x01\x12\x17\n" +
+	"\x04seed\x18\x03 \x01(\x03H\x01R\x04seed\x88\x01\x01\x12\x19\n" +
+	"\x05width\x18\x04 \x01(\x05H\x02R\x05width\x88\x01\x01\x12\x1b\n" +
+	"\x06height\x18\x05 \x01(\x05H\x03R\x06height\x88\x01\x01\x12[\n" +
+	"\routput_format\x18\x06 \x01(\x0e21.com.entwico.rootpuller.painter.ComfyOutputFormatH\x04R\foutputFormat\x88\x01\x01B\x13\n" +
+	"\x11_number_of_imagesB\a\n" +
+	"\x05_seedB\b\n" +
+	"\x06_widthB\t\n" +
+	"\a_heightB\x10\n" +
+	"\x0e_output_format\x1a\xa1\x02\n" +
 	"\x06Params\x12\x16\n" +
 	"\x06prompt\x18\x01 \x01(\tR\x06prompt\x12Q\n" +
 	"\x06google\x18\x02 \x01(\v27.com.entwico.rootpuller.painter.EditImageRequest.GoogleH\x00R\x06google\x12Q\n" +
-	"\x06openai\x18\x03 \x01(\v27.com.entwico.rootpuller.painter.EditImageRequest.OpenAIH\x00R\x06openaiB\t\n" +
+	"\x06openai\x18\x03 \x01(\v27.com.entwico.rootpuller.painter.EditImageRequest.OpenAIH\x00R\x06openai\x12N\n" +
+	"\x05comfy\x18\x04 \x01(\v26.com.entwico.rootpuller.painter.EditImageRequest.ComfyH\x00R\x05comfyB\t\n" +
 	"\abackendB\t\n" +
 	"\arequest\"\x83\x02\n" +
 	"\x11EditImageResponse\x12P\n" +
@@ -2765,7 +3084,11 @@ const file_com_entwico_rootpuller_painter_painter_proto_rawDesc = "" +
 	"!OPEN_AI_OUTPUT_FORMAT_UNSPECIFIED\x10\x00\x12\x1d\n" +
 	"\x19OPEN_AI_OUTPUT_FORMAT_PNG\x10\x01\x12\x1e\n" +
 	"\x1aOPEN_AI_OUTPUT_FORMAT_JPEG\x10\x02\x12\x1e\n" +
-	"\x1aOPEN_AI_OUTPUT_FORMAT_WEBP\x10\x032\x91\x03\n" +
+	"\x1aOPEN_AI_OUTPUT_FORMAT_WEBP\x10\x03*s\n" +
+	"\x11ComfyOutputFormat\x12#\n" +
+	"\x1fCOMFY_OUTPUT_FORMAT_UNSPECIFIED\x10\x00\x12\x1b\n" +
+	"\x17COMFY_OUTPUT_FORMAT_PNG\x10\x01\x12\x1c\n" +
+	"\x18COMFY_OUTPUT_FORMAT_JPEG\x10\x022\x91\x03\n" +
 	"\x13ImagePainterService\x12\x80\x01\n" +
 	"\rGenerateImage\x124.com.entwico.rootpuller.painter.GenerateImageRequest\x1a5.com.entwico.rootpuller.painter.GenerateImageResponse(\x010\x01\x12t\n" +
 	"\tEditImage\x120.com.entwico.rootpuller.painter.EditImageRequest\x1a1.com.entwico.rootpuller.painter.EditImageResponse(\x010\x01\x12\x80\x01\n" +
@@ -2784,8 +3107,8 @@ func file_com_entwico_rootpuller_painter_painter_proto_rawDescGZIP() []byte {
 	return file_com_entwico_rootpuller_painter_painter_proto_rawDescData
 }
 
-var file_com_entwico_rootpuller_painter_painter_proto_enumTypes = make([]protoimpl.EnumInfo, 12)
-var file_com_entwico_rootpuller_painter_painter_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
+var file_com_entwico_rootpuller_painter_painter_proto_enumTypes = make([]protoimpl.EnumInfo, 13)
+var file_com_entwico_rootpuller_painter_painter_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
 var file_com_entwico_rootpuller_painter_painter_proto_goTypes = []any{
 	(GoogleSafetyFilterLevel)(0),                 // 0: com.entwico.rootpuller.painter.GoogleSafetyFilterLevel
 	(GooglePersonGeneration)(0),                  // 1: com.entwico.rootpuller.painter.GooglePersonGeneration
@@ -2794,95 +3117,103 @@ var file_com_entwico_rootpuller_painter_painter_proto_goTypes = []any{
 	(OpenAIQuality)(0),                           // 4: com.entwico.rootpuller.painter.OpenAIQuality
 	(OpenAIBackground)(0),                        // 5: com.entwico.rootpuller.painter.OpenAIBackground
 	(OpenAIOutputFormat)(0),                      // 6: com.entwico.rootpuller.painter.OpenAIOutputFormat
-	(GenerationProgress_Stage)(0),                // 7: com.entwico.rootpuller.painter.GenerationProgress.Stage
-	(GenerationMetadata_Backend)(0),              // 8: com.entwico.rootpuller.painter.GenerationMetadata.Backend
-	(GenerateImageRequest_Google_AspectRatio)(0), // 9: com.entwico.rootpuller.painter.GenerateImageRequest.Google.AspectRatio
-	(GenerateImageRequest_OpenAI_Moderation)(0),  // 10: com.entwico.rootpuller.painter.GenerateImageRequest.OpenAI.Moderation
-	(EditImageRequest_Google_EditMode)(0),        // 11: com.entwico.rootpuller.painter.EditImageRequest.Google.EditMode
-	(*GenerationProgress)(nil),                   // 12: com.entwico.rootpuller.painter.GenerationProgress
-	(*PerImageMetadata)(nil),                     // 13: com.entwico.rootpuller.painter.PerImageMetadata
-	(*GenerationMetadata)(nil),                   // 14: com.entwico.rootpuller.painter.GenerationMetadata
-	(*GenerateImageRequest)(nil),                 // 15: com.entwico.rootpuller.painter.GenerateImageRequest
-	(*GenerateImageResponse)(nil),                // 16: com.entwico.rootpuller.painter.GenerateImageResponse
-	(*EditImageRequest)(nil),                     // 17: com.entwico.rootpuller.painter.EditImageRequest
-	(*EditImageResponse)(nil),                    // 18: com.entwico.rootpuller.painter.EditImageResponse
-	(*OutpaintImageRequest)(nil),                 // 19: com.entwico.rootpuller.painter.OutpaintImageRequest
-	(*OutpaintImageResponse)(nil),                // 20: com.entwico.rootpuller.painter.OutpaintImageResponse
-	(*GenerateImageRequest_Google)(nil),          // 21: com.entwico.rootpuller.painter.GenerateImageRequest.Google
-	(*GenerateImageRequest_OpenAI)(nil),          // 22: com.entwico.rootpuller.painter.GenerateImageRequest.OpenAI
-	(*GenerateImageRequest_Params)(nil),          // 23: com.entwico.rootpuller.painter.GenerateImageRequest.Params
-	(*EditImageRequest_Google)(nil),              // 24: com.entwico.rootpuller.painter.EditImageRequest.Google
-	(*EditImageRequest_OpenAI)(nil),              // 25: com.entwico.rootpuller.painter.EditImageRequest.OpenAI
-	(*EditImageRequest_Params)(nil),              // 26: com.entwico.rootpuller.painter.EditImageRequest.Params
-	(*OutpaintImageRequest_Google)(nil),          // 27: com.entwico.rootpuller.painter.OutpaintImageRequest.Google
-	(*OutpaintImageRequest_OpenAI)(nil),          // 28: com.entwico.rootpuller.painter.OutpaintImageRequest.OpenAI
-	(*OutpaintImageRequest_Params)(nil),          // 29: com.entwico.rootpuller.painter.OutpaintImageRequest.Params
-	(*common.ImageSize)(nil),                     // 30: com.entwico.rootpuller.common.ImageSize
-	(*common.Usage)(nil),                         // 31: com.entwico.rootpuller.common.Usage
-	(*common.FileChunk)(nil),                     // 32: com.entwico.rootpuller.common.FileChunk
+	(ComfyOutputFormat)(0),                       // 7: com.entwico.rootpuller.painter.ComfyOutputFormat
+	(GenerationProgress_Stage)(0),                // 8: com.entwico.rootpuller.painter.GenerationProgress.Stage
+	(GenerationMetadata_Backend)(0),              // 9: com.entwico.rootpuller.painter.GenerationMetadata.Backend
+	(GenerateImageRequest_Google_AspectRatio)(0), // 10: com.entwico.rootpuller.painter.GenerateImageRequest.Google.AspectRatio
+	(GenerateImageRequest_OpenAI_Moderation)(0),  // 11: com.entwico.rootpuller.painter.GenerateImageRequest.OpenAI.Moderation
+	(EditImageRequest_Google_EditMode)(0),        // 12: com.entwico.rootpuller.painter.EditImageRequest.Google.EditMode
+	(*GenerationProgress)(nil),                   // 13: com.entwico.rootpuller.painter.GenerationProgress
+	(*PerImageMetadata)(nil),                     // 14: com.entwico.rootpuller.painter.PerImageMetadata
+	(*GenerationMetadata)(nil),                   // 15: com.entwico.rootpuller.painter.GenerationMetadata
+	(*GenerateImageRequest)(nil),                 // 16: com.entwico.rootpuller.painter.GenerateImageRequest
+	(*GenerateImageResponse)(nil),                // 17: com.entwico.rootpuller.painter.GenerateImageResponse
+	(*EditImageRequest)(nil),                     // 18: com.entwico.rootpuller.painter.EditImageRequest
+	(*EditImageResponse)(nil),                    // 19: com.entwico.rootpuller.painter.EditImageResponse
+	(*OutpaintImageRequest)(nil),                 // 20: com.entwico.rootpuller.painter.OutpaintImageRequest
+	(*OutpaintImageResponse)(nil),                // 21: com.entwico.rootpuller.painter.OutpaintImageResponse
+	(*GenerateImageRequest_Google)(nil),          // 22: com.entwico.rootpuller.painter.GenerateImageRequest.Google
+	(*GenerateImageRequest_OpenAI)(nil),          // 23: com.entwico.rootpuller.painter.GenerateImageRequest.OpenAI
+	(*GenerateImageRequest_Comfy)(nil),           // 24: com.entwico.rootpuller.painter.GenerateImageRequest.Comfy
+	(*GenerateImageRequest_Params)(nil),          // 25: com.entwico.rootpuller.painter.GenerateImageRequest.Params
+	(*EditImageRequest_Google)(nil),              // 26: com.entwico.rootpuller.painter.EditImageRequest.Google
+	(*EditImageRequest_OpenAI)(nil),              // 27: com.entwico.rootpuller.painter.EditImageRequest.OpenAI
+	(*EditImageRequest_Comfy)(nil),               // 28: com.entwico.rootpuller.painter.EditImageRequest.Comfy
+	(*EditImageRequest_Params)(nil),              // 29: com.entwico.rootpuller.painter.EditImageRequest.Params
+	(*OutpaintImageRequest_Google)(nil),          // 30: com.entwico.rootpuller.painter.OutpaintImageRequest.Google
+	(*OutpaintImageRequest_OpenAI)(nil),          // 31: com.entwico.rootpuller.painter.OutpaintImageRequest.OpenAI
+	(*OutpaintImageRequest_Params)(nil),          // 32: com.entwico.rootpuller.painter.OutpaintImageRequest.Params
+	(*common.ImageSize)(nil),                     // 33: com.entwico.rootpuller.common.ImageSize
+	(*common.Usage)(nil),                         // 34: com.entwico.rootpuller.common.Usage
+	(*common.FileChunk)(nil),                     // 35: com.entwico.rootpuller.common.FileChunk
 }
 var file_com_entwico_rootpuller_painter_painter_proto_depIdxs = []int32{
-	7,  // 0: com.entwico.rootpuller.painter.GenerationProgress.stage:type_name -> com.entwico.rootpuller.painter.GenerationProgress.Stage
-	30, // 1: com.entwico.rootpuller.painter.PerImageMetadata.size:type_name -> com.entwico.rootpuller.common.ImageSize
-	8,  // 2: com.entwico.rootpuller.painter.GenerationMetadata.backend:type_name -> com.entwico.rootpuller.painter.GenerationMetadata.Backend
-	13, // 3: com.entwico.rootpuller.painter.GenerationMetadata.images:type_name -> com.entwico.rootpuller.painter.PerImageMetadata
-	31, // 4: com.entwico.rootpuller.painter.GenerationMetadata.usage:type_name -> com.entwico.rootpuller.common.Usage
-	23, // 5: com.entwico.rootpuller.painter.GenerateImageRequest.params:type_name -> com.entwico.rootpuller.painter.GenerateImageRequest.Params
-	12, // 6: com.entwico.rootpuller.painter.GenerateImageResponse.progress:type_name -> com.entwico.rootpuller.painter.GenerationProgress
-	14, // 7: com.entwico.rootpuller.painter.GenerateImageResponse.metadata:type_name -> com.entwico.rootpuller.painter.GenerationMetadata
-	32, // 8: com.entwico.rootpuller.painter.GenerateImageResponse.file:type_name -> com.entwico.rootpuller.common.FileChunk
-	26, // 9: com.entwico.rootpuller.painter.EditImageRequest.params:type_name -> com.entwico.rootpuller.painter.EditImageRequest.Params
-	32, // 10: com.entwico.rootpuller.painter.EditImageRequest.input_image:type_name -> com.entwico.rootpuller.common.FileChunk
-	32, // 11: com.entwico.rootpuller.painter.EditImageRequest.mask_image:type_name -> com.entwico.rootpuller.common.FileChunk
-	12, // 12: com.entwico.rootpuller.painter.EditImageResponse.progress:type_name -> com.entwico.rootpuller.painter.GenerationProgress
-	14, // 13: com.entwico.rootpuller.painter.EditImageResponse.metadata:type_name -> com.entwico.rootpuller.painter.GenerationMetadata
-	32, // 14: com.entwico.rootpuller.painter.EditImageResponse.file:type_name -> com.entwico.rootpuller.common.FileChunk
-	29, // 15: com.entwico.rootpuller.painter.OutpaintImageRequest.params:type_name -> com.entwico.rootpuller.painter.OutpaintImageRequest.Params
-	32, // 16: com.entwico.rootpuller.painter.OutpaintImageRequest.input_image:type_name -> com.entwico.rootpuller.common.FileChunk
-	12, // 17: com.entwico.rootpuller.painter.OutpaintImageResponse.progress:type_name -> com.entwico.rootpuller.painter.GenerationProgress
-	14, // 18: com.entwico.rootpuller.painter.OutpaintImageResponse.metadata:type_name -> com.entwico.rootpuller.painter.GenerationMetadata
-	32, // 19: com.entwico.rootpuller.painter.OutpaintImageResponse.file:type_name -> com.entwico.rootpuller.common.FileChunk
-	9,  // 20: com.entwico.rootpuller.painter.GenerateImageRequest.Google.aspect_ratio:type_name -> com.entwico.rootpuller.painter.GenerateImageRequest.Google.AspectRatio
-	0,  // 21: com.entwico.rootpuller.painter.GenerateImageRequest.Google.safety_filter_level:type_name -> com.entwico.rootpuller.painter.GoogleSafetyFilterLevel
-	1,  // 22: com.entwico.rootpuller.painter.GenerateImageRequest.Google.person_generation:type_name -> com.entwico.rootpuller.painter.GooglePersonGeneration
-	2,  // 23: com.entwico.rootpuller.painter.GenerateImageRequest.Google.output_mime_type:type_name -> com.entwico.rootpuller.painter.GoogleOutputMimeType
-	3,  // 24: com.entwico.rootpuller.painter.GenerateImageRequest.OpenAI.size:type_name -> com.entwico.rootpuller.painter.OpenAIImageSize
-	4,  // 25: com.entwico.rootpuller.painter.GenerateImageRequest.OpenAI.quality:type_name -> com.entwico.rootpuller.painter.OpenAIQuality
-	5,  // 26: com.entwico.rootpuller.painter.GenerateImageRequest.OpenAI.background:type_name -> com.entwico.rootpuller.painter.OpenAIBackground
-	6,  // 27: com.entwico.rootpuller.painter.GenerateImageRequest.OpenAI.output_format:type_name -> com.entwico.rootpuller.painter.OpenAIOutputFormat
-	10, // 28: com.entwico.rootpuller.painter.GenerateImageRequest.OpenAI.moderation:type_name -> com.entwico.rootpuller.painter.GenerateImageRequest.OpenAI.Moderation
-	21, // 29: com.entwico.rootpuller.painter.GenerateImageRequest.Params.google:type_name -> com.entwico.rootpuller.painter.GenerateImageRequest.Google
-	22, // 30: com.entwico.rootpuller.painter.GenerateImageRequest.Params.openai:type_name -> com.entwico.rootpuller.painter.GenerateImageRequest.OpenAI
-	11, // 31: com.entwico.rootpuller.painter.EditImageRequest.Google.edit_mode:type_name -> com.entwico.rootpuller.painter.EditImageRequest.Google.EditMode
-	0,  // 32: com.entwico.rootpuller.painter.EditImageRequest.Google.safety_filter_level:type_name -> com.entwico.rootpuller.painter.GoogleSafetyFilterLevel
-	1,  // 33: com.entwico.rootpuller.painter.EditImageRequest.Google.person_generation:type_name -> com.entwico.rootpuller.painter.GooglePersonGeneration
-	2,  // 34: com.entwico.rootpuller.painter.EditImageRequest.Google.output_mime_type:type_name -> com.entwico.rootpuller.painter.GoogleOutputMimeType
-	3,  // 35: com.entwico.rootpuller.painter.EditImageRequest.OpenAI.size:type_name -> com.entwico.rootpuller.painter.OpenAIImageSize
-	4,  // 36: com.entwico.rootpuller.painter.EditImageRequest.OpenAI.quality:type_name -> com.entwico.rootpuller.painter.OpenAIQuality
-	5,  // 37: com.entwico.rootpuller.painter.EditImageRequest.OpenAI.background:type_name -> com.entwico.rootpuller.painter.OpenAIBackground
-	6,  // 38: com.entwico.rootpuller.painter.EditImageRequest.OpenAI.output_format:type_name -> com.entwico.rootpuller.painter.OpenAIOutputFormat
-	24, // 39: com.entwico.rootpuller.painter.EditImageRequest.Params.google:type_name -> com.entwico.rootpuller.painter.EditImageRequest.Google
-	25, // 40: com.entwico.rootpuller.painter.EditImageRequest.Params.openai:type_name -> com.entwico.rootpuller.painter.EditImageRequest.OpenAI
-	0,  // 41: com.entwico.rootpuller.painter.OutpaintImageRequest.Google.safety_filter_level:type_name -> com.entwico.rootpuller.painter.GoogleSafetyFilterLevel
-	1,  // 42: com.entwico.rootpuller.painter.OutpaintImageRequest.Google.person_generation:type_name -> com.entwico.rootpuller.painter.GooglePersonGeneration
-	2,  // 43: com.entwico.rootpuller.painter.OutpaintImageRequest.Google.output_mime_type:type_name -> com.entwico.rootpuller.painter.GoogleOutputMimeType
-	3,  // 44: com.entwico.rootpuller.painter.OutpaintImageRequest.OpenAI.size:type_name -> com.entwico.rootpuller.painter.OpenAIImageSize
-	4,  // 45: com.entwico.rootpuller.painter.OutpaintImageRequest.OpenAI.quality:type_name -> com.entwico.rootpuller.painter.OpenAIQuality
-	5,  // 46: com.entwico.rootpuller.painter.OutpaintImageRequest.OpenAI.background:type_name -> com.entwico.rootpuller.painter.OpenAIBackground
-	6,  // 47: com.entwico.rootpuller.painter.OutpaintImageRequest.OpenAI.output_format:type_name -> com.entwico.rootpuller.painter.OpenAIOutputFormat
-	27, // 48: com.entwico.rootpuller.painter.OutpaintImageRequest.Params.google:type_name -> com.entwico.rootpuller.painter.OutpaintImageRequest.Google
-	28, // 49: com.entwico.rootpuller.painter.OutpaintImageRequest.Params.openai:type_name -> com.entwico.rootpuller.painter.OutpaintImageRequest.OpenAI
-	15, // 50: com.entwico.rootpuller.painter.ImagePainterService.GenerateImage:input_type -> com.entwico.rootpuller.painter.GenerateImageRequest
-	17, // 51: com.entwico.rootpuller.painter.ImagePainterService.EditImage:input_type -> com.entwico.rootpuller.painter.EditImageRequest
-	19, // 52: com.entwico.rootpuller.painter.ImagePainterService.OutpaintImage:input_type -> com.entwico.rootpuller.painter.OutpaintImageRequest
-	16, // 53: com.entwico.rootpuller.painter.ImagePainterService.GenerateImage:output_type -> com.entwico.rootpuller.painter.GenerateImageResponse
-	18, // 54: com.entwico.rootpuller.painter.ImagePainterService.EditImage:output_type -> com.entwico.rootpuller.painter.EditImageResponse
-	20, // 55: com.entwico.rootpuller.painter.ImagePainterService.OutpaintImage:output_type -> com.entwico.rootpuller.painter.OutpaintImageResponse
-	53, // [53:56] is the sub-list for method output_type
-	50, // [50:53] is the sub-list for method input_type
-	50, // [50:50] is the sub-list for extension type_name
-	50, // [50:50] is the sub-list for extension extendee
-	0,  // [0:50] is the sub-list for field type_name
+	8,  // 0: com.entwico.rootpuller.painter.GenerationProgress.stage:type_name -> com.entwico.rootpuller.painter.GenerationProgress.Stage
+	33, // 1: com.entwico.rootpuller.painter.PerImageMetadata.size:type_name -> com.entwico.rootpuller.common.ImageSize
+	9,  // 2: com.entwico.rootpuller.painter.GenerationMetadata.backend:type_name -> com.entwico.rootpuller.painter.GenerationMetadata.Backend
+	14, // 3: com.entwico.rootpuller.painter.GenerationMetadata.images:type_name -> com.entwico.rootpuller.painter.PerImageMetadata
+	34, // 4: com.entwico.rootpuller.painter.GenerationMetadata.usage:type_name -> com.entwico.rootpuller.common.Usage
+	25, // 5: com.entwico.rootpuller.painter.GenerateImageRequest.params:type_name -> com.entwico.rootpuller.painter.GenerateImageRequest.Params
+	35, // 6: com.entwico.rootpuller.painter.GenerateImageRequest.reference_image:type_name -> com.entwico.rootpuller.common.FileChunk
+	13, // 7: com.entwico.rootpuller.painter.GenerateImageResponse.progress:type_name -> com.entwico.rootpuller.painter.GenerationProgress
+	15, // 8: com.entwico.rootpuller.painter.GenerateImageResponse.metadata:type_name -> com.entwico.rootpuller.painter.GenerationMetadata
+	35, // 9: com.entwico.rootpuller.painter.GenerateImageResponse.file:type_name -> com.entwico.rootpuller.common.FileChunk
+	29, // 10: com.entwico.rootpuller.painter.EditImageRequest.params:type_name -> com.entwico.rootpuller.painter.EditImageRequest.Params
+	35, // 11: com.entwico.rootpuller.painter.EditImageRequest.input_image:type_name -> com.entwico.rootpuller.common.FileChunk
+	35, // 12: com.entwico.rootpuller.painter.EditImageRequest.mask_image:type_name -> com.entwico.rootpuller.common.FileChunk
+	13, // 13: com.entwico.rootpuller.painter.EditImageResponse.progress:type_name -> com.entwico.rootpuller.painter.GenerationProgress
+	15, // 14: com.entwico.rootpuller.painter.EditImageResponse.metadata:type_name -> com.entwico.rootpuller.painter.GenerationMetadata
+	35, // 15: com.entwico.rootpuller.painter.EditImageResponse.file:type_name -> com.entwico.rootpuller.common.FileChunk
+	32, // 16: com.entwico.rootpuller.painter.OutpaintImageRequest.params:type_name -> com.entwico.rootpuller.painter.OutpaintImageRequest.Params
+	35, // 17: com.entwico.rootpuller.painter.OutpaintImageRequest.input_image:type_name -> com.entwico.rootpuller.common.FileChunk
+	13, // 18: com.entwico.rootpuller.painter.OutpaintImageResponse.progress:type_name -> com.entwico.rootpuller.painter.GenerationProgress
+	15, // 19: com.entwico.rootpuller.painter.OutpaintImageResponse.metadata:type_name -> com.entwico.rootpuller.painter.GenerationMetadata
+	35, // 20: com.entwico.rootpuller.painter.OutpaintImageResponse.file:type_name -> com.entwico.rootpuller.common.FileChunk
+	10, // 21: com.entwico.rootpuller.painter.GenerateImageRequest.Google.aspect_ratio:type_name -> com.entwico.rootpuller.painter.GenerateImageRequest.Google.AspectRatio
+	0,  // 22: com.entwico.rootpuller.painter.GenerateImageRequest.Google.safety_filter_level:type_name -> com.entwico.rootpuller.painter.GoogleSafetyFilterLevel
+	1,  // 23: com.entwico.rootpuller.painter.GenerateImageRequest.Google.person_generation:type_name -> com.entwico.rootpuller.painter.GooglePersonGeneration
+	2,  // 24: com.entwico.rootpuller.painter.GenerateImageRequest.Google.output_mime_type:type_name -> com.entwico.rootpuller.painter.GoogleOutputMimeType
+	3,  // 25: com.entwico.rootpuller.painter.GenerateImageRequest.OpenAI.size:type_name -> com.entwico.rootpuller.painter.OpenAIImageSize
+	4,  // 26: com.entwico.rootpuller.painter.GenerateImageRequest.OpenAI.quality:type_name -> com.entwico.rootpuller.painter.OpenAIQuality
+	5,  // 27: com.entwico.rootpuller.painter.GenerateImageRequest.OpenAI.background:type_name -> com.entwico.rootpuller.painter.OpenAIBackground
+	6,  // 28: com.entwico.rootpuller.painter.GenerateImageRequest.OpenAI.output_format:type_name -> com.entwico.rootpuller.painter.OpenAIOutputFormat
+	11, // 29: com.entwico.rootpuller.painter.GenerateImageRequest.OpenAI.moderation:type_name -> com.entwico.rootpuller.painter.GenerateImageRequest.OpenAI.Moderation
+	7,  // 30: com.entwico.rootpuller.painter.GenerateImageRequest.Comfy.output_format:type_name -> com.entwico.rootpuller.painter.ComfyOutputFormat
+	22, // 31: com.entwico.rootpuller.painter.GenerateImageRequest.Params.google:type_name -> com.entwico.rootpuller.painter.GenerateImageRequest.Google
+	23, // 32: com.entwico.rootpuller.painter.GenerateImageRequest.Params.openai:type_name -> com.entwico.rootpuller.painter.GenerateImageRequest.OpenAI
+	24, // 33: com.entwico.rootpuller.painter.GenerateImageRequest.Params.comfy:type_name -> com.entwico.rootpuller.painter.GenerateImageRequest.Comfy
+	12, // 34: com.entwico.rootpuller.painter.EditImageRequest.Google.edit_mode:type_name -> com.entwico.rootpuller.painter.EditImageRequest.Google.EditMode
+	0,  // 35: com.entwico.rootpuller.painter.EditImageRequest.Google.safety_filter_level:type_name -> com.entwico.rootpuller.painter.GoogleSafetyFilterLevel
+	1,  // 36: com.entwico.rootpuller.painter.EditImageRequest.Google.person_generation:type_name -> com.entwico.rootpuller.painter.GooglePersonGeneration
+	2,  // 37: com.entwico.rootpuller.painter.EditImageRequest.Google.output_mime_type:type_name -> com.entwico.rootpuller.painter.GoogleOutputMimeType
+	3,  // 38: com.entwico.rootpuller.painter.EditImageRequest.OpenAI.size:type_name -> com.entwico.rootpuller.painter.OpenAIImageSize
+	4,  // 39: com.entwico.rootpuller.painter.EditImageRequest.OpenAI.quality:type_name -> com.entwico.rootpuller.painter.OpenAIQuality
+	5,  // 40: com.entwico.rootpuller.painter.EditImageRequest.OpenAI.background:type_name -> com.entwico.rootpuller.painter.OpenAIBackground
+	6,  // 41: com.entwico.rootpuller.painter.EditImageRequest.OpenAI.output_format:type_name -> com.entwico.rootpuller.painter.OpenAIOutputFormat
+	7,  // 42: com.entwico.rootpuller.painter.EditImageRequest.Comfy.output_format:type_name -> com.entwico.rootpuller.painter.ComfyOutputFormat
+	26, // 43: com.entwico.rootpuller.painter.EditImageRequest.Params.google:type_name -> com.entwico.rootpuller.painter.EditImageRequest.Google
+	27, // 44: com.entwico.rootpuller.painter.EditImageRequest.Params.openai:type_name -> com.entwico.rootpuller.painter.EditImageRequest.OpenAI
+	28, // 45: com.entwico.rootpuller.painter.EditImageRequest.Params.comfy:type_name -> com.entwico.rootpuller.painter.EditImageRequest.Comfy
+	0,  // 46: com.entwico.rootpuller.painter.OutpaintImageRequest.Google.safety_filter_level:type_name -> com.entwico.rootpuller.painter.GoogleSafetyFilterLevel
+	1,  // 47: com.entwico.rootpuller.painter.OutpaintImageRequest.Google.person_generation:type_name -> com.entwico.rootpuller.painter.GooglePersonGeneration
+	2,  // 48: com.entwico.rootpuller.painter.OutpaintImageRequest.Google.output_mime_type:type_name -> com.entwico.rootpuller.painter.GoogleOutputMimeType
+	3,  // 49: com.entwico.rootpuller.painter.OutpaintImageRequest.OpenAI.size:type_name -> com.entwico.rootpuller.painter.OpenAIImageSize
+	4,  // 50: com.entwico.rootpuller.painter.OutpaintImageRequest.OpenAI.quality:type_name -> com.entwico.rootpuller.painter.OpenAIQuality
+	5,  // 51: com.entwico.rootpuller.painter.OutpaintImageRequest.OpenAI.background:type_name -> com.entwico.rootpuller.painter.OpenAIBackground
+	6,  // 52: com.entwico.rootpuller.painter.OutpaintImageRequest.OpenAI.output_format:type_name -> com.entwico.rootpuller.painter.OpenAIOutputFormat
+	30, // 53: com.entwico.rootpuller.painter.OutpaintImageRequest.Params.google:type_name -> com.entwico.rootpuller.painter.OutpaintImageRequest.Google
+	31, // 54: com.entwico.rootpuller.painter.OutpaintImageRequest.Params.openai:type_name -> com.entwico.rootpuller.painter.OutpaintImageRequest.OpenAI
+	16, // 55: com.entwico.rootpuller.painter.ImagePainterService.GenerateImage:input_type -> com.entwico.rootpuller.painter.GenerateImageRequest
+	18, // 56: com.entwico.rootpuller.painter.ImagePainterService.EditImage:input_type -> com.entwico.rootpuller.painter.EditImageRequest
+	20, // 57: com.entwico.rootpuller.painter.ImagePainterService.OutpaintImage:input_type -> com.entwico.rootpuller.painter.OutpaintImageRequest
+	17, // 58: com.entwico.rootpuller.painter.ImagePainterService.GenerateImage:output_type -> com.entwico.rootpuller.painter.GenerateImageResponse
+	19, // 59: com.entwico.rootpuller.painter.ImagePainterService.EditImage:output_type -> com.entwico.rootpuller.painter.EditImageResponse
+	21, // 60: com.entwico.rootpuller.painter.ImagePainterService.OutpaintImage:output_type -> com.entwico.rootpuller.painter.OutpaintImageResponse
+	58, // [58:61] is the sub-list for method output_type
+	55, // [55:58] is the sub-list for method input_type
+	55, // [55:55] is the sub-list for extension type_name
+	55, // [55:55] is the sub-list for extension extendee
+	0,  // [0:55] is the sub-list for field type_name
 }
 
 func init() { file_com_entwico_rootpuller_painter_painter_proto_init() }
@@ -2894,6 +3225,7 @@ func file_com_entwico_rootpuller_painter_painter_proto_init() {
 	file_com_entwico_rootpuller_painter_painter_proto_msgTypes[1].OneofWrappers = []any{}
 	file_com_entwico_rootpuller_painter_painter_proto_msgTypes[3].OneofWrappers = []any{
 		(*GenerateImageRequest_Params_)(nil),
+		(*GenerateImageRequest_ReferenceImage)(nil),
 	}
 	file_com_entwico_rootpuller_painter_painter_proto_msgTypes[4].OneofWrappers = []any{
 		(*GenerateImageResponse_Progress)(nil),
@@ -2921,19 +3253,23 @@ func file_com_entwico_rootpuller_painter_painter_proto_init() {
 	}
 	file_com_entwico_rootpuller_painter_painter_proto_msgTypes[9].OneofWrappers = []any{}
 	file_com_entwico_rootpuller_painter_painter_proto_msgTypes[10].OneofWrappers = []any{}
-	file_com_entwico_rootpuller_painter_painter_proto_msgTypes[11].OneofWrappers = []any{
+	file_com_entwico_rootpuller_painter_painter_proto_msgTypes[11].OneofWrappers = []any{}
+	file_com_entwico_rootpuller_painter_painter_proto_msgTypes[12].OneofWrappers = []any{
 		(*GenerateImageRequest_Params_Google)(nil),
 		(*GenerateImageRequest_Params_Openai)(nil),
+		(*GenerateImageRequest_Params_Comfy)(nil),
 	}
-	file_com_entwico_rootpuller_painter_painter_proto_msgTypes[12].OneofWrappers = []any{}
 	file_com_entwico_rootpuller_painter_painter_proto_msgTypes[13].OneofWrappers = []any{}
-	file_com_entwico_rootpuller_painter_painter_proto_msgTypes[14].OneofWrappers = []any{
+	file_com_entwico_rootpuller_painter_painter_proto_msgTypes[14].OneofWrappers = []any{}
+	file_com_entwico_rootpuller_painter_painter_proto_msgTypes[15].OneofWrappers = []any{}
+	file_com_entwico_rootpuller_painter_painter_proto_msgTypes[16].OneofWrappers = []any{
 		(*EditImageRequest_Params_Google)(nil),
 		(*EditImageRequest_Params_Openai)(nil),
+		(*EditImageRequest_Params_Comfy)(nil),
 	}
-	file_com_entwico_rootpuller_painter_painter_proto_msgTypes[15].OneofWrappers = []any{}
-	file_com_entwico_rootpuller_painter_painter_proto_msgTypes[16].OneofWrappers = []any{}
-	file_com_entwico_rootpuller_painter_painter_proto_msgTypes[17].OneofWrappers = []any{
+	file_com_entwico_rootpuller_painter_painter_proto_msgTypes[17].OneofWrappers = []any{}
+	file_com_entwico_rootpuller_painter_painter_proto_msgTypes[18].OneofWrappers = []any{}
+	file_com_entwico_rootpuller_painter_painter_proto_msgTypes[19].OneofWrappers = []any{
 		(*OutpaintImageRequest_Params_Google)(nil),
 		(*OutpaintImageRequest_Params_Openai)(nil),
 	}
@@ -2942,8 +3278,8 @@ func file_com_entwico_rootpuller_painter_painter_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_com_entwico_rootpuller_painter_painter_proto_rawDesc), len(file_com_entwico_rootpuller_painter_painter_proto_rawDesc)),
-			NumEnums:      12,
-			NumMessages:   18,
+			NumEnums:      13,
+			NumMessages:   20,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

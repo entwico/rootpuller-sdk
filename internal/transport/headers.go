@@ -18,6 +18,10 @@ const (
 	// services are sized and placed independently, so pinning a rootpuller
 	// worker must not silently move transcription to another cluster.
 	EscribaDeploymentHeader = "Escriba-Deployment"
+
+	// ComfyUIDeploymentHeader steers a painter request on the comfy backend
+	// at a specific ComfyUI deployment. The other painter backends ignore it.
+	ComfyUIDeploymentHeader = "Comfyui-Deployment"
 )
 
 type ctxKey int
@@ -26,6 +30,7 @@ const (
 	deploymentCtxKey ctxKey = iota
 	botCtxKey
 	escribaDeploymentCtxKey
+	comfyUIDeploymentCtxKey
 )
 
 // ContextWithDeployment returns a context that sets the
@@ -46,6 +51,27 @@ func ContextWithBot(ctx context.Context, name string) context.Context {
 // service-client default.
 func ContextWithEscribaDeployment(ctx context.Context, name string) context.Context {
 	return context.WithValue(ctx, escribaDeploymentCtxKey, name)
+}
+
+// ContextWithComfyUIDeployment returns a context that sets the
+// comfyui-deployment header for calls made with it, overriding any
+// service-client default.
+func ContextWithComfyUIDeployment(ctx context.Context, name string) context.Context {
+	return context.WithValue(ctx, comfyUIDeploymentCtxKey, name)
+}
+
+// EnsureComfyUIDeployment injects a service-client default unless the context
+// already carries an explicit value (which wins).
+func EnsureComfyUIDeployment(ctx context.Context, name string) context.Context {
+	if name == "" {
+		return ctx
+	}
+
+	if _, ok := ctx.Value(comfyUIDeploymentCtxKey).(string); ok {
+		return ctx
+	}
+
+	return ContextWithComfyUIDeployment(ctx, name)
 }
 
 // EnsureEscribaDeployment injects a service-client default unless the context
@@ -133,5 +159,9 @@ func (*headersInterceptor) apply(ctx context.Context, h http.Header) {
 
 	if v, ok := ctx.Value(escribaDeploymentCtxKey).(string); ok && v != "" {
 		h.Set(EscribaDeploymentHeader, v)
+	}
+
+	if v, ok := ctx.Value(comfyUIDeploymentCtxKey).(string); ok && v != "" {
+		h.Set(ComfyUIDeploymentHeader, v)
 	}
 }

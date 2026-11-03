@@ -590,10 +590,14 @@ func (b OutpaintOpenAI) toProto() (*painterpb.OutpaintImageRequest_OpenAI, error
 
 // GenerateOptions tunes a Generate call. Nil keeps all defaults.
 type GenerateOptions struct {
-	// Backend must be GenerateGoogle or GenerateOpenAI (or nil for the
-	// server-chosen default backend); any other variant fails locally
-	// with InvalidArgument.
+	// Backend must be GenerateGoogle, GenerateOpenAI or GenerateComfy (or
+	// nil for the server-chosen default backend); any other variant fails
+	// locally with InvalidArgument.
 	Backend Backend
+	// References are reference images for GenerateComfy models that take
+	// them (e.g. qwen-image-2.1). The prompt refers to them as <image1>,
+	// <image2>, … in slice order. Other backends reject references.
+	References []rootpullersdk.Upload
 	// OnProgress, when set, receives progress frames as the server
 	// reports them. Called synchronously from the receive loop.
 	OnProgress func(Progress)
@@ -618,8 +622,20 @@ func (o *GenerateOptions) toProto(prompt string) (*painterpb.GenerateImageReques
 		}
 
 		msg.Backend = &painterpb.GenerateImageRequest_Params_Openai{Openai: openai}
+	case GenerateComfy:
+		comfy, err := b.toProto()
+		if err != nil {
+			return nil, err
+		}
+
+		msg.Backend = &painterpb.GenerateImageRequest_Params_Comfy{Comfy: comfy}
 	default:
-		return nil, invalidArgument(fmt.Sprintf("GenerateOptions.Backend must be GenerateGoogle or GenerateOpenAI, got %T", o.Backend))
+		return nil, invalidArgument(fmt.Sprintf(
+			"GenerateOptions.Backend must be GenerateGoogle, GenerateOpenAI or GenerateComfy, got %T", o.Backend))
+	}
+
+	if _, comfy := o.Backend.(GenerateComfy); len(o.References) > 0 && !comfy {
+		return nil, invalidArgument("GenerateOptions.References require the GenerateComfy backend")
 	}
 
 	return msg, nil
@@ -627,7 +643,7 @@ func (o *GenerateOptions) toProto(prompt string) (*painterpb.GenerateImageReques
 
 // EditOptions tunes an Edit call. Nil keeps all defaults.
 type EditOptions struct {
-	// Backend must be EditGoogle or EditOpenAI (or nil for the
+	// Backend must be EditGoogle, EditOpenAI or EditComfy (or nil for the
 	// server-chosen default backend); any other variant fails locally
 	// with InvalidArgument.
 	Backend Backend
@@ -658,8 +674,20 @@ func (o *EditOptions) toProto(prompt string) (*painterpb.EditImageRequest_Params
 		}
 
 		msg.Backend = &painterpb.EditImageRequest_Params_Openai{Openai: openai}
+	case EditComfy:
+		comfy, err := b.toProto()
+		if err != nil {
+			return nil, err
+		}
+
+		msg.Backend = &painterpb.EditImageRequest_Params_Comfy{Comfy: comfy}
 	default:
-		return nil, invalidArgument(fmt.Sprintf("EditOptions.Backend must be EditGoogle or EditOpenAI, got %T", o.Backend))
+		return nil, invalidArgument(fmt.Sprintf(
+			"EditOptions.Backend must be EditGoogle, EditOpenAI or EditComfy, got %T", o.Backend))
+	}
+
+	if _, comfy := o.Backend.(EditComfy); comfy && o.Mask != nil {
+		return nil, invalidArgument("EditComfy does not support a mask")
 	}
 
 	return msg, nil
@@ -763,12 +791,14 @@ func progressFromProto(p *painterpb.GenerationProgress) Progress {
 const (
 	BackendNameGoogle = "google"
 	BackendNameOpenAI = "openai"
+	BackendNameComfy  = "comfy"
 )
 
 var metadataBackendFromProto = map[painterpb.GenerationMetadata_Backend]string{
 	painterpb.GenerationMetadata_BACKEND_UNSPECIFIED: "",
 	painterpb.GenerationMetadata_BACKEND_GOOGLE:      BackendNameGoogle,
 	painterpb.GenerationMetadata_BACKEND_OPENAI:      BackendNameOpenAI,
+	painterpb.GenerationMetadata_BACKEND_COMFY:       BackendNameComfy,
 }
 
 // ImageMetadata describes one generated image. Entries appear in

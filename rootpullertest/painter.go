@@ -20,8 +20,8 @@ import (
 // machine: the params frame must come first and exactly once; EditImage
 // accepts input_image chunks only after params, mask_image chunks only
 // after at least one input_image chunk, and no input_image after
-// mask_image; GenerateImage accepts exactly one params frame and nothing
-// else; chunks are capped at 2 MiB. Any violation fails the call with
+// mask_image; GenerateImage accepts exactly one params frame followed only
+// by reference_image chunks; chunks are capped at 2 MiB. Any violation fails the call with
 // InvalidArgument, so SDK ordering regressions surface as test failures.
 //
 // A nil hook responds with one canned 1-byte PNG named "image_0.png".
@@ -30,10 +30,14 @@ import (
 // files, chunked like the real server.
 type Painter struct {
 	GenerateFunc func(prompt string) ([]rootpullersdk.File, error)
-	EditFunc     func(prompt string, image rootpullersdk.File, mask *rootpullersdk.File) ([]rootpullersdk.File, error)
-	OutpaintFunc func(prompt string, image rootpullersdk.File) ([]rootpullersdk.File, error)
-	Metadata     *painter.Metadata
-	Progress     []painter.Progress
+	// GenerateRequestFunc, when set, replaces GenerateFunc and also sees the
+	// reference images (one File per reference, in order) and the
+	// comfyui-deployment header the client sent.
+	GenerateRequestFunc func(req GenerateRequest) ([]rootpullersdk.File, error)
+	EditFunc            func(prompt string, image rootpullersdk.File, mask *rootpullersdk.File) ([]rootpullersdk.File, error)
+	OutpaintFunc        func(prompt string, image rootpullersdk.File) ([]rootpullersdk.File, error)
+	Metadata            *painter.Metadata
+	Progress            []painter.Progress
 }
 
 func (f *Painter) register(mux *http.ServeMux) {
@@ -72,8 +76,20 @@ func appendChunk(f *rootpullersdk.File, chunk *commonpb.FileChunk) error {
 	return nil
 }
 
+// GenerateRequest is what the fake received on one GenerateImage call.
+type GenerateRequest struct {
+	Prompt            string
+	Backend           string
+	Model             string
+	References        []rootpullersdk.File
+	ComfyUIDeployment string
+}
+
 func (h *painterHandler) GenerateImage(_ context.Context, stream *connect.BidiStream[painterpb.GenerateImageRequest, painterpb.GenerateImageResponse]) error {
-	var params *painterpb.GenerateImageRequest_Params
+	var (
+		params     *painterpb.GenerateImageRequest_Params
+		references []rootpullersdk.File
+	)
 	// Like the real server: drain the full request before any work.
 	for {
 		req, err := stream.Receive()
@@ -92,6 +108,19 @@ func (h *painterHandler) GenerateImage(_ context.Context, stream *connect.BidiSt
 			}
 
 			params = r.Params
+		case *painterpb.GenerateImageRequest_ReferenceImage:
+			if params == nil {
+				return errBeforeParams("reference_image")
+			}
+
+			// a new chunk name starts the next reference, as on the real server.
+			if len(references) == 0 || r.ReferenceImage.GetName() != references[len(references)-1].Name {
+				references = append(references, rootpullersdk.File{})
+			}
+
+			if err := appendChunk(&references[len(references)-1], r.ReferenceImage); err != nil {
+				return err
+			}
 		default:
 			return invalidArgument(errUnexpectedVariant)
 		}
@@ -101,12 +130,7 @@ func (h *painterHandler) GenerateImage(_ context.Context, stream *connect.BidiSt
 		return invalidArgument(errMissingParams)
 	}
 
-	generate := h.fake.GenerateFunc
-	if generate == nil {
-		generate = func(string) ([]rootpullersdk.File, error) { return cannedPainterImages(), nil }
-	}
-
-	files, err := generate(params.GetPrompt())
+	files, err := h.generate(params, references, stream.RequestHeader().Get("Comfyui-Deployment"))
 	if err != nil {
 		return err
 	}
@@ -308,6 +332,37 @@ func (h *painterHandler) OutpaintImage(_ context.Context, stream *connect.BidiSt
 		},
 		stream.Send,
 	)
+}
+
+func (h *painterHandler) generate(
+	params *painterpb.GenerateImageRequest_Params,
+	references []rootpullersdk.File,
+	deployment string,
+) ([]rootpullersdk.File, error) {
+	if h.fake.GenerateRequestFunc != nil {
+		req := GenerateRequest{
+			Prompt:            params.GetPrompt(),
+			References:        references,
+			ComfyUIDeployment: deployment,
+		}
+
+		switch b := params.GetBackend().(type) {
+		case *painterpb.GenerateImageRequest_Params_Google:
+			req.Backend, req.Model = painter.BackendNameGoogle, b.Google.GetModel()
+		case *painterpb.GenerateImageRequest_Params_Openai:
+			req.Backend, req.Model = painter.BackendNameOpenAI, b.Openai.GetModel()
+		case *painterpb.GenerateImageRequest_Params_Comfy:
+			req.Backend, req.Model = painter.BackendNameComfy, b.Comfy.GetModel()
+		}
+
+		return h.fake.GenerateRequestFunc(req)
+	}
+
+	if h.fake.GenerateFunc != nil {
+		return h.fake.GenerateFunc(params.GetPrompt())
+	}
+
+	return cannedPainterImages(), nil
 }
 
 // painterRespond streams the response the way the real server does:
