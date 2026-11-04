@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.9.0 (2026-11-04)
+
+### Minor Changes
+
+- `painter.Service.RefineFaces` redraws small faces inside an image at high resolution on the comfy backend (`RefineFacesComfy`, Qwen) and blends them back, leaving the rest of the image as it was (bit-identical for 8-bit PNG). References carry the identity, `SearchRegions` or `FaceBoxes` choose the faces, and `Metadata.Faces` reports the refined boxes. `rootpullertest.Painter` gains `RefineFacesFunc`.
+
 ## v0.8.0 (2026-11-03)
 
 ### Minor Changes
