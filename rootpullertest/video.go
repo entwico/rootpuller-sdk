@@ -67,6 +67,7 @@ var (
 	errMissingPortrait  = errors.New("missing portrait")
 	errMissingAudio     = errors.New("missing audio")
 	errAudioAndSpeech   = errors.New("audio sent with speech")
+	errModelAndPrompt   = errors.New("model and prompt are required")
 )
 
 func (f *Video) register(mux *http.ServeMux) {
@@ -87,6 +88,10 @@ func (h *videoHandler) GenerateVideo(
 	}
 
 	params, first, last := got.params, got.first, got.last
+
+	if blank(params.GetModel()) || blank(params.GetPrompt()) {
+		return invalidArgument(errModelAndPrompt)
+	}
 
 	req := VideoRequest{
 		Model:             params.GetModel(),
@@ -280,12 +285,20 @@ func (h *videoHandler) GenerateTalkingVideo(
 	switch {
 	case params == nil:
 		return invalidArgument(errMissingParams)
+	case blank(params.GetModel()) || blank(params.GetPrompt()):
+		return invalidArgument(errModelAndPrompt)
 	case len(portrait.Data) == 0:
 		return invalidArgument(errMissingPortrait)
 	case params.GetSpeech() != nil && len(audio.Data) > 0:
 		return invalidArgument(errAudioAndSpeech)
 	case params.GetSpeech() == nil && len(audio.Data) == 0:
 		return invalidArgument(errMissingAudio)
+	}
+
+	if s := params.GetSpeech(); s != nil {
+		if err := validateSpeech(s.GetVoiceRef(), s.GetText(), s.GetLanguage()); err != nil {
+			return err
+		}
 	}
 
 	req := TalkingRequest{

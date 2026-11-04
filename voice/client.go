@@ -18,6 +18,7 @@ package voice
 import (
 	"context"
 	"errors"
+	"io"
 
 	"connectrpc.com/connect"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
@@ -28,6 +29,7 @@ import (
 	commonpb "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/common"
 	voicepb "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/voice"
 	"github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/voice/voiceconnect"
+	"github.com/entwico/rootpuller-sdk/internal/protoconv"
 	"github.com/entwico/rootpuller-sdk/internal/streamio"
 	"github.com/entwico/rootpuller-sdk/internal/transport"
 )
@@ -112,7 +114,7 @@ func (s *Service) Design(ctx context.Context, description, sampleText, language 
 		Previews:       make([]Preview, len(audio)),
 		Model:          meta.GetModel(),
 		SampleText:     meta.GetSampleText(),
-		ProcessingTime: millis(meta.GetProcessingTimeMs()),
+		ProcessingTime: protoconv.MsToDuration(meta.GetProcessingTimeMs()),
 		Usage:          usageFromProto(meta.GetUsage()),
 	}
 
@@ -161,7 +163,15 @@ func (s *Service) Save(ctx context.Context, name string, opts *SaveOptions) (*Sa
 
 	head := &voicepb.SaveVoiceRequest{Request: &voicepb.SaveVoiceRequest_Params_{Params: params}}
 	if err := stream.Send(head); err != nil {
-		return nil, closeAndWrap(stream, err, procedure)
+		if errors.Is(err, io.EOF) {
+			return nil, closeAndWrap(stream, err, procedure)
+		}
+
+		// nothing went out yet, so there is no request to abort, and closing
+		// its response would wait for one that never comes.
+		cancel()
+
+		return nil, transport.WrapError(err, procedure)
 	}
 
 	if opts.Sample != nil {
@@ -177,7 +187,7 @@ func (s *Service) Save(ctx context.Context, name string, opts *SaveOptions) (*Sa
 			}
 
 			if serr := stream.Send(frame); serr != nil {
-				return nil, closeAndWrap(stream, serr, procedure)
+				return nil, sendFailed(stream, cancel, serr, procedure)
 			}
 		}
 	}
@@ -195,7 +205,26 @@ func (s *Service) Save(ctx context.Context, name string, opts *SaveOptions) (*Sa
 	}, nil
 }
 
-// abort ends a SaveVoice call whose sample could not be read. It never
+// sendFailed answers a failed sample Send. io.EOF means the server already
+// ended the call, and its own error is the answer. Anything else failed on
+// this side (a cancelled context, a chunk that would not marshal): the call
+// is aborted, since a clean close would let the server save a partial sample.
+func sendFailed(
+	stream *connect.ClientStreamForClient[voicepb.SaveVoiceRequest, voicepb.SaveVoiceResponse],
+	cancel context.CancelFunc,
+	err error,
+	procedure string,
+) error {
+	if errors.Is(err, io.EOF) {
+		return closeAndWrap(stream, err, procedure)
+	}
+
+	abort(stream, cancel)
+
+	return transport.WrapError(err, procedure)
+}
+
+// abort ends a SaveVoice call whose sample could not be sent. It never
 // half-closes the request: cancellation reaches the transport asynchronously,
 // so a CloseAndReceive after cancel can still deliver a clean end of stream,
 // and the server would save a voice whose ref nobody receives. Closing only
@@ -282,7 +311,7 @@ func (s *Service) Speak(ctx context.Context, ref Ref, text, language string, opt
 		Audio:          audio[0],
 		Model:          meta.GetModel(),
 		Duration:       seconds(meta.GetDurationSeconds()),
-		ProcessingTime: millis(meta.GetProcessingTimeMs()),
+		ProcessingTime: protoconv.MsToDuration(meta.GetProcessingTimeMs()),
 		Usage:          usageFromProto(meta.GetUsage()),
 	}, nil
 }

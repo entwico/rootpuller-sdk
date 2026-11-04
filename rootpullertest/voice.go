@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
+	"strings"
 	"unicode/utf8"
 
 	"connectrpc.com/connect"
@@ -96,7 +98,73 @@ var (
 	errVoiceTextLength       = errors.New("text length outside the provider's limits")
 	errVoiceMissingSpeak     = errors.New("voice_ref, text and language are required")
 	errVoiceNothingToSave    = errors.New("a handle or a sample is required")
+	errVoiceNameTooLong      = errors.New("name is longer than 100 characters")
+	errVoiceEmptySample      = errors.New("sample was announced but carries no data")
+	errVoiceSampleTooLarge   = errors.New("sample exceeds 64 MiB")
+	errVoiceLanguage         = errors.New("language must be a lowercase ISO 639-1 or 639-3 code")
+	errVoicePreviews         = errors.New("previews must be between 1 and 4")
+	errVoiceEmptyModel       = errors.New("model must not be empty when set")
+	errVoiceUnitRange        = errors.New("speed and stability must be between 0 and 1")
+	errVoiceTextTooLong      = errors.New("text is longer than 40000 characters")
 )
+
+// the server's own bounds (rootpuller-api internal/voice/validation.go and
+// its gRPC adapter); the provider's are in capabilities().
+const (
+	voiceMaxNameChars   = 100
+	voiceMaxSampleBytes = 64 << 20
+	voiceMaxPreviews    = 4
+
+	// voiceMaxTextChars bounds every text field before any provider limit.
+	voiceMaxTextChars = 40_000
+)
+
+var voiceLanguagePattern = regexp.MustCompile(`^[a-z]{2,3}$`)
+
+func blank(s string) bool { return strings.TrimSpace(s) == "" }
+
+// validateVoiceLanguage, optionalModel and unitRange are the server's checks
+// shared by Design, Speak and the talking-video speech.
+func validateVoiceLanguage(lang string) error {
+	if !voiceLanguagePattern.MatchString(lang) {
+		return invalidArgument(errVoiceLanguage)
+	}
+
+	return nil
+}
+
+func optionalModel(model *string) error {
+	if model != nil && blank(*model) {
+		return invalidArgument(errVoiceEmptyModel)
+	}
+
+	return nil
+}
+
+func unitRange(values ...*float32) error {
+	for _, v := range values {
+		// written so NaN fails too.
+		if v != nil && !(*v >= 0 && *v <= 1) {
+			return invalidArgument(errVoiceUnitRange)
+		}
+	}
+
+	return nil
+}
+
+// validateSpeech is the server's check of a text to speak, for Speak and for
+// a talking video's speech.
+func validateSpeech(ref, text, language string) error {
+	if blank(ref) || blank(text) || language == "" {
+		return invalidArgument(errVoiceMissingSpeak)
+	}
+
+	if utf8.RuneCountInString(text) > voiceMaxTextChars {
+		return invalidArgument(errVoiceTextTooLong)
+	}
+
+	return validateVoiceLanguage(language)
+}
 
 const fakeVoiceMime = "audio/mpeg"
 
@@ -116,8 +184,20 @@ func (h *voiceHandler) DesignVoice(
 	stream *connect.ServerStream[voicepb.DesignVoiceResponse],
 ) error {
 	m := req.Msg
-	if m.GetDescription() == "" || m.GetSampleText() == "" || m.GetLanguage() == "" {
+	if blank(m.GetDescription()) || blank(m.GetSampleText()) || m.GetLanguage() == "" {
 		return invalidArgument(errVoiceMissingText)
+	}
+
+	if err := validateVoiceLanguage(m.GetLanguage()); err != nil {
+		return err
+	}
+
+	if p := m.Previews; p != nil && (*p < 1 || *p > voiceMaxPreviews) {
+		return invalidArgument(errVoicePreviews)
+	}
+
+	if err := optionalModel(m.Model); err != nil {
+		return err
 	}
 
 	caps := h.capabilities()
@@ -230,6 +310,10 @@ func (h *voiceHandler) SaveVoice(
 				return nil, errBeforeParams("sample")
 			}
 
+			if sample != nil && len(sample.Data)+len(r.Sample.GetData()) > voiceMaxSampleBytes {
+				return nil, invalidArgument(errVoiceSampleTooLarge)
+			}
+
 			if err := appendFrame(&sample, r.Sample); err != nil {
 				return nil, err
 			}
@@ -245,10 +329,16 @@ func (h *voiceHandler) SaveVoice(
 	switch {
 	case params == nil:
 		return nil, invalidArgument(errMissingParams)
-	case params.GetName() == "":
+	case blank(params.GetName()):
 		return nil, invalidArgument(errVoiceMissingName)
+	case utf8.RuneCountInString(params.GetName()) > voiceMaxNameChars:
+		return nil, invalidArgument(errVoiceNameTooLong)
+	case utf8.RuneCountInString(params.GetDescription()) > voiceMaxTextChars:
+		return nil, invalidArgument(errVoiceTextTooLong)
 	case params.Handle == nil && sample == nil:
 		return nil, invalidArgument(errVoiceNothingToSave)
+	case sample != nil && len(sample.Data) == 0:
+		return nil, invalidArgument(errVoiceEmptySample)
 	}
 
 	got := VoiceSaveRequest{
@@ -281,8 +371,16 @@ func (h *voiceHandler) Speak(
 	stream *connect.ServerStream[voicepb.SpeakResponse],
 ) error {
 	m := req.Msg
-	if m.GetVoiceRef() == "" || m.GetText() == "" || m.GetLanguage() == "" {
-		return invalidArgument(errVoiceMissingSpeak)
+	if err := validateSpeech(m.GetVoiceRef(), m.GetText(), m.GetLanguage()); err != nil {
+		return err
+	}
+
+	if err := optionalModel(m.Model); err != nil {
+		return err
+	}
+
+	if err := unitRange(m.Speed, m.Stability); err != nil {
+		return err
 	}
 
 	if limit := h.textLimit(m.GetModel()); limit > 0 && utf8.RuneCountInString(m.GetText()) > limit {
@@ -340,7 +438,7 @@ func (h *voiceHandler) DeleteVoice(
 	_ context.Context,
 	req *connect.Request[voicepb.DeleteVoiceRequest],
 ) (*connect.Response[voicepb.DeleteVoiceResponse], error) {
-	if req.Msg.GetVoiceRef() == "" {
+	if blank(req.Msg.GetVoiceRef()) {
 		return nil, invalidArgument(errVoiceMissingRef)
 	}
 

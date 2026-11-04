@@ -3,6 +3,7 @@ package video_test
 import (
 	"bytes"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -254,5 +255,29 @@ func TestGenerateTalkingSpeechNeedsAllFields(t *testing.T) {
 	var ae *rootpullersdk.Error
 	if !errors.As(err, &ae) || ae.Code != connect.CodeInvalidArgument {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestFakeRejectsWhatTheServerRejectsForSpeech(t *testing.T) {
+	t.Parallel()
+
+	svc := newService(t, &rootpullertest.Video{})
+	portrait := upload("p.png", []byte{1})
+
+	for name, tc := range map[string]struct {
+		prompt string
+		speech video.Speech
+	}{
+		"blank prompt":          {"  ", video.Speech{Voice: "r", Text: "Hallo", Language: "de"}},
+		"BCP-47 language":       {"p", video.Speech{Voice: "r", Text: "Hallo", Language: "de-DE"}},
+		"whitespace text":       {"p", video.Speech{Voice: "r", Text: "   ", Language: "de"}},
+		"text over 40000 runes": {"p", video.Speech{Voice: "r", Text: strings.Repeat("a", 40_001), Language: "de"}},
+	} {
+		_, err := svc.GenerateTalkingSpeech(t.Context(), tc.prompt, portrait, tc.speech, nil)
+
+		var ae *rootpullersdk.Error
+		if !errors.As(err, &ae) || ae.Code != connect.CodeInvalidArgument {
+			t.Errorf("%s: err = %v, want InvalidArgument", name, err)
+		}
 	}
 }

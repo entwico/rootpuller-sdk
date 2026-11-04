@@ -223,6 +223,48 @@ func (r *failingReader) Read(p []byte) (int, error) {
 	return n, nil
 }
 
+func TestSave_UnsendableChunkSavesNothing(t *testing.T) {
+	t.Parallel()
+
+	var saved atomic.Bool
+
+	svc := newService(t, &rootpullertest.Voice{
+		SaveFunc: func(rootpullertest.VoiceSaveRequest) (*voice.SaveResult, error) {
+			saved.Store(true)
+
+			return &voice.SaveResult{Ref: opaqueRef}, nil
+		},
+	})
+
+	// a name that is not valid UTF-8 cannot be marshalled into the chunk, so
+	// Send fails on this side after the params frame went out.
+	sample := rootpullersdk.UploadBytes("s\xff.mp3", mimeMP3, []byte{1, 2, 3})
+
+	_, err := svc.Save(t.Context(), voiceName, &voice.SaveOptions{Handle: "h0", Sample: &sample})
+	if err == nil {
+		t.Fatal("Save succeeded with a sample that cannot be sent")
+	}
+
+	if saved.Load() {
+		t.Fatal("the server saved a voice from an upload that failed; its ref is lost")
+	}
+}
+
+func TestSave_UnsendableParamsReportTheCause(t *testing.T) {
+	t.Parallel()
+
+	svc := newService(t, &rootpullertest.Voice{})
+
+	// a name that is not valid UTF-8 fails to marshal on this side; the caller
+	// sees that, not the server's "missing params" after a clean close.
+	_, err := svc.Save(t.Context(), "Lena\xff", &voice.SaveOptions{Handle: "h0"})
+
+	ae, ok := errors.AsType[*rootpullersdk.Error](err)
+	if !ok || ae.Code == connect.CodeInvalidArgument || strings.Contains(ae.Message, "params") {
+		t.Fatalf("err = %v, want the client-side marshal failure", err)
+	}
+}
+
 func TestSave_UnreadableSampleSavesNothing(t *testing.T) {
 	t.Parallel()
 
@@ -261,18 +303,79 @@ func TestFakeRejectsWhatTheServerRejects(t *testing.T) {
 	t.Parallel()
 
 	svc := newService(t, &rootpullertest.Voice{})
-	up := rootpullersdk.UploadBytes("s.mp3", mimeMP3, []byte{1})
 
-	_, err := svc.Save(t.Context(), "", &voice.SaveOptions{Sample: &up})
-	requireCode(t, err, connect.CodeInvalidArgument)
+	sample := func(data []byte) *rootpullersdk.Upload {
+		up := rootpullersdk.UploadBytes("s.mp3", mimeMP3, data)
 
-	requireCode(t, svc.Delete(t.Context(), ""), connect.CodeInvalidArgument)
+		return &up
+	}
 
-	_, err = svc.Speak(t.Context(), opaqueRef, strings.Repeat("a", 5001), german, nil)
-	requireCode(t, err, connect.CodeInvalidArgument)
+	cases := map[string]func() error{
+		"empty name": func() error {
+			_, err := svc.Save(t.Context(), "", &voice.SaveOptions{Sample: sample([]byte{1})})
 
-	_, err = svc.Design(t.Context(), "short", sampleText, german, nil)
-	requireCode(t, err, connect.CodeInvalidArgument)
+			return err
+		},
+		"whitespace name": func() error {
+			_, err := svc.Save(t.Context(), "   ", &voice.SaveOptions{Sample: sample([]byte{1})})
+
+			return err
+		},
+		"name over 100 characters": func() error {
+			_, err := svc.Save(t.Context(), strings.Repeat("n", 101), &voice.SaveOptions{Sample: sample([]byte{1})})
+
+			return err
+		},
+		"empty sample with a handle": func() error {
+			_, err := svc.Save(t.Context(), voiceName, &voice.SaveOptions{Handle: "h0", Sample: sample(nil)})
+
+			return err
+		},
+		"sample over 64 MiB": func() error {
+			_, err := svc.Save(t.Context(), voiceName, &voice.SaveOptions{Sample: sample(make([]byte, 64<<20+1))})
+
+			return err
+		},
+		"description over 40000 characters": func() error {
+			_, err := svc.Save(t.Context(), voiceName, &voice.SaveOptions{Handle: "h0", Description: strings.Repeat("d", 40_001)})
+
+			return err
+		},
+		"empty ref": func() error { return svc.Delete(t.Context(), "") },
+		"speech over the model limit": func() error {
+			_, err := svc.Speak(t.Context(), opaqueRef, strings.Repeat("a", 5001), german, nil)
+
+			return err
+		},
+		"whitespace speech": func() error {
+			_, err := svc.Speak(t.Context(), opaqueRef, "  ", german, nil)
+
+			return err
+		},
+		"BCP-47 language": func() error {
+			_, err := svc.Speak(t.Context(), opaqueRef, "Hallo", "de-DE", nil)
+
+			return err
+		},
+		"uppercase design language": func() error {
+			_, err := svc.Design(t.Context(), description, sampleText, "DE", nil)
+
+			return err
+		},
+		"description under 20 characters": func() error {
+			_, err := svc.Design(t.Context(), "short", sampleText, german, nil)
+
+			return err
+		},
+	}
+
+	for name, call := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			requireCode(t, call(), connect.CodeInvalidArgument)
+		})
+	}
 
 	c, err := svc.GetCapabilities(t.Context())
 	if err != nil {

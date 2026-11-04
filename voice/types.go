@@ -353,7 +353,3 @@ func seconds(s float32) time.Duration {
 func unixTime(sec int64) time.Time {
 	return time.Unix(sec, 0)
 }
-
-func millis(ms int64) time.Duration {
-	return time.Duration(ms) * time.Millisecond
-}
