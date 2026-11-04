@@ -10,6 +10,7 @@ import (
 	"github.com/entwico/rootpuller-sdk/internal/apierr"
 	videopb "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/video"
 	"github.com/entwico/rootpuller-sdk/internal/protoconv"
+	"github.com/entwico/rootpuller-sdk/voice"
 )
 
 // Models the server runs on its ComfyUI deployments. A deployment serves a
@@ -101,6 +102,18 @@ func (o *TalkingOptions) toProto(prompt string) *videopb.GenerateTalkingVideoReq
 	return &videopb.GenerateTalkingVideoRequest_Params{Model: model, Prompt: prompt, Seed: o.Seed}
 }
 
+// Speech is what a talking head says, in a saved voice.
+type Speech struct {
+	// Voice is a voice.Ref from voice.Service.Save.
+	Voice voice.Ref
+
+	Text string
+
+	// Language is the text's ISO 639-1 code, e.g. "de" (ISO 639-3 for a
+	// language without one).
+	Language string
+}
+
 // Stage is the coarse state of a call.
 type Stage string
 
@@ -115,6 +128,9 @@ const (
 	StageJoining Stage = "joining"
 	// StageUploading: the video is being sent back.
 	StageUploading Stage = "uploading"
+	// StageSpeaking: the server is speaking a talking head's text, before
+	// rendering (GenerateTalkingSpeech).
+	StageSpeaking Stage = "speaking"
 )
 
 var stageFromProto = map[videopb.GenerationProgress_Stage]Stage{
@@ -123,6 +139,7 @@ var stageFromProto = map[videopb.GenerationProgress_Stage]Stage{
 	videopb.GenerationProgress_STAGE_GENERATING:  StageGenerating,
 	videopb.GenerationProgress_STAGE_JOINING:     StageJoining,
 	videopb.GenerationProgress_STAGE_UPLOADING:   StageUploading,
+	videopb.GenerationProgress_STAGE_SPEAKING:    StageSpeaking,
 }
 
 // Progress is one progress frame.

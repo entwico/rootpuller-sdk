@@ -119,24 +119,70 @@ func (s *Service) GenerateTalking(
 		opts = &TalkingOptions{}
 	}
 
+	return s.talk(ctx, opts.toProto(prompt), portrait, &audio, opts.OnProgress)
+}
+
+// GenerateTalkingSpeech is GenerateTalking with the voice track spoken by
+// the server: it says speech.Text in the saved voice speech.Voice, then
+// lip-syncs portrait to it (StageSpeaking first). A voice.Ref from a
+// provider the server no longer uses fails; see voice.IsProviderMismatch.
+func (s *Service) GenerateTalkingSpeech(
+	ctx context.Context,
+	prompt string,
+	portrait rootpullersdk.Upload,
+	speech Speech,
+	opts *TalkingOptions,
+) (*Result, error) {
+	if opts == nil {
+		opts = &TalkingOptions{}
+	}
+
+	if speech.Voice == "" || speech.Text == "" || speech.Language == "" {
+		return nil, invalidArgument("video: Speech needs a Voice, a Text and a Language")
+	}
+
+	params := opts.toProto(prompt)
+	params.Speech = &videopb.GenerateTalkingVideoRequest_Speech{
+		VoiceRef: string(speech.Voice),
+		Text:     speech.Text,
+		Language: speech.Language,
+	}
+
+	return s.talk(ctx, params, portrait, nil, opts.OnProgress)
+}
+
+func (s *Service) talk(
+	ctx context.Context,
+	params *videopb.GenerateTalkingVideoRequest_Params,
+	portrait rootpullersdk.Upload,
+	audio *rootpullersdk.Upload,
+	onProgress func(Progress),
+) (*Result, error) {
 	ctx = transport.EnsureComfyUIDeployment(ctx, s.comfyUIDeployment)
 	procedure := videoconnect.VideoGeneratorServiceGenerateTalkingVideoProcedure
 	stream := s.rpc.GenerateTalkingVideo(ctx)
 
-	frames := streamio.Frames(
-		&videopb.GenerateTalkingVideoRequest{Request: &videopb.GenerateTalkingVideoRequest_Params_{Params: opts.toProto(prompt)}},
+	tails := []iter.Seq2[*videopb.GenerateTalkingVideoRequest, error]{
 		streamio.FileChunkFrames(portrait, func(c *commonpb.FileChunk) *videopb.GenerateTalkingVideoRequest {
 			return &videopb.GenerateTalkingVideoRequest{Request: &videopb.GenerateTalkingVideoRequest_Portrait{Portrait: c}}
 		}),
-		streamio.FileChunkFrames(audio, func(c *commonpb.FileChunk) *videopb.GenerateTalkingVideoRequest {
+	}
+
+	if audio != nil {
+		tails = append(tails, streamio.FileChunkFrames(*audio, func(c *commonpb.FileChunk) *videopb.GenerateTalkingVideoRequest {
 			return &videopb.GenerateTalkingVideoRequest{Request: &videopb.GenerateTalkingVideoRequest_Audio{Audio: c}}
-		}),
+		}))
+	}
+
+	frames := streamio.Frames(
+		&videopb.GenerateTalkingVideoRequest{Request: &videopb.GenerateTalkingVideoRequest_Params_{Params: params}},
+		tails...,
 	)
 
 	var c collector
 
 	err := streamio.UploadCollect(stream, procedure, frames, func(resp *videopb.GenerateTalkingVideoResponse) error {
-		c.add(resp.GetProgress(), resp.GetMetadata(), resp.GetFile(), opts.OnProgress)
+		c.add(resp.GetProgress(), resp.GetMetadata(), resp.GetFile(), onProgress)
 
 		return nil
 	})

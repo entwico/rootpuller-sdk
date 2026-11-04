@@ -1,7 +1,7 @@
 # rootpuller-sdk
 
 Go client SDK for [rootpuller-api](https://github.com/entwico/rootpuller-api).
-Wraps all 13 gRPC services behind an idiomatic, hand-written Go facade —
+Wraps every rootpuller-api gRPC service behind an idiomatic, hand-written Go facade —
 generated protobuf types appear in no exported signature, and all streaming
 wire protocols (chunked uploads, event streams, full-duplex sessions) are
 encapsulated.
@@ -105,7 +105,8 @@ links only the service packages it imports.
 | `facefixer` | FaceFixerService | restore/colorize/inpaint faces |
 | `bgremover` | BackgroundRemoverService | background removal |
 | `painter` | ImagePainterService | Google / OpenAI generate/edit/outpaint; self-hosted ComfyUI models (comfy backend) with reference images and face refinement |
-| `video` | VideoGeneratorService | `Generate` (LTX 2.5 clips with sound from text, a first frame, or first and last frame), `GenerateTalking` (portrait + voice track → lip-synced talking head); ComfyUI-deployment-routable |
+| `video` | VideoGeneratorService | `Generate` (LTX 2.5 clips with sound from text, a first frame, or first and last frame), `GenerateTalking` (portrait + voice track → lip-synced talking head), `GenerateTalkingSpeech` (portrait + text in a saved voice); ComfyUI-deployment-routable |
+| `voice` | VoiceService | `Design` (voice previews from a description), `Save` (preview or sample audio → opaque `voice.Ref`), `Speak`, `Delete`, `GetCapabilities`; provider-neutral, `IsProviderMismatch` for refs from a former provider ([guide](docs/voice.md)) |
 | `assetia` | MediaProcessingService | image crop/resize/convert/watermark, video transcode (H.265/AV1), previews, `ProbeMedia` |
 | `escriba` | TranscriptionService | `OpenLive` (full-duplex speech to text), `Transcribe` (short clips), `TranscribeRecording` (any length, optional speaker labels, progress), `GetCapabilities`; deployment-routable |
 

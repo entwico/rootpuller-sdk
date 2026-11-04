@@ -13,14 +13,16 @@ import (
 	videopb "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/video"
 	"github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/video/videoconnect"
 	"github.com/entwico/rootpuller-sdk/video"
+	"github.com/entwico/rootpuller-sdk/voice"
 )
 
 // Video is a facade-typed fake VideoGeneratorService. It enforces the wire
 // protocol like the real server: params first and exactly once; on
 // GenerateVideo no first_frame after last_frame and no last_frame without a
-// first_frame; on GenerateTalkingVideo a portrait, then audio, both
-// required; chunks are capped at 2 MiB. Violations fail with
-// InvalidArgument.
+// first_frame; on GenerateTalkingVideo a portrait, then audio, unless the
+// params carry speech, which forbids audio; chunks are capped at 2 MiB.
+// Violations fail with InvalidArgument. Speech is not spoken: TalkingFunc
+// sees it on the request and Audio stays empty.
 //
 // A nil hook responds with a canned 4-byte "video_0.mp4". Progress frames
 // are streamed first, then the metadata frame (Metadata, or one synthesized
@@ -47,12 +49,14 @@ type VideoRequest struct {
 }
 
 // TalkingRequest is what the fake received on one GenerateTalkingVideo call.
+// Speech is set for GenerateTalkingSpeech, Audio for GenerateTalking.
 type TalkingRequest struct {
 	Model             string
 	Prompt            string
 	Seed              *int64
 	Portrait          rootpullersdk.File
 	Audio             rootpullersdk.File
+	Speech            *video.Speech
 	ComfyUIDeployment string
 }
 
@@ -62,6 +66,7 @@ var (
 	errPortraitAfter    = errors.New("portrait frame after audio")
 	errMissingPortrait  = errors.New("missing portrait")
 	errMissingAudio     = errors.New("missing audio")
+	errAudioAndSpeech   = errors.New("audio sent with speech")
 )
 
 func (f *Video) register(mux *http.ServeMux) {
@@ -205,63 +210,81 @@ func appendFrame(dst **rootpullersdk.File, chunk *commonpb.FileChunk) error {
 	return appendChunk(*dst, chunk)
 }
 
-func (h *videoHandler) GenerateTalkingVideo(
-	_ context.Context,
+// talkingFrames is one GenerateTalkingVideo request stream, drained.
+type talkingFrames struct {
+	params          *videopb.GenerateTalkingVideoRequest_Params
+	portrait, audio rootpullersdk.File
+}
+
+// receiveTalkingRequest drains a GenerateTalkingVideo request stream,
+// enforcing params → portrait → audio.
+func receiveTalkingRequest(
 	stream *connect.BidiStream[videopb.GenerateTalkingVideoRequest, videopb.GenerateTalkingVideoResponse],
-) error {
-	var (
-		params          *videopb.GenerateTalkingVideoRequest_Params
-		portrait, audio rootpullersdk.File
-	)
+) (talkingFrames, error) {
+	var got talkingFrames
 
 	for {
 		req, err := stream.Receive()
 		if errors.Is(err, io.EOF) {
-			break
+			return got, nil
 		}
 
 		if err != nil {
-			return err
+			return got, err
 		}
 
 		switch r := req.GetRequest().(type) {
 		case *videopb.GenerateTalkingVideoRequest_Params_:
-			if params != nil {
-				return invalidArgument(errDuplicateParamsFrame)
+			if got.params != nil {
+				return got, invalidArgument(errDuplicateParamsFrame)
 			}
 
-			params = r.Params
+			got.params = r.Params
 		case *videopb.GenerateTalkingVideoRequest_Portrait:
-			if params == nil {
-				return errBeforeParams("portrait")
+			if got.params == nil {
+				return got, errBeforeParams("portrait")
 			}
 
-			if len(audio.Data) > 0 {
-				return invalidArgument(errPortraitAfter)
+			if len(got.audio.Data) > 0 {
+				return got, invalidArgument(errPortraitAfter)
 			}
 
-			if err := appendChunk(&portrait, r.Portrait); err != nil {
-				return err
+			if err := appendChunk(&got.portrait, r.Portrait); err != nil {
+				return got, err
 			}
 		case *videopb.GenerateTalkingVideoRequest_Audio:
-			if params == nil {
-				return errBeforeParams("audio")
+			if got.params == nil {
+				return got, errBeforeParams("audio")
 			}
 
-			if err := appendChunk(&audio, r.Audio); err != nil {
-				return err
+			if err := appendChunk(&got.audio, r.Audio); err != nil {
+				return got, err
 			}
 		default:
-			return invalidArgument(errUnexpectedVariant)
+			return got, invalidArgument(errUnexpectedVariant)
 		}
 	}
+}
+
+func (h *videoHandler) GenerateTalkingVideo(
+	_ context.Context,
+	stream *connect.BidiStream[videopb.GenerateTalkingVideoRequest, videopb.GenerateTalkingVideoResponse],
+) error {
+	got, err := receiveTalkingRequest(stream)
+	if err != nil {
+		return err
+	}
+
+	params, portrait, audio := got.params, got.portrait, got.audio
 
 	switch {
 	case params == nil:
 		return invalidArgument(errMissingParams)
 	case len(portrait.Data) == 0:
 		return invalidArgument(errMissingPortrait)
-	case len(audio.Data) == 0:
+	case params.GetSpeech() != nil && len(audio.Data) > 0:
+		return invalidArgument(errAudioAndSpeech)
+	case params.GetSpeech() == nil && len(audio.Data) == 0:
 		return invalidArgument(errMissingAudio)
 	}
 
@@ -272,6 +295,10 @@ func (h *videoHandler) GenerateTalkingVideo(
 		Portrait:          portrait,
 		Audio:             audio,
 		ComfyUIDeployment: stream.RequestHeader().Get("Comfyui-Deployment"),
+	}
+
+	if s := params.GetSpeech(); s != nil {
+		req.Speech = &video.Speech{Voice: voice.Ref(s.GetVoiceRef()), Text: s.GetText(), Language: s.GetLanguage()}
 	}
 
 	file := cannedVideo()
@@ -339,6 +366,7 @@ var videoStageToProto = map[video.Stage]videopb.GenerationProgress_Stage{
 	video.StageGenerating:  videopb.GenerationProgress_STAGE_GENERATING,
 	video.StageJoining:     videopb.GenerationProgress_STAGE_JOINING,
 	video.StageUploading:   videopb.GenerationProgress_STAGE_UPLOADING,
+	video.StageSpeaking:    videopb.GenerationProgress_STAGE_SPEAKING,
 }
 
 var videoModeToProto = map[video.Mode]videopb.VideoMetadata_Mode{

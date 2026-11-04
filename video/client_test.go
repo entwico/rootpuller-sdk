@@ -204,3 +204,55 @@ func TestGenerateServerError(t *testing.T) {
 		t.Fatalf("err = %v, want NotFound", err)
 	}
 }
+
+func TestGenerateTalkingSpeech(t *testing.T) {
+	t.Parallel()
+
+	var got rootpullertest.TalkingRequest
+
+	svc := newService(t, &rootpullertest.Video{
+		TalkingFunc: func(req rootpullertest.TalkingRequest) (rootpullersdk.File, error) {
+			got = req
+
+			return rootpullersdk.File{Name: videoName, MIMEType: mimeMP4, Data: []byte{9}}, nil
+		},
+		Progress: []video.Progress{{Stage: video.StageSpeaking, Message: "speaking the text"}},
+	})
+
+	var progress []video.Progress
+
+	res, err := svc.GenerateTalkingSpeech(t.Context(), "a friendly presenter",
+		upload("portrait.png", []byte{0x89, 0x50}),
+		video.Speech{Voice: "opaque-ref", Text: "Hallo zusammen", Language: "de"},
+		&video.TalkingOptions{OnProgress: func(p video.Progress) { progress = append(progress, p) }},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := video.Speech{Voice: "opaque-ref", Text: "Hallo zusammen", Language: "de"}
+	if got.Speech == nil || *got.Speech != want || len(got.Audio.Data) != 0 || len(got.Portrait.Data) != 2 {
+		t.Errorf("request = %+v", got)
+	}
+
+	if len(progress) != 1 || progress[0].Stage != video.StageSpeaking {
+		t.Errorf("progress = %+v", progress)
+	}
+
+	if len(res.Video.Data) != 1 {
+		t.Errorf("result = %+v", res.Metadata)
+	}
+}
+
+func TestGenerateTalkingSpeechNeedsAllFields(t *testing.T) {
+	t.Parallel()
+
+	svc := newService(t, &rootpullertest.Video{})
+
+	_, err := svc.GenerateTalkingSpeech(t.Context(), "p", upload("p.png", []byte{1}), video.Speech{Voice: "r", Text: "t"}, nil)
+
+	var ae *rootpullersdk.Error
+	if !errors.As(err, &ae) || ae.Code != connect.CodeInvalidArgument {
+		t.Fatalf("err = %v", err)
+	}
+}

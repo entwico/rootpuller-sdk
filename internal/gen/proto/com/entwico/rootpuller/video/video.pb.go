@@ -35,6 +35,8 @@ const (
 	GenerationProgress_STAGE_JOINING GenerationProgress_Stage = 3
 	// Sending the video back.
 	GenerationProgress_STAGE_UPLOADING GenerationProgress_Stage = 4
+	// Speaking the text of a talking video, before rendering.
+	GenerationProgress_STAGE_SPEAKING GenerationProgress_Stage = 5
 )
 
 // Enum value maps for GenerationProgress_Stage.
@@ -45,6 +47,7 @@ var (
 		2: "STAGE_GENERATING",
 		3: "STAGE_JOINING",
 		4: "STAGE_UPLOADING",
+		5: "STAGE_SPEAKING",
 	}
 	GenerationProgress_Stage_value = map[string]int32{
 		"STAGE_UNSPECIFIED": 0,
@@ -52,6 +55,7 @@ var (
 		"STAGE_GENERATING":  2,
 		"STAGE_JOINING":     3,
 		"STAGE_UPLOADING":   4,
+		"STAGE_SPEAKING":    5,
 	}
 )
 
@@ -429,8 +433,9 @@ type GenerateTalkingVideoRequest_Portrait struct {
 }
 
 type GenerateTalkingVideoRequest_Audio struct {
-	// Required voice track (WAV, MP3, FLAC, M4A or OGG), sent after the
-	// portrait. Up to 64 MiB and the server's maximum speech length.
+	// Voice track (WAV, MP3, FLAC, M4A or OGG), sent after the portrait.
+	// Required unless params carry speech, forbidden with it. Up to 64 MiB
+	// and the server's maximum speech length.
 	Audio *common.FileChunk `protobuf:"bytes,3,opt,name=audio,proto3,oneof"`
 }
 
@@ -842,7 +847,10 @@ type GenerateTalkingVideoRequest_Params struct {
 	// and facial expressions, static camera."
 	Prompt string `protobuf:"bytes,2,opt,name=prompt,proto3" json:"prompt,omitempty"`
 	// Default: random.
-	Seed          *int64 `protobuf:"varint,3,opt,name=seed,proto3,oneof" json:"seed,omitempty"`
+	Seed *int64 `protobuf:"varint,3,opt,name=seed,proto3,oneof" json:"seed,omitempty"`
+	// A text to speak in a saved voice, instead of sending audio. The server
+	// speaks it with VoiceService first (STAGE_SPEAKING), then lip-syncs.
+	Speech        *GenerateTalkingVideoRequest_Speech `protobuf:"bytes,4,opt,name=speech,proto3,oneof" json:"speech,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -898,6 +906,80 @@ func (x *GenerateTalkingVideoRequest_Params) GetSeed() int64 {
 	return 0
 }
 
+func (x *GenerateTalkingVideoRequest_Params) GetSpeech() *GenerateTalkingVideoRequest_Speech {
+	if x != nil {
+		return x.Speech
+	}
+	return nil
+}
+
+// What the speaker says, in a VoiceService voice.
+type GenerateTalkingVideoRequest_Speech struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Required, from VoiceService.SaveVoice.
+	VoiceRef string `protobuf:"bytes,1,opt,name=voice_ref,json=voiceRef,proto3" json:"voice_ref,omitempty"`
+	// Required. Spoken, it must fit the server's maximum speech length
+	// (default 90 s); the server estimates the length from the text before
+	// speaking and rejects text that is clearly too long, and checks the
+	// spoken audio again afterwards.
+	Text string `protobuf:"bytes,2,opt,name=text,proto3" json:"text,omitempty"`
+	// Required. Language code of the text, as in VoiceService.Speak.
+	Language      string `protobuf:"bytes,3,opt,name=language,proto3" json:"language,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GenerateTalkingVideoRequest_Speech) Reset() {
+	*x = GenerateTalkingVideoRequest_Speech{}
+	mi := &file_com_entwico_rootpuller_video_video_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GenerateTalkingVideoRequest_Speech) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GenerateTalkingVideoRequest_Speech) ProtoMessage() {}
+
+func (x *GenerateTalkingVideoRequest_Speech) ProtoReflect() protoreflect.Message {
+	mi := &file_com_entwico_rootpuller_video_video_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GenerateTalkingVideoRequest_Speech.ProtoReflect.Descriptor instead.
+func (*GenerateTalkingVideoRequest_Speech) Descriptor() ([]byte, []int) {
+	return file_com_entwico_rootpuller_video_video_proto_rawDescGZIP(), []int{2, 1}
+}
+
+func (x *GenerateTalkingVideoRequest_Speech) GetVoiceRef() string {
+	if x != nil {
+		return x.VoiceRef
+	}
+	return ""
+}
+
+func (x *GenerateTalkingVideoRequest_Speech) GetText() string {
+	if x != nil {
+		return x.Text
+	}
+	return ""
+}
+
+func (x *GenerateTalkingVideoRequest_Speech) GetLanguage() string {
+	if x != nil {
+		return x.Language
+	}
+	return ""
+}
+
 var File_com_entwico_rootpuller_video_video_proto protoreflect.FileDescriptor
 
 const file_com_entwico_rootpuller_video_video_proto_rawDesc = "" +
@@ -928,34 +1010,41 @@ const file_com_entwico_rootpuller_video_video_proto_rawDesc = "" +
 	"\bprogress\x18\x01 \x01(\v20.com.entwico.rootpuller.video.GenerationProgressH\x00R\bprogress\x12I\n" +
 	"\bmetadata\x18\x02 \x01(\v2+.com.entwico.rootpuller.video.VideoMetadataH\x00R\bmetadata\x12>\n" +
 	"\x04file\x18\x03 \x01(\v2(.com.entwico.rootpuller.common.FileChunkH\x00R\x04fileB\a\n" +
-	"\x05event\"\xe8\x02\n" +
+	"\x05event\"\xaa\x04\n" +
 	"\x1bGenerateTalkingVideoRequest\x12Z\n" +
 	"\x06params\x18\x01 \x01(\v2@.com.entwico.rootpuller.video.GenerateTalkingVideoRequest.ParamsH\x00R\x06params\x12F\n" +
 	"\bportrait\x18\x02 \x01(\v2(.com.entwico.rootpuller.common.FileChunkH\x00R\bportrait\x12@\n" +
-	"\x05audio\x18\x03 \x01(\v2(.com.entwico.rootpuller.common.FileChunkH\x00R\x05audio\x1aX\n" +
+	"\x05audio\x18\x03 \x01(\v2(.com.entwico.rootpuller.common.FileChunkH\x00R\x05audio\x1a\xc2\x01\n" +
 	"\x06Params\x12\x14\n" +
 	"\x05model\x18\x01 \x01(\tR\x05model\x12\x16\n" +
 	"\x06prompt\x18\x02 \x01(\tR\x06prompt\x12\x17\n" +
-	"\x04seed\x18\x03 \x01(\x03H\x00R\x04seed\x88\x01\x01B\a\n" +
+	"\x04seed\x18\x03 \x01(\x03H\x00R\x04seed\x88\x01\x01\x12]\n" +
+	"\x06speech\x18\x04 \x01(\v2@.com.entwico.rootpuller.video.GenerateTalkingVideoRequest.SpeechH\x01R\x06speech\x88\x01\x01B\a\n" +
 	"\x05_seedB\t\n" +
+	"\a_speech\x1aU\n" +
+	"\x06Speech\x12\x1b\n" +
+	"\tvoice_ref\x18\x01 \x01(\tR\bvoiceRef\x12\x12\n" +
+	"\x04text\x18\x02 \x01(\tR\x04text\x12\x1a\n" +
+	"\blanguage\x18\x03 \x01(\tR\blanguageB\t\n" +
 	"\arequest\"\x82\x02\n" +
 	"\x1cGenerateTalkingVideoResponse\x12N\n" +
 	"\bprogress\x18\x01 \x01(\v20.com.entwico.rootpuller.video.GenerationProgressH\x00R\bprogress\x12I\n" +
 	"\bmetadata\x18\x02 \x01(\v2+.com.entwico.rootpuller.video.VideoMetadataH\x00R\bmetadata\x12>\n" +
 	"\x04file\x18\x03 \x01(\v2(.com.entwico.rootpuller.common.FileChunkH\x00R\x04fileB\a\n" +
-	"\x05event\"\x8c\x02\n" +
+	"\x05event\"\xa1\x02\n" +
 	"\x12GenerationProgress\x12L\n" +
 	"\x05stage\x18\x01 \x01(\x0e26.com.entwico.rootpuller.video.GenerationProgress.StageR\x05stage\x12\x1e\n" +
 	"\n" +
 	"percentage\x18\x02 \x01(\x02R\n" +
 	"percentage\x12\x18\n" +
-	"\amessage\x18\x03 \x01(\tR\amessage\"n\n" +
+	"\amessage\x18\x03 \x01(\tR\amessage\"\x82\x01\n" +
 	"\x05Stage\x12\x15\n" +
 	"\x11STAGE_UNSPECIFIED\x10\x00\x12\x10\n" +
 	"\fSTAGE_QUEUED\x10\x01\x12\x14\n" +
 	"\x10STAGE_GENERATING\x10\x02\x12\x11\n" +
 	"\rSTAGE_JOINING\x10\x03\x12\x13\n" +
-	"\x0fSTAGE_UPLOADING\x10\x04\"\xf0\x03\n" +
+	"\x0fSTAGE_UPLOADING\x10\x04\x12\x12\n" +
+	"\x0eSTAGE_SPEAKING\x10\x05\"\xf0\x03\n" +
 	"\rVideoMetadata\x12\x14\n" +
 	"\x05model\x18\x01 \x01(\tR\x05model\x12D\n" +
 	"\x04mode\x18\x02 \x01(\x0e20.com.entwico.rootpuller.video.VideoMetadata.ModeR\x04mode\x12\x12\n" +
@@ -997,7 +1086,7 @@ func file_com_entwico_rootpuller_video_video_proto_rawDescGZIP() []byte {
 }
 
 var file_com_entwico_rootpuller_video_video_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_com_entwico_rootpuller_video_video_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_com_entwico_rootpuller_video_video_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
 var file_com_entwico_rootpuller_video_video_proto_goTypes = []any{
 	(GenerationProgress_Stage)(0),              // 0: com.entwico.rootpuller.video.GenerationProgress.Stage
 	(VideoMetadata_Mode)(0),                    // 1: com.entwico.rootpuller.video.VideoMetadata.Mode
@@ -1009,32 +1098,34 @@ var file_com_entwico_rootpuller_video_video_proto_goTypes = []any{
 	(*VideoMetadata)(nil),                      // 7: com.entwico.rootpuller.video.VideoMetadata
 	(*GenerateVideoRequest_Params)(nil),        // 8: com.entwico.rootpuller.video.GenerateVideoRequest.Params
 	(*GenerateTalkingVideoRequest_Params)(nil), // 9: com.entwico.rootpuller.video.GenerateTalkingVideoRequest.Params
-	(*common.FileChunk)(nil),                   // 10: com.entwico.rootpuller.common.FileChunk
+	(*GenerateTalkingVideoRequest_Speech)(nil), // 10: com.entwico.rootpuller.video.GenerateTalkingVideoRequest.Speech
+	(*common.FileChunk)(nil),                   // 11: com.entwico.rootpuller.common.FileChunk
 }
 var file_com_entwico_rootpuller_video_video_proto_depIdxs = []int32{
 	8,  // 0: com.entwico.rootpuller.video.GenerateVideoRequest.params:type_name -> com.entwico.rootpuller.video.GenerateVideoRequest.Params
-	10, // 1: com.entwico.rootpuller.video.GenerateVideoRequest.first_frame:type_name -> com.entwico.rootpuller.common.FileChunk
-	10, // 2: com.entwico.rootpuller.video.GenerateVideoRequest.last_frame:type_name -> com.entwico.rootpuller.common.FileChunk
+	11, // 1: com.entwico.rootpuller.video.GenerateVideoRequest.first_frame:type_name -> com.entwico.rootpuller.common.FileChunk
+	11, // 2: com.entwico.rootpuller.video.GenerateVideoRequest.last_frame:type_name -> com.entwico.rootpuller.common.FileChunk
 	6,  // 3: com.entwico.rootpuller.video.GenerateVideoResponse.progress:type_name -> com.entwico.rootpuller.video.GenerationProgress
 	7,  // 4: com.entwico.rootpuller.video.GenerateVideoResponse.metadata:type_name -> com.entwico.rootpuller.video.VideoMetadata
-	10, // 5: com.entwico.rootpuller.video.GenerateVideoResponse.file:type_name -> com.entwico.rootpuller.common.FileChunk
+	11, // 5: com.entwico.rootpuller.video.GenerateVideoResponse.file:type_name -> com.entwico.rootpuller.common.FileChunk
 	9,  // 6: com.entwico.rootpuller.video.GenerateTalkingVideoRequest.params:type_name -> com.entwico.rootpuller.video.GenerateTalkingVideoRequest.Params
-	10, // 7: com.entwico.rootpuller.video.GenerateTalkingVideoRequest.portrait:type_name -> com.entwico.rootpuller.common.FileChunk
-	10, // 8: com.entwico.rootpuller.video.GenerateTalkingVideoRequest.audio:type_name -> com.entwico.rootpuller.common.FileChunk
+	11, // 7: com.entwico.rootpuller.video.GenerateTalkingVideoRequest.portrait:type_name -> com.entwico.rootpuller.common.FileChunk
+	11, // 8: com.entwico.rootpuller.video.GenerateTalkingVideoRequest.audio:type_name -> com.entwico.rootpuller.common.FileChunk
 	6,  // 9: com.entwico.rootpuller.video.GenerateTalkingVideoResponse.progress:type_name -> com.entwico.rootpuller.video.GenerationProgress
 	7,  // 10: com.entwico.rootpuller.video.GenerateTalkingVideoResponse.metadata:type_name -> com.entwico.rootpuller.video.VideoMetadata
-	10, // 11: com.entwico.rootpuller.video.GenerateTalkingVideoResponse.file:type_name -> com.entwico.rootpuller.common.FileChunk
+	11, // 11: com.entwico.rootpuller.video.GenerateTalkingVideoResponse.file:type_name -> com.entwico.rootpuller.common.FileChunk
 	0,  // 12: com.entwico.rootpuller.video.GenerationProgress.stage:type_name -> com.entwico.rootpuller.video.GenerationProgress.Stage
 	1,  // 13: com.entwico.rootpuller.video.VideoMetadata.mode:type_name -> com.entwico.rootpuller.video.VideoMetadata.Mode
-	2,  // 14: com.entwico.rootpuller.video.VideoGeneratorService.GenerateVideo:input_type -> com.entwico.rootpuller.video.GenerateVideoRequest
-	4,  // 15: com.entwico.rootpuller.video.VideoGeneratorService.GenerateTalkingVideo:input_type -> com.entwico.rootpuller.video.GenerateTalkingVideoRequest
-	3,  // 16: com.entwico.rootpuller.video.VideoGeneratorService.GenerateVideo:output_type -> com.entwico.rootpuller.video.GenerateVideoResponse
-	5,  // 17: com.entwico.rootpuller.video.VideoGeneratorService.GenerateTalkingVideo:output_type -> com.entwico.rootpuller.video.GenerateTalkingVideoResponse
-	16, // [16:18] is the sub-list for method output_type
-	14, // [14:16] is the sub-list for method input_type
-	14, // [14:14] is the sub-list for extension type_name
-	14, // [14:14] is the sub-list for extension extendee
-	0,  // [0:14] is the sub-list for field type_name
+	10, // 14: com.entwico.rootpuller.video.GenerateTalkingVideoRequest.Params.speech:type_name -> com.entwico.rootpuller.video.GenerateTalkingVideoRequest.Speech
+	2,  // 15: com.entwico.rootpuller.video.VideoGeneratorService.GenerateVideo:input_type -> com.entwico.rootpuller.video.GenerateVideoRequest
+	4,  // 16: com.entwico.rootpuller.video.VideoGeneratorService.GenerateTalkingVideo:input_type -> com.entwico.rootpuller.video.GenerateTalkingVideoRequest
+	3,  // 17: com.entwico.rootpuller.video.VideoGeneratorService.GenerateVideo:output_type -> com.entwico.rootpuller.video.GenerateVideoResponse
+	5,  // 18: com.entwico.rootpuller.video.VideoGeneratorService.GenerateTalkingVideo:output_type -> com.entwico.rootpuller.video.GenerateTalkingVideoResponse
+	17, // [17:19] is the sub-list for method output_type
+	15, // [15:17] is the sub-list for method input_type
+	15, // [15:15] is the sub-list for extension type_name
+	15, // [15:15] is the sub-list for extension extendee
+	0,  // [0:15] is the sub-list for field type_name
 }
 
 func init() { file_com_entwico_rootpuller_video_video_proto_init() }
@@ -1070,7 +1161,7 @@ func file_com_entwico_rootpuller_video_video_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_com_entwico_rootpuller_video_video_proto_rawDesc), len(file_com_entwico_rootpuller_video_video_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   8,
+			NumMessages:   9,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

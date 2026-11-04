@@ -51,9 +51,9 @@ type VideoGeneratorServiceClient interface {
 	GenerateVideo(context.Context) *connect.BidiStreamForClient[video.GenerateVideoRequest, video.GenerateVideoResponse]
 	// Renders a talking-head video from a portrait and a voice track. The
 	// client streams params first, then the portrait chunks, then the audio
-	// chunks, and half-closes. The server streams progress, then exactly one
-	// metadata frame, then the video as FileChunks named "video_0.mp4". The
-	// video carries the voice track unchanged.
+	// chunks (unless params carry speech), and half-closes. The server streams
+	// progress, then exactly one metadata frame, then the video as FileChunks
+	// named "video_0.mp4". The video carries the voice track unchanged.
 	GenerateTalkingVideo(context.Context) *connect.BidiStreamForClient[video.GenerateTalkingVideoRequest, video.GenerateTalkingVideoResponse]
 }
 
@@ -111,9 +111,9 @@ type VideoGeneratorServiceHandler interface {
 	GenerateVideo(context.Context, *connect.BidiStream[video.GenerateVideoRequest, video.GenerateVideoResponse]) error
 	// Renders a talking-head video from a portrait and a voice track. The
 	// client streams params first, then the portrait chunks, then the audio
-	// chunks, and half-closes. The server streams progress, then exactly one
-	// metadata frame, then the video as FileChunks named "video_0.mp4". The
-	// video carries the voice track unchanged.
+	// chunks (unless params carry speech), and half-closes. The server streams
+	// progress, then exactly one metadata frame, then the video as FileChunks
+	// named "video_0.mp4". The video carries the voice track unchanged.
 	GenerateTalkingVideo(context.Context, *connect.BidiStream[video.GenerateTalkingVideoRequest, video.GenerateTalkingVideoResponse]) error
 }
 
