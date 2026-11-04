@@ -42,6 +42,9 @@ const (
 	// ImagePainterServiceOutpaintImageProcedure is the fully-qualified name of the
 	// ImagePainterService's OutpaintImage RPC.
 	ImagePainterServiceOutpaintImageProcedure = "/com.entwico.rootpuller.painter.ImagePainterService/OutpaintImage"
+	// ImagePainterServiceRefineFacesProcedure is the fully-qualified name of the ImagePainterService's
+	// RefineFaces RPC.
+	ImagePainterServiceRefineFacesProcedure = "/com.entwico.rootpuller.painter.ImagePainterService/RefineFaces"
 )
 
 // ImagePainterServiceClient is a client for the com.entwico.rootpuller.painter.ImagePainterService
@@ -50,6 +53,7 @@ type ImagePainterServiceClient interface {
 	GenerateImage(context.Context) *connect.BidiStreamForClient[painter.GenerateImageRequest, painter.GenerateImageResponse]
 	EditImage(context.Context) *connect.BidiStreamForClient[painter.EditImageRequest, painter.EditImageResponse]
 	OutpaintImage(context.Context) *connect.BidiStreamForClient[painter.OutpaintImageRequest, painter.OutpaintImageResponse]
+	RefineFaces(context.Context) *connect.BidiStreamForClient[painter.RefineFacesRequest, painter.RefineFacesResponse]
 }
 
 // NewImagePainterServiceClient constructs a client for the
@@ -82,6 +86,12 @@ func NewImagePainterServiceClient(httpClient connect.HTTPClient, baseURL string,
 			connect.WithSchema(imagePainterServiceMethods.ByName("OutpaintImage")),
 			connect.WithClientOptions(opts...),
 		),
+		refineFaces: connect.NewClient[painter.RefineFacesRequest, painter.RefineFacesResponse](
+			httpClient,
+			baseURL+ImagePainterServiceRefineFacesProcedure,
+			connect.WithSchema(imagePainterServiceMethods.ByName("RefineFaces")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -90,6 +100,7 @@ type imagePainterServiceClient struct {
 	generateImage *connect.Client[painter.GenerateImageRequest, painter.GenerateImageResponse]
 	editImage     *connect.Client[painter.EditImageRequest, painter.EditImageResponse]
 	outpaintImage *connect.Client[painter.OutpaintImageRequest, painter.OutpaintImageResponse]
+	refineFaces   *connect.Client[painter.RefineFacesRequest, painter.RefineFacesResponse]
 }
 
 // GenerateImage calls com.entwico.rootpuller.painter.ImagePainterService.GenerateImage.
@@ -107,12 +118,18 @@ func (c *imagePainterServiceClient) OutpaintImage(ctx context.Context) *connect.
 	return c.outpaintImage.CallBidiStream(ctx)
 }
 
+// RefineFaces calls com.entwico.rootpuller.painter.ImagePainterService.RefineFaces.
+func (c *imagePainterServiceClient) RefineFaces(ctx context.Context) *connect.BidiStreamForClient[painter.RefineFacesRequest, painter.RefineFacesResponse] {
+	return c.refineFaces.CallBidiStream(ctx)
+}
+
 // ImagePainterServiceHandler is an implementation of the
 // com.entwico.rootpuller.painter.ImagePainterService service.
 type ImagePainterServiceHandler interface {
 	GenerateImage(context.Context, *connect.BidiStream[painter.GenerateImageRequest, painter.GenerateImageResponse]) error
 	EditImage(context.Context, *connect.BidiStream[painter.EditImageRequest, painter.EditImageResponse]) error
 	OutpaintImage(context.Context, *connect.BidiStream[painter.OutpaintImageRequest, painter.OutpaintImageResponse]) error
+	RefineFaces(context.Context, *connect.BidiStream[painter.RefineFacesRequest, painter.RefineFacesResponse]) error
 }
 
 // NewImagePainterServiceHandler builds an HTTP handler from the service implementation. It returns
@@ -140,6 +157,12 @@ func NewImagePainterServiceHandler(svc ImagePainterServiceHandler, opts ...conne
 		connect.WithSchema(imagePainterServiceMethods.ByName("OutpaintImage")),
 		connect.WithHandlerOptions(opts...),
 	)
+	imagePainterServiceRefineFacesHandler := connect.NewBidiStreamHandler(
+		ImagePainterServiceRefineFacesProcedure,
+		svc.RefineFaces,
+		connect.WithSchema(imagePainterServiceMethods.ByName("RefineFaces")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/com.entwico.rootpuller.painter.ImagePainterService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case ImagePainterServiceGenerateImageProcedure:
@@ -148,6 +171,8 @@ func NewImagePainterServiceHandler(svc ImagePainterServiceHandler, opts ...conne
 			imagePainterServiceEditImageHandler.ServeHTTP(w, r)
 		case ImagePainterServiceOutpaintImageProcedure:
 			imagePainterServiceOutpaintImageHandler.ServeHTTP(w, r)
+		case ImagePainterServiceRefineFacesProcedure:
+			imagePainterServiceRefineFacesHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -167,4 +192,8 @@ func (UnimplementedImagePainterServiceHandler) EditImage(context.Context, *conne
 
 func (UnimplementedImagePainterServiceHandler) OutpaintImage(context.Context, *connect.BidiStream[painter.OutpaintImageRequest, painter.OutpaintImageResponse]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("com.entwico.rootpuller.painter.ImagePainterService.OutpaintImage is not implemented"))
+}
+
+func (UnimplementedImagePainterServiceHandler) RefineFaces(context.Context, *connect.BidiStream[painter.RefineFacesRequest, painter.RefineFacesResponse]) error {
+	return connect.NewError(connect.CodeUnimplemented, errors.New("com.entwico.rootpuller.painter.ImagePainterService.RefineFaces is not implemented"))
 }

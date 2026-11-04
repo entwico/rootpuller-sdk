@@ -693,6 +693,93 @@ func (o *EditOptions) toProto(prompt string) (*painterpb.EditImageRequest_Params
 	return msg, nil
 }
 
+// Region is a rectangle in normalised image coordinates: X/Y is the top-left
+// corner, all values 0-1 relative to the image's width and height.
+type Region struct {
+	X      float64
+	Y      float64
+	Width  float64
+	Height float64
+}
+
+func regionsToProto(in []Region) []*painterpb.NormalizedRegion {
+	if len(in) == 0 {
+		return nil
+	}
+
+	out := make([]*painterpb.NormalizedRegion, len(in))
+	for i, r := range in {
+		out[i] = &painterpb.NormalizedRegion{
+			X: float32(r.X), Y: float32(r.Y), Width: float32(r.Width), Height: float32(r.Height),
+		}
+	}
+
+	return out
+}
+
+func regionsFromProto(in []*painterpb.NormalizedRegion) []Region {
+	if len(in) == 0 {
+		return nil
+	}
+
+	out := make([]Region, len(in))
+	for i, r := range in {
+		out[i] = Region{
+			X: float64(r.GetX()), Y: float64(r.GetY()), Width: float64(r.GetWidth()), Height: float64(r.GetHeight()),
+		}
+	}
+
+	return out
+}
+
+// RefineFacesOptions tunes a RefineFaces call. Backend is required.
+type RefineFacesOptions struct {
+	// Backend must be RefineFacesComfy; anything else fails locally with
+	// InvalidArgument.
+	Backend Backend
+	// References are identity sources, e.g. a close-up portrait of the same
+	// person, at most 3. The redrawn faces match their facial structure, eye
+	// colour and small marks.
+	References []rootpullersdk.Upload
+	// SearchRegions restrict detection to faces centred in one of them.
+	// Default: the whole image.
+	SearchRegions []Region
+	// FaceBoxes skip detection and refine exactly these faces; use them for
+	// strong profiles or stylised faces detection misses. SearchRegions,
+	// MinFaceSize and MaxFaces are then ignored.
+	FaceBoxes []Region
+	// MinFaceSize is the smallest detected face side in pixels, at least 16.
+	// Default: 24.
+	MinFaceSize *int
+	// MaxFaces refines at most this many faces, largest first. Default: 4,
+	// max 8.
+	MaxFaces *int
+	// OnProgress, when set, receives progress frames as the server
+	// reports them. Called synchronously from the receive loop.
+	OnProgress func(Progress)
+}
+
+func (o *RefineFacesOptions) toProto(prompt string) (*painterpb.RefineFacesRequest_Params, error) {
+	b, ok := o.Backend.(RefineFacesComfy)
+	if !ok {
+		return nil, invalidArgument(fmt.Sprintf("RefineFacesOptions.Backend must be RefineFacesComfy, got %T", o.Backend))
+	}
+
+	comfy, err := b.toProto()
+	if err != nil {
+		return nil, err
+	}
+
+	return &painterpb.RefineFacesRequest_Params{
+		Prompt:        prompt,
+		Backend:       &painterpb.RefineFacesRequest_Params_Comfy{Comfy: comfy},
+		SearchRegions: regionsToProto(o.SearchRegions),
+		FaceBoxes:     regionsToProto(o.FaceBoxes),
+		MinFaceSize:   protoconv.Int32Ptr(o.MinFaceSize),
+		MaxFaces:      protoconv.Int32Ptr(o.MaxFaces),
+	}, nil
+}
+
 // Extend gives the number of pixels to add on each side of the input
 // image during Outpaint.
 type Extend struct {
@@ -837,6 +924,9 @@ type Metadata struct {
 	// had to be adjusted.
 	Notes []string
 	Usage rootpullersdk.Usage
+	// Faces are the face boxes RefineFaces refined, in normalised
+	// coordinates; empty for the other calls.
+	Faces []Region
 }
 
 func metadataFromProto(m *painterpb.GenerationMetadata) Metadata {
@@ -860,6 +950,7 @@ func metadataFromProto(m *painterpb.GenerationMetadata) Metadata {
 		Images:         images,
 		Notes:          m.GetNotes(),
 		Usage:          protoconv.FromProtoUsage(m.GetUsage()),
+		Faces:          regionsFromProto(m.GetFaces()),
 	}
 }
 

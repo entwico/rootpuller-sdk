@@ -66,7 +66,9 @@ func (s *Service) Generate(ctx context.Context, prompt string, opts *GenerateOpt
 
 	frames := streamio.Frames(
 		&painterpb.GenerateImageRequest{Request: &painterpb.GenerateImageRequest_Params_{Params: params}},
-		referenceFrames(opts.References)...,
+		referenceFrames(opts.References, func(chunk *commonpb.FileChunk) *painterpb.GenerateImageRequest {
+			return &painterpb.GenerateImageRequest{Request: &painterpb.GenerateImageRequest_ReferenceImage{ReferenceImage: chunk}}
+		})...,
 	)
 
 	var (
@@ -206,17 +208,82 @@ func (s *Service) Outpaint(ctx context.Context, prompt string, image rootpullers
 	return buildResult(&collector, meta)
 }
 
+// RefineFaces redraws the faces in image at high resolution and blends them
+// back, leaving every other pixel unchanged; the result has image's size.
+// The prompt is optional extra guidance (e.g. skin texture) and may be
+// empty. Faces are detected unless opts.FaceBoxes are given; when none is
+// found the call fails with FailedPrecondition. opts and opts.Backend are
+// required: RefineFacesComfy is the only backend.
+func (s *Service) RefineFaces(
+	ctx context.Context,
+	prompt string,
+	image rootpullersdk.Upload,
+	opts *RefineFacesOptions,
+) (*Result, error) {
+	if opts == nil {
+		opts = &RefineFacesOptions{}
+	}
+
+	params, err := opts.toProto(prompt)
+	if err != nil {
+		return nil, err
+	}
+
+	ctx = transport.EnsureComfyUIDeployment(ctx, s.comfyUIDeployment)
+	procedure := painterconnect.ImagePainterServiceRefineFacesProcedure
+	stream := s.rpc.RefineFaces(ctx)
+
+	tails := append(
+		[]iter.Seq2[*painterpb.RefineFacesRequest, error]{
+			streamio.FileChunkFrames(image, func(chunk *commonpb.FileChunk) *painterpb.RefineFacesRequest {
+				return &painterpb.RefineFacesRequest{Request: &painterpb.RefineFacesRequest_InputImage{InputImage: chunk}}
+			}),
+		},
+		referenceFrames(opts.References, func(chunk *commonpb.FileChunk) *painterpb.RefineFacesRequest {
+			return &painterpb.RefineFacesRequest{Request: &painterpb.RefineFacesRequest_ReferenceImage{ReferenceImage: chunk}}
+		})...,
+	)
+
+	frames := streamio.Frames(
+		&painterpb.RefineFacesRequest{Request: &painterpb.RefineFacesRequest_Params_{Params: params}},
+		tails...,
+	)
+
+	var (
+		collector streamio.FileCollector
+		meta      Metadata
+	)
+
+	err = streamio.UploadCollect(stream, procedure, frames, func(resp *painterpb.RefineFacesResponse) error {
+		switch r := resp.GetResponse().(type) {
+		case *painterpb.RefineFacesResponse_Progress:
+			if opts.OnProgress != nil {
+				opts.OnProgress(progressFromProto(r.Progress))
+			}
+		case *painterpb.RefineFacesResponse_Metadata:
+			meta = metadataFromProto(r.Metadata)
+		case *painterpb.RefineFacesResponse_File:
+			collector.Add(r.File)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return buildResult(&collector, meta)
+}
+
 // referenceFrames streams each reference as its own named file. The server
 // starts a new reference whenever the chunk name changes, so names are made
 // unique by position: two uploads both called "photo.jpg" stay two images.
-func referenceFrames(refs []rootpullersdk.Upload) []iter.Seq2[*painterpb.GenerateImageRequest, error] {
-	frames := make([]iter.Seq2[*painterpb.GenerateImageRequest, error], 0, len(refs))
+func referenceFrames[R any](refs []rootpullersdk.Upload, wrap func(*commonpb.FileChunk) *R) []iter.Seq2[*R, error] {
+	frames := make([]iter.Seq2[*R, error], 0, len(refs))
 
 	for i, ref := range refs {
 		ref.Name = fmt.Sprintf("ref_%d_%s", i+1, ref.Name)
-		frames = append(frames, streamio.FileChunkFrames(ref, func(chunk *commonpb.FileChunk) *painterpb.GenerateImageRequest {
-			return &painterpb.GenerateImageRequest{Request: &painterpb.GenerateImageRequest_ReferenceImage{ReferenceImage: chunk}}
-		}))
+		frames = append(frames, streamio.FileChunkFrames(ref, wrap))
 	}
 
 	return frames

@@ -7,7 +7,8 @@ options. You never see the ComfyUI behind it: there are no workflows, node IDs
 or file names in the API.
 
 You need `github.com/entwico/rootpuller-sdk` v0.7.0 or later and rootpuller-api
-v3.4.0 or later.
+v3.4.0 or later; `RefineFaces` needs the releases after SDK v0.8.0 and
+rootpuller-api v3.5.0.
 
 ## Which model for what
 
@@ -22,6 +23,8 @@ Rules of thumb:
 - **Something that has to look like a real thing you have a picture of?** Use
   Qwen with references.
 - **Changing an image you already have?** Use Qwen through `Edit`.
+- **A small face in a bigger picture is soft or drifts from the person?** Use
+  Qwen through `RefineFaces`.
 - **A new picture from words only?** Use MOSS. Try Krea first if you are
   still trying out prompts.
 - **Need a transparent background, a mask-based edit, or outpainting?** Use
@@ -159,6 +162,59 @@ Keep everything else exactly the same.`,
   change, describe it in the prompt and say what must stay the same.
 - `OutpaintImage` has no comfy backend.
 
+## Refine small faces (Qwen)
+
+`RefineFaces` is a face detailer. Use it when a face is small in the picture,
+for example the full-body panel of a character sheet, and comes out soft or
+not quite like the person. For each face the server:
+
+1. finds the face (or takes your box),
+2. crops it with room for the hairline and jaw,
+3. redraws the crop at about 1024 px with Qwen, matching your reference
+   images,
+4. moves the redrawn face onto the original's position and size,
+5. blends it back through a soft round mask with matched colours.
+
+Nothing outside that mask changes, and the output has the input's size.
+
+```go
+sheet, _ := os.Open("sheet.png")      // full body left, close-ups right
+portrait, _ := os.Open("portrait.png") // the frontal close-up, cropped
+
+res, err := p.RefineFaces(ctx, "", // the prompt is optional
+    rootpullersdk.Upload{Name: "sheet.png", MIMEType: "image/png", Content: sheet},
+    &painter.RefineFacesOptions{
+        Backend:       painter.RefineFacesComfy{Model: painter.ComfyModelQwenImage, NumberOfImages: new(2)},
+        References:    []rootpullersdk.Upload{{Name: "portrait.png", MIMEType: "image/png", Content: portrait}},
+        SearchRegions: []painter.Region{{X: 0, Y: 0, Width: 1.0 / 3, Height: 1}}, // the left panel only
+    })
+// res.Metadata.Faces: the refined face boxes, normalised to 0–1.
+```
+
+- **References carry the identity.** Pass one to three close-ups of the same
+  person. The redrawn face takes their facial structure, eye colour and small
+  marks such as freckles or a nose stud. Without references the face keeps
+  its own look, cleaned up.
+- **The face keeps its pixel size.** A 60 px face is still 60 px wide in the
+  output. What changes is that the face is clean, consistent with the
+  references and free of mush. Detail finer than a pixel (single eyelashes)
+  cannot appear at that size.
+- **Detection** finds upright faces from about 24 px (`MinFaceSize`, at least 16), largest
+  first, at most 4 (`MaxFaces`, max 8). It misses strong profiles. For those,
+  pass `FaceBoxes` with the face's box. Detection is then skipped.
+- **No face found** fails with `FailedPrecondition`. You never get an
+  unchanged image back by accident.
+- **Variants** (`NumberOfImages`, 1–4) refine the same faces with seed + i and
+  differ only in the faces. The seeds come back in `ImageMetadata.Seed`.
+- **`Denoise`** defaults to 1, a full redraw guided by the crop. Lower values
+  start from the crop itself and keep its blur, so they rarely help.
+- **Time:** about a minute per face per image on our GPU, plus queue time.
+- **Inputs** are limited to 16 megapixels (e.g. 4096×4096).
+- **PNG output** keeps every pixel outside the faces bit-identical for 8-bit
+  inputs, translucent ones included; alpha is never changed. A 16-bit input
+  comes back as 8-bit. JPEG re-encodes the
+  whole image.
+
 ## Queueing and progress
 
 A ComfyUI deployment runs one job at a time. Jobs from all callers wait in its
@@ -214,7 +270,8 @@ false, so a call never comes back with a blocked image.
 
 | Code | When |
 |---|---|
-| `InvalidArgument` | missing `Model`; references with a text-only model or more than 7; `Edit` with MOSS or Krea; a mask with `EditComfy`; a size that is not a multiple of 16 or outside 256–2048; `NumberOfImages` outside 1–4; an input that is not a PNG, JPEG or WebP image |
+| `InvalidArgument` | missing `Model`; references with a text-only model or more than 7; `Edit` or `RefineFaces` with MOSS or Krea; more than 3 `RefineFaces` references; regions outside 0–1; a mask with `EditComfy`; a size that is not a multiple of 16 or outside 256–2048; `NumberOfImages` outside 1–4; an input that is not a PNG, JPEG or WebP image |
+| `FailedPrecondition` | `RefineFaces` found no face (try `FaceBoxes`, a lower `MinFaceSize`, or wider `SearchRegions`) |
 | `NotFound` | the deployment named in the header is not configured, or that deployment does not serve the model. The message lists the models it does serve |
 | `Unavailable` | the comfy backend is not configured on this rootpuller-api, the deployment cannot be reached, or a job ran longer than 20 minutes per image |
 | `Canceled`, `DeadlineExceeded` | your context ended. The jobs were removed from the deployment |
@@ -224,6 +281,8 @@ false, so a call never comes back with a blocked image.
 `rootpullertest` fakes the painter service. `GenerateRequestFunc` gives you the
 decoded request, including the reference images in order and the
 `comfyui-deployment` header, so you can assert on them without a GPU.
+`RefineFacesFunc` does the same for `RefineFaces`, and `Metadata.Faces` sets
+the face boxes the fake reports.
 
 ## Trying it in the showroom
 

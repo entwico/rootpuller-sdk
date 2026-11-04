@@ -8,7 +8,8 @@ import (
 // Models the server runs on its ComfyUI deployments. A deployment serves a
 // subset; asking for a model it does not serve fails with NotFound.
 const (
-	// ComfyModelQwenImage takes up to 7 reference images and supports Edit.
+	// ComfyModelQwenImage takes up to 7 reference images and supports Edit
+	// and RefineFaces.
 	ComfyModelQwenImage = "qwen-image-2.1"
 	// ComfyModelMOSSImage is text-only and renders readable text well.
 	ComfyModelMOSSImage = "moss-image"
@@ -109,4 +110,51 @@ func (b EditComfy) toProto() (*painterpb.EditImageRequest_Comfy, error) {
 		Height:         protoconv.Int32Ptr(b.Height),
 		OutputFormat:   format,
 	}, nil
+}
+
+// RefineFacesComfy selects the comfy backend for RefineFaces, the only
+// backend that refines faces. Only models that support editing accept it
+// (ComfyModelQwenImage).
+type RefineFacesComfy struct {
+	// Model is required, e.g. ComfyModelQwenImage.
+	Model string
+	// NumberOfImages is 1-4. Default: 1. Image i refines the same faces with
+	// Seed + i, so the images differ only in the faces.
+	NumberOfImages *int
+	Seed           *int64
+	OutputFormat   ComfyOutputFormat
+	// Denoise is how much of each face crop is redrawn, (0, 1]. Default: 1, a
+	// full redraw guided by the crop and the references; this is what adds
+	// detail. Lower values keep more of the crop, including its blur.
+	Denoise *float64
+	// WorkingResolution is the side in pixels each face crop is redrawn at,
+	// 512-2048. Default: 1024. A larger crop keeps its own size, up to 2048.
+	WorkingResolution *int
+}
+
+func (RefineFacesComfy) isBackend() {}
+
+func (b RefineFacesComfy) toProto() (*painterpb.RefineFacesRequest_Comfy, error) {
+	if b.Model == "" {
+		return nil, invalidArgument("RefineFacesComfy.Model is required")
+	}
+
+	format, err := enumToProto(comfyOutputFormatToProto, b.OutputFormat, "output format")
+	if err != nil {
+		return nil, err
+	}
+
+	out := &painterpb.RefineFacesRequest_Comfy{
+		Model:             b.Model,
+		NumberOfImages:    protoconv.Int32Ptr(b.NumberOfImages),
+		Seed:              b.Seed,
+		OutputFormat:      format,
+		WorkingResolution: protoconv.Int32Ptr(b.WorkingResolution),
+	}
+
+	if b.Denoise != nil {
+		out.Denoise = new(float32(*b.Denoise))
+	}
+
+	return out, nil
 }

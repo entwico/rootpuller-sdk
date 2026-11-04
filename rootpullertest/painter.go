@@ -36,8 +36,12 @@ type Painter struct {
 	GenerateRequestFunc func(req GenerateRequest) ([]rootpullersdk.File, error)
 	EditFunc            func(prompt string, image rootpullersdk.File, mask *rootpullersdk.File) ([]rootpullersdk.File, error)
 	OutpaintFunc        func(prompt string, image rootpullersdk.File) ([]rootpullersdk.File, error)
-	Metadata            *painter.Metadata
-	Progress            []painter.Progress
+	// RefineFacesFunc sees the whole RefineFaces request; RefineFaces
+	// accepts input_image chunks only after params and reference_image
+	// chunks only after the input.
+	RefineFacesFunc func(req RefineFacesRequest) ([]rootpullersdk.File, error)
+	Metadata        *painter.Metadata
+	Progress        []painter.Progress
 }
 
 func (f *Painter) register(mux *http.ServeMux) {
@@ -55,6 +59,9 @@ var (
 	errInputImageAfterMask  = errors.New("input_image frame after mask_image")
 	errMaskImageBeforeInput = errors.New("mask_image frame before input_image")
 	errMissingInputImage    = errors.New("missing input_image")
+
+	errInputImageAfterReference = errors.New("input_image frame after reference_image")
+	errReferenceBeforeInput     = errors.New("reference_image frame before input_image")
 )
 
 // appendChunk validates one incoming FileChunk and folds it into f.
@@ -82,6 +89,17 @@ type GenerateRequest struct {
 	Backend           string
 	Model             string
 	References        []rootpullersdk.File
+	ComfyUIDeployment string
+}
+
+// RefineFacesRequest is what a RefineFaces call sent, in facade types.
+type RefineFacesRequest struct {
+	Prompt            string
+	Model             string
+	Image             rootpullersdk.File
+	References        []rootpullersdk.File
+	SearchRegions     []painter.Region
+	FaceBoxes         []painter.Region
 	ComfyUIDeployment string
 }
 
@@ -261,6 +279,139 @@ func (h *painterHandler) EditImage(_ context.Context, stream *connect.BidiStream
 		},
 		stream.Send,
 	)
+}
+
+func (h *painterHandler) RefineFaces(_ context.Context, stream *connect.BidiStream[painterpb.RefineFacesRequest, painterpb.RefineFacesResponse]) error {
+	// like the real server: drain the full request before any work.
+	req, err := receiveRefineFacesRequest(stream)
+	if err != nil {
+		return err
+	}
+
+	refine := h.fake.RefineFacesFunc
+	if refine == nil {
+		refine = func(RefineFacesRequest) ([]rootpullersdk.File, error) { return cannedPainterImages(), nil }
+	}
+
+	files, err := refine(req)
+	if err != nil {
+		return err
+	}
+
+	return painterRespond(h.fake, files,
+		func(m *painterpb.GenerationProgress) *painterpb.RefineFacesResponse {
+			return &painterpb.RefineFacesResponse{Response: &painterpb.RefineFacesResponse_Progress{Progress: m}}
+		},
+		func(m *painterpb.GenerationMetadata) *painterpb.RefineFacesResponse {
+			return &painterpb.RefineFacesResponse{Response: &painterpb.RefineFacesResponse_Metadata{Metadata: m}}
+		},
+		func(c *commonpb.FileChunk) *painterpb.RefineFacesResponse {
+			return &painterpb.RefineFacesResponse{Response: &painterpb.RefineFacesResponse_File{File: c}}
+		},
+		stream.Send,
+	)
+}
+
+func receiveRefineFacesRequest(
+	stream *connect.BidiStream[painterpb.RefineFacesRequest, painterpb.RefineFacesResponse],
+) (RefineFacesRequest, error) {
+	var (
+		params      *painterpb.RefineFacesRequest_Params
+		req         RefineFacesRequest
+		inputChunks int
+	)
+
+	for {
+		msg, err := stream.Receive()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+
+		if err != nil {
+			return req, err
+		}
+
+		switch r := msg.GetRequest().(type) {
+		case *painterpb.RefineFacesRequest_Params_:
+			if params != nil {
+				return req, invalidArgument(errDuplicateParamsFrame)
+			}
+
+			params = r.Params
+		case *painterpb.RefineFacesRequest_InputImage:
+			if err := checkRefineInput(params, len(req.References)); err != nil {
+				return req, err
+			}
+
+			if err := appendChunk(&req.Image, r.InputImage); err != nil {
+				return req, err
+			}
+
+			inputChunks++
+		case *painterpb.RefineFacesRequest_ReferenceImage:
+			if inputChunks == 0 {
+				return req, invalidArgument(errReferenceBeforeInput)
+			}
+
+			if err := appendReferenceChunk(&req.References, r.ReferenceImage); err != nil {
+				return req, err
+			}
+		default:
+			return req, invalidArgument(errUnexpectedVariant)
+		}
+	}
+
+	switch {
+	case params == nil:
+		return req, invalidArgument(errMissingParams)
+	case inputChunks == 0:
+		return req, invalidArgument(errMissingInputImage)
+	}
+
+	req.Prompt = params.GetPrompt()
+	req.Model = params.GetComfy().GetModel()
+	req.SearchRegions = fakeRegions(params.GetSearchRegions())
+	req.FaceBoxes = fakeRegions(params.GetFaceBoxes())
+	req.ComfyUIDeployment = stream.RequestHeader().Get("Comfyui-Deployment")
+
+	return req, nil
+}
+
+func checkRefineInput(params *painterpb.RefineFacesRequest_Params, references int) error {
+	if params == nil {
+		return errBeforeParams("input_image")
+	}
+
+	if references > 0 {
+		return invalidArgument(errInputImageAfterReference)
+	}
+
+	return nil
+}
+
+// appendReferenceChunk folds a chunk into the current reference; a new chunk
+// name starts the next one, as on the real server.
+func appendReferenceChunk(refs *[]rootpullersdk.File, chunk *commonpb.FileChunk) error {
+	if len(*refs) == 0 || chunk.GetName() != (*refs)[len(*refs)-1].Name {
+		*refs = append(*refs, rootpullersdk.File{})
+	}
+
+	return appendChunk(&(*refs)[len(*refs)-1], chunk)
+}
+
+func fakeRegions(in []*painterpb.NormalizedRegion) []painter.Region {
+	if len(in) == 0 {
+		return nil
+	}
+
+	out := make([]painter.Region, len(in))
+	for i, r := range in {
+		out[i] = painter.Region{
+			X: float64(r.GetX()), Y: float64(r.GetY()), Width: float64(r.GetWidth()), Height: float64(r.GetHeight()),
+		}
+	}
+
+	return out
 }
 
 func (h *painterHandler) OutpaintImage(_ context.Context, stream *connect.BidiStream[painterpb.OutpaintImageRequest, painterpb.OutpaintImageResponse]) error {
@@ -463,6 +614,13 @@ func painterMetadataToProto(m *painter.Metadata, files []rootpullersdk.File) *pa
 		Images:           images,
 		Notes:            m.Notes,
 	}
+
+	for _, r := range m.Faces {
+		msg.Faces = append(msg.Faces, &painterpb.NormalizedRegion{
+			X: float32(r.X), Y: float32(r.Y), Width: float32(r.Width), Height: float32(r.Height),
+		})
+	}
+
 	if m.Usage != (rootpullersdk.Usage{}) {
 		msg.Usage = &commonpb.Usage{
 			InputTokens:             int32(m.Usage.InputTokens),       //nolint:gosec // test-fixture token counts fit int32
