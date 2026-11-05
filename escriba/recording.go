@@ -47,7 +47,6 @@ func (s *Service) TranscribeRecording(
 
 	ctx = transport.EnsureEscribaDeployment(ctx, s.deployment)
 	procedure := escribaconnect.TranscriptionServiceTranscribeRecordingProcedure
-	stream := s.rpc.TranscribeRecording(ctx)
 
 	frames := streamio.Frames(
 		&escribapb.TranscribeRecordingRequest{
@@ -65,7 +64,7 @@ func (s *Service) TranscribeRecording(
 		complete  bool
 	)
 
-	err = streamio.UploadCollect(stream, procedure, frames, func(resp *escribapb.TranscribeRecordingResponse) error {
+	err = streamio.UploadCollect(ctx, s.rpc.TranscribeRecording, procedure, frames, func(resp *escribapb.TranscribeRecordingResponse) error {
 		switch event := resp.GetEvent().(type) {
 		case *escribapb.TranscribeRecordingResponse_Progress:
 			if opts.OnProgress != nil {

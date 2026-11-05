@@ -300,7 +300,8 @@ func toProtoFormat(f rootpullersdk.ImageFormat) (*commonpb.ImageFormat, error) {
 // response frame into its oneof arms; at most one of the two returns is
 // non-nil.
 func collectResult[Req, Resp any](
-	stream *connect.BidiStreamForClient[Req, Resp],
+	ctx context.Context,
+	open func(context.Context) *connect.BidiStreamForClient[Req, Resp],
 	procedure string,
 	frames iter.Seq2[*Req, error],
 	extract func(*Resp) (*facefixerpb.RestoreMetadata, *commonpb.FileChunk),
@@ -310,7 +311,7 @@ func collectResult[Req, Resp any](
 		collector streamio.FileCollector
 	)
 
-	err := streamio.UploadCollect(stream, procedure, frames, func(resp *Resp) error {
+	err := streamio.UploadCollect(ctx, open, procedure, frames, func(resp *Resp) error {
 		m, f := extract(resp)
 		switch {
 		case m != nil:
@@ -351,7 +352,6 @@ func (s *Service) RestoreFace(ctx context.Context, image rootpullersdk.Upload, o
 	}
 
 	procedure := facefixerconnect.FaceFixerServiceRestoreFaceProcedure
-	stream := s.rpc.RestoreFace(ctx)
 
 	frames := streamio.Frames(
 		&facefixerpb.RestoreFaceRequest{Request: &facefixerpb.RestoreFaceRequest_Params_{Params: pb}},
@@ -360,7 +360,7 @@ func (s *Service) RestoreFace(ctx context.Context, image rootpullersdk.Upload, o
 		}),
 	)
 
-	return collectResult(stream, procedure, frames, func(resp *facefixerpb.RestoreFaceResponse) (*facefixerpb.RestoreMetadata, *commonpb.FileChunk) {
+	return collectResult(ctx, s.rpc.RestoreFace, procedure, frames, func(resp *facefixerpb.RestoreFaceResponse) (*facefixerpb.RestoreMetadata, *commonpb.FileChunk) {
 		return resp.GetMetadata(), resp.GetFile()
 	})
 }
@@ -379,7 +379,6 @@ func (s *Service) ColorizeFace(ctx context.Context, image rootpullersdk.Upload, 
 	}
 
 	procedure := facefixerconnect.FaceFixerServiceColorizeFaceProcedure
-	stream := s.rpc.ColorizeFace(ctx)
 
 	frames := streamio.Frames(
 		&facefixerpb.ColorizeFaceRequest{Request: &facefixerpb.ColorizeFaceRequest_Params_{Params: pb}},
@@ -388,7 +387,7 @@ func (s *Service) ColorizeFace(ctx context.Context, image rootpullersdk.Upload, 
 		}),
 	)
 
-	return collectResult(stream, procedure, frames, func(resp *facefixerpb.ColorizeFaceResponse) (*facefixerpb.RestoreMetadata, *commonpb.FileChunk) {
+	return collectResult(ctx, s.rpc.ColorizeFace, procedure, frames, func(resp *facefixerpb.ColorizeFaceResponse) (*facefixerpb.RestoreMetadata, *commonpb.FileChunk) {
 		return resp.GetMetadata(), resp.GetFile()
 	})
 }
@@ -408,7 +407,6 @@ func (s *Service) InpaintFace(ctx context.Context, image, mask rootpullersdk.Upl
 	}
 
 	procedure := facefixerconnect.FaceFixerServiceInpaintFaceProcedure
-	stream := s.rpc.InpaintFace(ctx)
 
 	frames := streamio.Frames(
 		&facefixerpb.InpaintFaceRequest{Request: &facefixerpb.InpaintFaceRequest_Params_{Params: pb}},
@@ -420,7 +418,7 @@ func (s *Service) InpaintFace(ctx context.Context, image, mask rootpullersdk.Upl
 		}),
 	)
 
-	return collectResult(stream, procedure, frames, func(resp *facefixerpb.InpaintFaceResponse) (*facefixerpb.RestoreMetadata, *commonpb.FileChunk) {
+	return collectResult(ctx, s.rpc.InpaintFace, procedure, frames, func(resp *facefixerpb.InpaintFaceResponse) (*facefixerpb.RestoreMetadata, *commonpb.FileChunk) {
 		return resp.GetMetadata(), resp.GetFile()
 	})
 }

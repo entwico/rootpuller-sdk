@@ -131,7 +131,6 @@ func (s *Service) UpscaleImage(ctx context.Context, image rootpullersdk.Upload, 
 	}
 
 	procedure := unshakalerconnect.UnshakalerServiceUpscaleImageProcedure
-	stream := s.rpc.UpscaleImage(ctx)
 
 	frames := streamio.Frames(
 		&unshakalerpb.UpscaleImageRequest{Request: &unshakalerpb.UpscaleImageRequest_Params_{Params: pb}},
@@ -142,7 +141,7 @@ func (s *Service) UpscaleImage(ctx context.Context, image rootpullersdk.Upload, 
 
 	var collector streamio.FileCollector
 
-	err = streamio.UploadCollect(stream, procedure, frames, func(resp *unshakalerpb.UpscaleImageResponse) error {
+	err = streamio.UploadCollect(ctx, s.rpc.UpscaleImage, procedure, frames, func(resp *unshakalerpb.UpscaleImageResponse) error {
 		switch r := resp.GetResponse().(type) {
 		case *unshakalerpb.UpscaleImageResponse_ProgressPercentage:
 			if opts.OnProgress != nil {

@@ -60,7 +60,6 @@ func (s *Service) TransformImage(ctx context.Context, image rootpullersdk.Upload
 	}
 
 	procedure := assetiaconnect.MediaProcessingServiceTransformImageProcedure
-	stream := s.rpc.TransformImage(ctx)
 
 	tails := []iter.Seq2[*assetiapb.TransformImageRequest, error]{
 		streamio.FileChunkFrames(image, func(chunk *commonpb.FileChunk) *assetiapb.TransformImageRequest {
@@ -83,7 +82,7 @@ func (s *Service) TransformImage(ctx context.Context, image rootpullersdk.Upload
 		res       TransformImageResult
 	)
 
-	err = streamio.UploadCollect(stream, procedure, frames, func(resp *assetiapb.TransformImageResponse) error {
+	err = streamio.UploadCollect(ctx, s.rpc.TransformImage, procedure, frames, func(resp *assetiapb.TransformImageResponse) error {
 		switch r := resp.GetResponse().(type) {
 		case *assetiapb.TransformImageResponse_Metadata:
 			res.Original = fromProtoImageMetadata(r.Metadata.GetOriginal())
@@ -129,7 +128,6 @@ func (s *Service) TransformVideo(ctx context.Context, video rootpullersdk.Upload
 	}
 
 	procedure := assetiaconnect.MediaProcessingServiceTransformVideoProcedure
-	stream := s.rpc.TransformVideo(ctx)
 
 	frames := streamio.Frames(
 		&assetiapb.TransformVideoRequest{Request: &assetiapb.TransformVideoRequest_Params_{Params: pb}},
@@ -143,7 +141,7 @@ func (s *Service) TransformVideo(ctx context.Context, video rootpullersdk.Upload
 		res       TransformVideoResult
 	)
 
-	err = streamio.UploadCollect(stream, procedure, frames, func(resp *assetiapb.TransformVideoResponse) error {
+	err = streamio.UploadCollect(ctx, s.rpc.TransformVideo, procedure, frames, func(resp *assetiapb.TransformVideoResponse) error {
 		switch r := resp.GetResponse().(type) {
 		case *assetiapb.TransformVideoResponse_Progress:
 			if opts.OnProgress != nil {
@@ -192,7 +190,6 @@ func (s *Service) GeneratePreview(ctx context.Context, media rootpullersdk.Uploa
 	}
 
 	procedure := assetiaconnect.MediaProcessingServiceGeneratePreviewProcedure
-	stream := s.rpc.GeneratePreview(ctx)
 
 	frames := streamio.Frames(
 		&assetiapb.GeneratePreviewRequest{Request: &assetiapb.GeneratePreviewRequest_Params_{Params: pb}},
@@ -206,7 +203,7 @@ func (s *Service) GeneratePreview(ctx context.Context, media rootpullersdk.Uploa
 		res       PreviewResult
 	)
 
-	err = streamio.UploadCollect(stream, procedure, frames, func(resp *assetiapb.GeneratePreviewResponse) error {
+	err = streamio.UploadCollect(ctx, s.rpc.GeneratePreview, procedure, frames, func(resp *assetiapb.GeneratePreviewResponse) error {
 		switch r := resp.GetResponse().(type) {
 		case *assetiapb.GeneratePreviewResponse_Metadata:
 			res.Source = fromProtoMediaMetadata(r.Metadata.GetSource())

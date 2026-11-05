@@ -62,7 +62,6 @@ func (s *Service) Generate(ctx context.Context, prompt string, opts *GenerateOpt
 
 	ctx = transport.EnsureComfyUIDeployment(ctx, s.comfyUIDeployment)
 	procedure := painterconnect.ImagePainterServiceGenerateImageProcedure
-	stream := s.rpc.GenerateImage(ctx)
 
 	frames := streamio.Frames(
 		&painterpb.GenerateImageRequest{Request: &painterpb.GenerateImageRequest_Params_{Params: params}},
@@ -76,7 +75,7 @@ func (s *Service) Generate(ctx context.Context, prompt string, opts *GenerateOpt
 		meta      Metadata
 	)
 
-	err = streamio.UploadCollect(stream, procedure, frames, func(resp *painterpb.GenerateImageResponse) error {
+	err = streamio.UploadCollect(ctx, s.rpc.GenerateImage, procedure, frames, func(resp *painterpb.GenerateImageResponse) error {
 		switch r := resp.GetResponse().(type) {
 		case *painterpb.GenerateImageResponse_Progress:
 			if opts.OnProgress != nil {
@@ -114,7 +113,6 @@ func (s *Service) Edit(ctx context.Context, prompt string, image rootpullersdk.U
 
 	ctx = transport.EnsureComfyUIDeployment(ctx, s.comfyUIDeployment)
 	procedure := painterconnect.ImagePainterServiceEditImageProcedure
-	stream := s.rpc.EditImage(ctx)
 
 	tails := []iter.Seq2[*painterpb.EditImageRequest, error]{
 		streamio.FileChunkFrames(image, func(chunk *commonpb.FileChunk) *painterpb.EditImageRequest {
@@ -137,7 +135,7 @@ func (s *Service) Edit(ctx context.Context, prompt string, image rootpullersdk.U
 		meta      Metadata
 	)
 
-	err = streamio.UploadCollect(stream, procedure, frames, func(resp *painterpb.EditImageResponse) error {
+	err = streamio.UploadCollect(ctx, s.rpc.EditImage, procedure, frames, func(resp *painterpb.EditImageResponse) error {
 		switch r := resp.GetResponse().(type) {
 		case *painterpb.EditImageResponse_Progress:
 			if opts.OnProgress != nil {
@@ -173,7 +171,6 @@ func (s *Service) Outpaint(ctx context.Context, prompt string, image rootpullers
 	}
 
 	procedure := painterconnect.ImagePainterServiceOutpaintImageProcedure
-	stream := s.rpc.OutpaintImage(ctx)
 
 	frames := streamio.Frames(
 		&painterpb.OutpaintImageRequest{Request: &painterpb.OutpaintImageRequest_Params_{Params: params}},
@@ -187,7 +184,7 @@ func (s *Service) Outpaint(ctx context.Context, prompt string, image rootpullers
 		meta      Metadata
 	)
 
-	err = streamio.UploadCollect(stream, procedure, frames, func(resp *painterpb.OutpaintImageResponse) error {
+	err = streamio.UploadCollect(ctx, s.rpc.OutpaintImage, procedure, frames, func(resp *painterpb.OutpaintImageResponse) error {
 		switch r := resp.GetResponse().(type) {
 		case *painterpb.OutpaintImageResponse_Progress:
 			if opts.OnProgress != nil {
@@ -231,7 +228,6 @@ func (s *Service) RefineFaces(
 
 	ctx = transport.EnsureComfyUIDeployment(ctx, s.comfyUIDeployment)
 	procedure := painterconnect.ImagePainterServiceRefineFacesProcedure
-	stream := s.rpc.RefineFaces(ctx)
 
 	tails := append(
 		[]iter.Seq2[*painterpb.RefineFacesRequest, error]{
@@ -254,7 +250,7 @@ func (s *Service) RefineFaces(
 		meta      Metadata
 	)
 
-	err = streamio.UploadCollect(stream, procedure, frames, func(resp *painterpb.RefineFacesResponse) error {
+	err = streamio.UploadCollect(ctx, s.rpc.RefineFaces, procedure, frames, func(resp *painterpb.RefineFacesResponse) error {
 		switch r := resp.GetResponse().(type) {
 		case *painterpb.RefineFacesResponse_Progress:
 			if opts.OnProgress != nil {

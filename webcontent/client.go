@@ -275,7 +275,6 @@ func (s *Service) ExtractContent(ctx context.Context, doc HTMLDocument, opts *Ex
 		sourceURL = &opts.SourceURL
 	}
 
-	stream := s.rpc.ExtractContent(ctx)
 	frames := extractFrames(jobs, sourceURL, kindPb, doc.Content)
 
 	result := &ExtractResult{}
@@ -284,7 +283,7 @@ func (s *Service) ExtractContent(ctx context.Context, doc HTMLDocument, opts *Ex
 
 	sawTerminal := false
 
-	err = streamio.UploadCollect(stream, procedure, frames, func(pb *webcontentpb.ExtractContentResponse) error {
+	err = streamio.UploadCollect(ctx, s.rpc.ExtractContent, procedure, frames, func(pb *webcontentpb.ExtractContentResponse) error {
 		switch m := pb.GetMessage().(type) {
 		case *webcontentpb.ExtractContentResponse_ExtractionMetadata:
 			meta := extractionMetadataFromProto(m.ExtractionMetadata)

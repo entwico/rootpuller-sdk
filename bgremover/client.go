@@ -163,7 +163,6 @@ func (s *Service) RemoveBackground(ctx context.Context, image rootpullersdk.Uplo
 	}
 
 	procedure := bgremoverconnect.BackgroundRemoverServiceRemoveBackgroundProcedure
-	stream := s.rpc.RemoveBackground(ctx)
 
 	frames := streamio.Frames(
 		&bgremoverpb.RemoveBackgroundRequest{Request: &bgremoverpb.RemoveBackgroundRequest_Params_{Params: pb}},
@@ -177,7 +176,7 @@ func (s *Service) RemoveBackground(ctx context.Context, image rootpullersdk.Uplo
 		collector streamio.FileCollector
 	)
 
-	err = streamio.UploadCollect(stream, procedure, frames, func(resp *bgremoverpb.RemoveBackgroundResponse) error {
+	err = streamio.UploadCollect(ctx, s.rpc.RemoveBackground, procedure, frames, func(resp *bgremoverpb.RemoveBackgroundResponse) error {
 		switch r := resp.GetResponse().(type) {
 		case *bgremoverpb.RemoveBackgroundResponse_Metadata:
 			meta = fromProtoMetadata(r.Metadata)

@@ -1,6 +1,7 @@
 package streamio
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -17,36 +18,68 @@ import (
 // content length the server declared.
 var errTruncated = errors.New("truncated")
 
-// UploadCollect drives an "options-first upload" bidi RPC: it sends every
-// frame, half-closes the send side, then feeds each response frame to
-// onFrame until the server ends the stream. The server does no work until
-// the half-close, so the CloseRequest-before-Receive ordering here is
-// load-bearing — this helper is the only place it lives.
+// UploadCollect drives an "options-first upload" bidi RPC: it opens the call
+// with open, sends every frame, half-closes the send side, then feeds each
+// response frame to onFrame until the server ends the stream. The server does
+// no work until the half-close, so the CloseRequest-before-Receive ordering
+// here is load-bearing — this helper is the only place it lives.
+//
+// An upload that fails part-way (a frame that cannot be read or sent) must
+// never end the request cleanly: the server would take the truncated upload
+// as complete and process it. The call is cancelled instead, which resets the
+// stream, and that is why the helper opens the call on a context it owns.
 func UploadCollect[Req, Resp any](
-	stream *connect.BidiStreamForClient[Req, Resp],
+	ctx context.Context,
+	open func(context.Context) *connect.BidiStreamForClient[Req, Resp],
 	procedure string,
 	frames iter.Seq2[*Req, error],
 	onFrame func(*Resp) error,
 ) error {
-	defer func() { _ = stream.CloseResponse() }()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	stream := open(ctx)
+	started := false
+
+	defer func() {
+		// closing the response of a request that never started blocks.
+		if started {
+			_ = stream.CloseResponse()
+		}
+	}()
 
 	for frame, err := range frames {
 		if err != nil {
-			_ = stream.CloseRequest()
+			cancel()
 
 			return err
 		}
 
-		if serr := stream.Send(frame); serr != nil {
-			// After a Send failure the definitive status comes from
-			// the receive side.
-			_ = stream.CloseRequest()
-			if _, rerr := stream.Receive(); rerr != nil && !errors.Is(rerr, io.EOF) {
-				return transport.WrapError(rerr, procedure)
-			}
+		serr := stream.Send(frame)
+		if serr == nil {
+			started = true
+
+			continue
+		}
+
+		if !errors.Is(serr, io.EOF) {
+			// the frame never went out (it would not marshal, the context
+			// ended): abandon the call rather than finish it short.
+			cancel()
 
 			return transport.WrapError(serr, procedure)
 		}
+
+		// io.EOF: the server already ended the call; its status comes from
+		// the receive side.
+		started = true
+		_ = stream.CloseRequest()
+
+		if _, rerr := stream.Receive(); rerr != nil && !errors.Is(rerr, io.EOF) {
+			return transport.WrapError(rerr, procedure)
+		}
+
+		return transport.WrapError(serr, procedure)
 	}
 
 	if err := stream.CloseRequest(); err != nil {

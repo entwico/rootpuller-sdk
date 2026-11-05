@@ -83,7 +83,6 @@ func (s *Service) Generate(ctx context.Context, prompt string, opts *GenerateOpt
 
 	ctx = transport.EnsureComfyUIDeployment(ctx, s.comfyUIDeployment)
 	procedure := videoconnect.VideoGeneratorServiceGenerateVideoProcedure
-	stream := s.rpc.GenerateVideo(ctx)
 
 	frames := streamio.Frames(
 		&videopb.GenerateVideoRequest{Request: &videopb.GenerateVideoRequest_Params_{Params: params}},
@@ -92,7 +91,7 @@ func (s *Service) Generate(ctx context.Context, prompt string, opts *GenerateOpt
 
 	var c collector
 
-	err = streamio.UploadCollect(stream, procedure, frames, func(resp *videopb.GenerateVideoResponse) error {
+	err = streamio.UploadCollect(ctx, s.rpc.GenerateVideo, procedure, frames, func(resp *videopb.GenerateVideoResponse) error {
 		c.add(resp.GetProgress(), resp.GetMetadata(), resp.GetFile(), opts.OnProgress)
 
 		return nil
@@ -160,7 +159,6 @@ func (s *Service) talk(
 ) (*Result, error) {
 	ctx = transport.EnsureComfyUIDeployment(ctx, s.comfyUIDeployment)
 	procedure := videoconnect.VideoGeneratorServiceGenerateTalkingVideoProcedure
-	stream := s.rpc.GenerateTalkingVideo(ctx)
 
 	tails := []iter.Seq2[*videopb.GenerateTalkingVideoRequest, error]{
 		streamio.FileChunkFrames(portrait, func(c *commonpb.FileChunk) *videopb.GenerateTalkingVideoRequest {
@@ -181,7 +179,7 @@ func (s *Service) talk(
 
 	var c collector
 
-	err := streamio.UploadCollect(stream, procedure, frames, func(resp *videopb.GenerateTalkingVideoResponse) error {
+	err := streamio.UploadCollect(ctx, s.rpc.GenerateTalkingVideo, procedure, frames, func(resp *videopb.GenerateTalkingVideoResponse) error {
 		c.add(resp.GetProgress(), resp.GetMetadata(), resp.GetFile(), onProgress)
 
 		return nil

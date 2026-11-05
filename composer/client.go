@@ -198,7 +198,6 @@ func (s *Service) Transcribe(ctx context.Context, audio rootpullersdk.Upload, op
 
 	ctx = transport.EnsureDeployment(ctx, s.deployment)
 	procedure := composerconnect.ComposerServiceTranscribeProcedure
-	stream := s.rpc.Transcribe(ctx)
 
 	frames := streamio.Frames(
 		&composerpb.TranscribeRequest{
@@ -215,7 +214,7 @@ func (s *Service) Transcribe(ctx context.Context, audio rootpullersdk.Upload, op
 
 	var result *Transcription
 
-	err := streamio.UploadCollect(stream, procedure, frames, func(resp *composerpb.TranscribeResponse) error {
+	err := streamio.UploadCollect(ctx, s.rpc.Transcribe, procedure, frames, func(resp *composerpb.TranscribeResponse) error {
 		switch event := resp.GetEvent().(type) {
 		case *composerpb.TranscribeResponse_Progress:
 			if opts.OnProgress != nil {

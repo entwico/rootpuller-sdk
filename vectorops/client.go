@@ -139,7 +139,6 @@ func (s *Service) ClusterHdbscan(ctx context.Context, points Matrix, opts *Hdbsc
 	}
 
 	procedure := vectoropsconnect.VectorOpsServiceClusterHdbscanProcedure
-	stream := s.rpc.ClusterHdbscan(ctx)
 
 	frames := streamio.Frames(
 		&vectoropspb.ClusterHdbscanRequest{Request: &vectoropspb.ClusterHdbscanRequest_Header_{Header: header}},
@@ -153,7 +152,7 @@ func (s *Service) ClusterHdbscan(ctx context.Context, points Matrix, opts *Hdbsc
 		gotMetadata bool
 	)
 
-	err = streamio.UploadCollect(stream, procedure, frames, func(resp *vectoropspb.ClusterHdbscanResponse) error {
+	err = streamio.UploadCollect(ctx, s.rpc.ClusterHdbscan, procedure, frames, func(resp *vectoropspb.ClusterHdbscanResponse) error {
 		switch r := resp.GetResponse().(type) {
 		case *vectoropspb.ClusterHdbscanResponse_Metadata_:
 			gotMetadata = true
@@ -212,7 +211,6 @@ func (s *Service) ProjectUmap(ctx context.Context, points Matrix, opts *UmapOpti
 	}
 
 	procedure := vectoropsconnect.VectorOpsServiceProjectUmapProcedure
-	stream := s.rpc.ProjectUmap(ctx)
 
 	frames := streamio.Frames(
 		&vectoropspb.ProjectUmapRequest{Request: &vectoropspb.ProjectUmapRequest_Header_{Header: header}},
@@ -227,7 +225,7 @@ func (s *Service) ProjectUmap(ctx context.Context, points Matrix, opts *UmapOpti
 		gotMetadata bool
 	)
 
-	err = streamio.UploadCollect(stream, procedure, frames, func(resp *vectoropspb.ProjectUmapResponse) error {
+	err = streamio.UploadCollect(ctx, s.rpc.ProjectUmap, procedure, frames, func(resp *vectoropspb.ProjectUmapResponse) error {
 		switch r := resp.GetResponse().(type) {
 		case *vectoropspb.ProjectUmapResponse_Metadata_:
 			gotMetadata = true
