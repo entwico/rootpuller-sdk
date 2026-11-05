@@ -67,7 +67,7 @@ func reel() montage.Timeline {
 			{Asset: "caption", At: time.Second, Duration: 3 * time.Second, Anchor: montage.AnchorBottom,
 				MarginY: 120, Width: 480, Opacity: new(0.9)},
 		},
-		Output:       montage.Output{Width: 576, Height: 1024, Quality: montage.QualityHigh, FadeOut: time.Second},
+		Output:       montage.Output{Width: 576, Height: 1024, Quality: montage.QualityHigh, FadeOut: time.Second, AudioBitrate: 96},
 		DurationMode: montage.DurationAudio,
 	}
 }
@@ -94,7 +94,10 @@ func TestRender(t *testing.T) {
 
 			return rootpullersdk.File{Name: "montage_0.mp4", MIMEType: mimeMP4, Data: []byte("MP4")}, nil
 		},
-		Metadata: &montage.Metadata{Duration: 30 * time.Second, Width: 576, Height: 1024, FPS: 24},
+		Metadata: &montage.Metadata{
+			Duration: 30 * time.Second, Width: 576, Height: 1024, FPS: 24,
+			AudioSampleRate: 48000, AudioChannels: 2, AudioBitrate: 96,
+		},
 		Progress: []montage.Progress{
 			{Stage: montage.StageQueued},
 			{Stage: montage.StageRendering, Percentage: 0.5},
@@ -114,7 +117,8 @@ func TestRender(t *testing.T) {
 		t.Fatalf("video = %q %q", res.Video.Data, res.Video.MIMEType)
 	}
 
-	if res.Metadata.Duration != 30*time.Second || res.Metadata.Width != 576 {
+	if res.Metadata.Duration != 30*time.Second || res.Metadata.Width != 576 ||
+		res.Metadata.AudioSampleRate != 48000 || res.Metadata.AudioChannels != 2 || res.Metadata.AudioBitrate != 96 {
 		t.Fatalf("metadata = %+v", res.Metadata)
 	}
 
@@ -220,6 +224,9 @@ func TestRenderTheFakeEnforcesTheRules(t *testing.T) {
 		{"NaN opacity", montage.Timeline{Segments: []montage.Segment{{Asset: "a"}}, Overlays: []montage.Overlay{{Asset: "a", Opacity: new(math.NaN())}}}},
 		{"negative track start", montage.Timeline{Segments: []montage.Segment{{Asset: "a"}}, AudioTracks: []montage.AudioTrack{{Asset: "a", At: -time.Second}}}},
 		{"negative overlay margin", montage.Timeline{Segments: []montage.Segment{{Asset: "a"}}, Overlays: []montage.Overlay{{Asset: "a", MarginX: -4}}}},
+		{"audio bitrate below 32", montage.Timeline{Segments: []montage.Segment{{Asset: "a"}}, Output: montage.Output{AudioBitrate: 16}}},
+		{"audio bitrate above 320", montage.Timeline{Segments: []montage.Segment{{Asset: "a"}}, Output: montage.Output{AudioBitrate: 512}}},
+		{"negative audio bitrate", montage.Timeline{Segments: []montage.Segment{{Asset: "a"}}, Output: montage.Output{AudioBitrate: -1}}},
 	}
 
 	for _, tc := range cases {
@@ -358,5 +365,31 @@ func TestRenderUnsendableParamsDoesNotHang(t *testing.T) {
 
 	if ctx.Err() != nil {
 		t.Fatal("Render hung instead of failing")
+	}
+}
+
+func TestRenderTheFakeReportsTheServersAudio(t *testing.T) {
+	t.Parallel()
+
+	svc := newService(t, &rootpullertest.Montage{})
+
+	for _, tc := range []struct {
+		output  montage.Output
+		bitrate int
+	}{
+		{montage.Output{}, 128},
+		{montage.Output{Quality: montage.QualityHigh}, 192},
+		{montage.Output{Quality: montage.QualityHigh, AudioBitrate: 64}, 64},
+	} {
+		timeline := montage.Timeline{Segments: []montage.Segment{{Asset: "a", Duration: time.Second}}, Output: tc.output}
+
+		res, err := svc.Render(t.Context(), timeline, []montage.Asset{asset("a", []byte("x"))}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if m := res.Metadata; m.AudioSampleRate != 48000 || m.AudioChannels != 2 || m.AudioBitrate != tc.bitrate {
+			t.Fatalf("output %+v: metadata = %+v", tc.output, m)
+		}
 	}
 }

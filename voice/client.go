@@ -309,6 +309,7 @@ func (s *Service) Speak(ctx context.Context, ref Ref, text, language string, opt
 
 	return &Speech{
 		Audio:          audio[0],
+		Format:         formatFromProto(meta.GetFormat()),
 		Model:          meta.GetModel(),
 		Duration:       seconds(meta.GetDurationSeconds()),
 		ProcessingTime: protoconv.MsToDuration(meta.GetProcessingTimeMs()),

@@ -81,6 +81,23 @@ asset can be used in several places.
   in the target shape (576×1024 for 9:16 reels from LTX). Rotated phone clips
   count upright.
 
+## Encoding
+
+Every asset is decoded once and the result is encoded once: H.264 video and
+AAC audio at 48 kHz stereo in an MP4. Lossless audio inputs (WAV, FLAC) reach
+that encode without a lossy step in between, so a voice-over spoken as
+`voice.CodecWAV` loses quality only there. A mono voice-over plays on both
+channels; stereo costs no extra bit rate for it.
+
+| `Output.Quality` | video | audio |
+|---|---|---|
+| `QualityStandard` (default) | x264 preset "medium", CRF 23 | AAC 128 kbps |
+| `QualityHigh` | x264 preset "slow", CRF 18 | AAC 192 kbps |
+
+`Output.AudioBitrate` (kbps, 32–320) replaces the quality's audio bit rate
+and leaves its video settings. `Result.Metadata` reports the audio delivered:
+`AudioSampleRate`, `AudioChannels`, `AudioBitrate`.
+
 ## Errors
 
 A timeline the server cannot render fails with `InvalidArgument` and a
@@ -103,5 +120,7 @@ rejected for being busy.
 `rootpullertest.Montage` fakes the service. `RenderFunc` sees the timeline
 and every asset's bytes; it enforces the wire protocol, the limits it
 advertises, and the timeline rules that need no media (ids, gains, crossfade
-lengths, duration modes, output size, empty assets), not the ones that do
-(trims past a clip's end, aspect ratios).
+lengths, duration modes, output size, audio bit rate, empty assets), not the
+ones that do (trims past a clip's end, aspect ratios). Without `Metadata` it
+reports the server's audio: 48 kHz stereo at the requested or the quality's
+bit rate.

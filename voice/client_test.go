@@ -495,3 +495,92 @@ func TestDeleteAndCapabilities(t *testing.T) {
 		t.Fatalf("capabilities = %+v", c)
 	}
 }
+
+func TestSpeak_Format(t *testing.T) {
+	t.Parallel()
+
+	var got rootpullertest.VoiceSpeakRequest
+
+	svc := newService(t, &rootpullertest.Voice{
+		SpeakFunc: func(req rootpullertest.VoiceSpeakRequest) (*voice.Speech, error) {
+			got = req
+
+			return &voice.Speech{Audio: rootpullersdk.File{MIMEType: "audio/wav", Data: []byte("RIFF")}}, nil
+		},
+	})
+
+	format := voice.AudioFormat{Codec: voice.CodecWAV, SampleRate: 48000, Channels: 2}
+
+	speech, err := svc.Speak(t.Context(), opaqueRef, "Guten Morgen", german, &voice.SpeakOptions{Format: &format})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got.Format == nil || *got.Format != (voice.AudioFormat{Codec: voice.CodecWAV, SampleRate: 48000}) {
+		t.Fatalf("requested format = %+v; channels are never sent", got.Format)
+	}
+
+	if speech.Audio.Name != "speech_0.wav" || speech.Audio.MIMEType != "audio/wav" ||
+		speech.Format != (voice.AudioFormat{Codec: voice.CodecWAV, SampleRate: 48000, Channels: 1}) {
+		t.Fatalf("speech = %+v, format %+v", speech.Audio, speech.Format)
+	}
+}
+
+func TestSpeak_DefaultFormat(t *testing.T) {
+	t.Parallel()
+
+	var got rootpullertest.VoiceSpeakRequest
+
+	svc := newService(t, &rootpullertest.Voice{
+		SpeakFunc: func(req rootpullertest.VoiceSpeakRequest) (*voice.Speech, error) {
+			got = req
+
+			return &voice.Speech{Audio: rootpullersdk.File{MIMEType: mimeMP3, Data: []byte("mp3")}}, nil
+		},
+	})
+
+	speech, err := svc.Speak(t.Context(), opaqueRef, "Guten Morgen", german, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got.Format != nil {
+		t.Fatalf("requested format = %+v, want none", got.Format)
+	}
+
+	if speech.Format != (voice.AudioFormat{Codec: voice.CodecMP3, SampleRate: 44100, Bitrate: 128, Channels: 1}) {
+		t.Fatalf("format = %+v", speech.Format)
+	}
+}
+
+func TestSpeak_FormatErrors(t *testing.T) {
+	t.Parallel()
+
+	svc := newService(t, &rootpullertest.Voice{})
+
+	for name, f := range map[string]voice.AudioFormat{
+		"unknown codec": {Codec: "flac", SampleRate: 44100},
+		"no rate":       {Codec: voice.CodecMP3, Bitrate: 128},
+		"not offered":   {Codec: voice.CodecMP3, SampleRate: 44100, Bitrate: 320},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := svc.Speak(t.Context(), opaqueRef, "Guten Morgen", german, &voice.SpeakOptions{Format: &f})
+			requireCode(t, err, connect.CodeInvalidArgument)
+		})
+	}
+}
+
+func TestCapabilities_AudioFormats(t *testing.T) {
+	t.Parallel()
+
+	c, err := newService(t, &rootpullertest.Voice{}).GetCapabilities(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(c.AudioFormats) == 0 || c.AudioFormats[0] != (voice.AudioFormat{Codec: voice.CodecMP3, SampleRate: 44100, Bitrate: 128}) {
+		t.Fatalf("audio formats = %+v, want the default first", c.AudioFormats)
+	}
+}

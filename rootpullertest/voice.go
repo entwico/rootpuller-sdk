@@ -32,9 +32,13 @@ import (
 // 5000, or the chosen model's MaxTextChars). Violations fail with
 // InvalidArgument.
 //
+// A Speak format must be one of the AudioFormats it reports (by default MP3
+// 44.1 kHz at 128 and 192 kbps, WAV at 44.1 and 48 kHz).
+//
 // Nil hooks answer with canned data: three previews with handles
 // "handle-0".."handle-2", a ref "fake-ref:<name>" (cloned when no handle was
-// sent), a canned "speech_0.mp3", and Delete succeeds. Progress frames are
+// sent), a canned mono "speech_0.mp3", or "speech_0.wav" for a WAV format,
+// and Delete succeeds. Progress frames are
 // streamed before the metadata on Design and Speak. Return
 // VoiceProviderMismatch() from a hook to simulate a provider switch.
 type Voice struct {
@@ -71,6 +75,8 @@ type VoiceSpeakRequest struct {
 	Model     *string
 	Speed     *float64
 	Stability *float64
+	// Format is the requested encoding, nil for the default; Channels is 0.
+	Format *voice.AudioFormat
 }
 
 // VoiceProviderMismatch is the error the server returns for a voice.Ref
@@ -97,6 +103,7 @@ var (
 	errVoiceMissingRef       = errors.New("voice_ref is required")
 	errVoiceTextLength       = errors.New("text length outside the provider's limits")
 	errVoiceMissingSpeak     = errors.New("voice_ref, text and language are required")
+	errVoiceFormat           = errors.New("format is not one of the capabilities' audio formats")
 	errVoiceNothingToSave    = errors.New("a handle or a sample is required")
 	errVoiceNameTooLong      = errors.New("name is longer than 100 characters")
 	errVoiceEmptySample      = errors.New("sample was announced but carries no data")
@@ -388,6 +395,11 @@ func (h *voiceHandler) Speak(
 		return invalidArgument(errVoiceTextLength)
 	}
 
+	format, err := h.speakFormat(m.GetFormat())
+	if err != nil {
+		return err
+	}
+
 	got := VoiceSpeakRequest{
 		Ref:       voice.Ref(m.GetVoiceRef()),
 		Text:      m.GetText(),
@@ -397,20 +409,31 @@ func (h *voiceHandler) Speak(
 		Stability: float64Ptr(m.Stability),
 	}
 
+	if m.GetFormat() != nil {
+		requested := format
+		requested.Channels = 0
+		got.Format = &requested
+	}
+
 	speech := &voice.Speech{
-		Audio: rootpullersdk.File{MIMEType: fakeVoiceMime, Data: []byte{0xff, 0xfb, 0x90, 0x00}},
-		Model: "fake-speech",
-		Usage: voice.Usage{Characters: int64(len([]rune(got.Text)))},
+		Audio:  cannedSpeech(format),
+		Format: format,
+		Model:  "fake-speech",
+		Usage:  voice.Usage{Characters: int64(len([]rune(got.Text)))},
 	}
 
 	if h.fake.SpeakFunc != nil {
-		var err error
 		if speech, err = h.fake.SpeakFunc(got); err != nil {
 			return err
 		}
+
+		// a hook that leaves the format out delivered the requested one.
+		if speech.Format.Codec == "" {
+			speech.Format = format
+		}
 	}
 
-	err := h.sendProgress(func(p *voicepb.Progress) error {
+	err = h.sendProgress(func(p *voicepb.Progress) error {
 		return stream.Send(&voicepb.SpeakResponse{Event: &voicepb.SpeakResponse_Progress{Progress: p}})
 	})
 	if err != nil {
@@ -422,6 +445,7 @@ func (h *voiceHandler) Speak(
 		DurationSeconds:  float32(speech.Duration.Seconds()),
 		ProcessingTimeMs: speech.ProcessingTime.Milliseconds(),
 		Usage:            voiceUsageToProto(speech.Usage),
+		Format:           voiceFormatToProto(speech.Format),
 	}
 
 	if err := stream.Send(&voicepb.SpeakResponse{Event: &voicepb.SpeakResponse_Metadata{Metadata: meta}}); err != nil {
@@ -429,7 +453,7 @@ func (h *voiceHandler) Speak(
 	}
 
 	file := speech.Audio
-	file.Name = "speech_0.mp3"
+	file.Name = "speech_0." + string(speech.Format.Codec)
 
 	return SendFileChunks(&file, func(c *commonpb.FileChunk) error {
 		return stream.Send(&voicepb.SpeakResponse{Event: &voicepb.SpeakResponse_File{File: c}})
@@ -478,7 +502,76 @@ func (h *voiceHandler) GetCapabilities(
 			MaxChars: int32(c.SampleTextLimits.MaxChars), //nolint:gosec // test fixture limits
 		},
 		MaxSampleSeconds: int32(c.MaxSampleSeconds), //nolint:gosec // test fixture limits
+		AudioFormats:     voiceFormatsToProto(c.AudioFormats),
 	}), nil
+}
+
+// speakFormat resolves a requested format against the reported ones: nil is
+// the first, anything not listed is InvalidArgument. Channels is mono.
+func (h *voiceHandler) speakFormat(requested *voicepb.AudioFormat) (voice.AudioFormat, error) {
+	formats := h.capabilities().AudioFormats
+	if len(formats) == 0 {
+		formats = defaultVoiceFormats
+	}
+
+	if requested == nil {
+		f := formats[0]
+		f.Channels = 1
+
+		return f, nil
+	}
+
+	for _, f := range formats {
+		if voiceFormatToProto(f).GetCodec() == requested.GetCodec() &&
+			f.SampleRate == int(requested.GetSampleRateHz()) && f.Bitrate == int(requested.GetBitrateKbps()) {
+			f.Channels = 1
+
+			return f, nil
+		}
+	}
+
+	return voice.AudioFormat{}, invalidArgument(errVoiceFormat)
+}
+
+var defaultVoiceFormats = []voice.AudioFormat{
+	{Codec: voice.CodecMP3, SampleRate: 44100, Bitrate: 128},
+	{Codec: voice.CodecMP3, SampleRate: 44100, Bitrate: 192},
+	{Codec: voice.CodecWAV, SampleRate: 44100},
+	{Codec: voice.CodecWAV, SampleRate: 48000},
+}
+
+var voiceCodecToProto = map[voice.Codec]voicepb.AudioFormat_Codec{
+	voice.CodecMP3: voicepb.AudioFormat_CODEC_MP3,
+	voice.CodecWAV: voicepb.AudioFormat_CODEC_WAV,
+}
+
+func voiceFormatToProto(f voice.AudioFormat) *voicepb.AudioFormat {
+	return &voicepb.AudioFormat{
+		Codec:        voiceCodecToProto[f.Codec],
+		SampleRateHz: int32(f.SampleRate), //nolint:gosec // test fixture rates
+		BitrateKbps:  int32(f.Bitrate),    //nolint:gosec // test fixture rates
+		Channels:     int32(f.Channels),   //nolint:gosec // test fixture rates
+	}
+}
+
+func voiceFormatsToProto(formats []voice.AudioFormat) []*voicepb.AudioFormat {
+	out := make([]*voicepb.AudioFormat, len(formats))
+
+	for i, f := range formats {
+		out[i] = voiceFormatToProto(f)
+	}
+
+	return out
+}
+
+// cannedSpeech is a few bytes that start like the format: an MP3 frame
+// header, or a RIFF/WAVE header.
+func cannedSpeech(f voice.AudioFormat) rootpullersdk.File {
+	if f.Codec == voice.CodecWAV {
+		return rootpullersdk.File{MIMEType: "audio/wav", Data: []byte("RIFF\x24\x00\x00\x00WAVE")}
+	}
+
+	return rootpullersdk.File{MIMEType: fakeVoiceMime, Data: []byte{0xff, 0xfb, 0x90, 0x00}}
 }
 
 // capabilities is what the fake reports and enforces: Capabilities, or
@@ -497,6 +590,7 @@ func (h *voiceHandler) capabilities() voice.Capabilities {
 		DescriptionLimits: voice.TextLimits{MinChars: 20, MaxChars: 1000},
 		SampleTextLimits:  voice.TextLimits{MinChars: 100, MaxChars: 1000},
 		MaxSampleSeconds:  120,
+		AudioFormats:      defaultVoiceFormats,
 	}
 }
 

@@ -27,12 +27,15 @@ import (
 // uploads match both ways, at least one segment, ducking has a gain, a
 // crossfade has a length, the explicit duration mode has a duration and the
 // audio mode a track that does not loop, output size set together and even,
-// fps 1-120, opacity 0-1. Violations fail with InvalidArgument. What needs the
+// fps 1-120, audio bit rate 32-320 kbps, opacity 0-1. Violations fail with
+// InvalidArgument. What needs the
 // media (a trim past a clip's end, an aspect mismatch) is not checked.
 //
 // A nil RenderFunc responds with a canned 4-byte "montage_0.mp4". Progress
 // frames are streamed first, then the metadata (Metadata, or one synthesized
-// from the timeline), then the video, chunked like the real server.
+// from the timeline, with the server's audio: AAC 48 kHz stereo at the
+// requested bit rate or the quality's), then the video, chunked like the real
+// server.
 // GetCapabilities answers Capabilities, or the server's defaults.
 type Montage struct {
 	RenderFunc   func(req MontageRequest) (rootpullersdk.File, error)
@@ -116,6 +119,10 @@ func (h *montageHandler) Render(
 		Width:          int32(meta.Width),  //nolint:gosec // test sizes fit an int32
 		Height:         int32(meta.Height), //nolint:gosec // test sizes fit an int32
 		Fps:            meta.FPS,
+
+		AudioSampleRateHz: int32(meta.AudioSampleRate), //nolint:gosec // test rates fit an int32
+		AudioChannels:     int32(meta.AudioChannels),   //nolint:gosec // test counts fit an int32
+		AudioBitrateKbps:  int32(meta.AudioBitrate),    //nolint:gosec // test rates fit an int32
 	}
 	if err := stream.Send(&montagepb.RenderResponse{Event: &montagepb.RenderResponse_Metadata{Metadata: metaFrame}}); err != nil {
 		return err
@@ -356,6 +363,10 @@ func checkOutput(out *montagepb.Output, caps montage.Capabilities) error {
 		return fmt.Errorf("%w: output fps must be within 1-120", errTimelineInvalid)
 	}
 
+	if out.AudioBitrateKbps != nil && (out.GetAudioBitrateKbps() < 32 || out.GetAudioBitrateKbps() > 320) {
+		return fmt.Errorf("%w: output audio_bitrate_kbps must be within 32-320", errTimelineInvalid)
+	}
+
 	if out.GetFadeInMillis() < 0 || out.GetFadeOutMillis() < 0 {
 		return fmt.Errorf("%w: output fades must not be negative", errTimelineInvalid)
 	}
@@ -429,7 +440,18 @@ func checkTimeline(t *montagepb.Timeline, caps montage.Capabilities) error {
 // synthesizeMontageMetadata estimates what the server would report: the
 // explicit duration, or the segments' summed durations less the crossfades.
 func synthesizeMontageMetadata(t montage.Timeline) montage.Metadata {
-	meta := montage.Metadata{Width: t.Output.Width, Height: t.Output.Height, FPS: t.Output.FPS, Duration: t.Duration}
+	meta := montage.Metadata{
+		Width: t.Output.Width, Height: t.Output.Height, FPS: t.Output.FPS, Duration: t.Duration,
+		AudioSampleRate: 48000, AudioChannels: 2, AudioBitrate: 128,
+	}
+
+	if t.Output.Quality == montage.QualityHigh {
+		meta.AudioBitrate = 192
+	}
+
+	if t.Output.AudioBitrate > 0 {
+		meta.AudioBitrate = t.Output.AudioBitrate
+	}
 
 	if t.DurationMode == montage.DurationExplicit {
 		return meta
@@ -457,6 +479,8 @@ func timelineFromProto(t *montagepb.Timeline) montage.Timeline {
 			Quality: montageQualityFromProto[t.GetOutput().GetQuality()],
 			FadeIn:  ms(int64(t.GetOutput().GetFadeInMillis())),
 			FadeOut: ms(int64(t.GetOutput().GetFadeOutMillis())),
+
+			AudioBitrate: int(t.GetOutput().GetAudioBitrateKbps()),
 		},
 	}
 

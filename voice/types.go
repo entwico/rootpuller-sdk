@@ -136,9 +136,93 @@ type SpeakOptions struct {
 	// Default: the provider's.
 	Stability *float64
 
+	// Format selects the encoding of the result: one of
+	// Capabilities.AudioFormats, matched on Codec, SampleRate and Bitrate.
+	// Nil is the server default, today MP3 at 44.1 kHz and 128 kbps. A
+	// format the server does not offer fails with codes.InvalidArgument, one
+	// the provider plan does not include with codes.PermissionDenied.
+	Format *AudioFormat
+
 	// OnProgress, when set, receives progress frames as the server reports
 	// them. Called synchronously from the receive loop.
 	OnProgress func(Progress)
+}
+
+// Codec is an audio encoding.
+type Codec string
+
+const (
+	// CodecMP3 is MP3 at a constant bit rate, "audio/mpeg".
+	CodecMP3 Codec = "mp3"
+	// CodecWAV is lossless 16-bit PCM in a WAV container, "audio/wav".
+	CodecWAV Codec = "wav"
+)
+
+// AudioFormat is an audio encoding.
+type AudioFormat struct {
+	Codec Codec
+	// SampleRate is in Hz, e.g. 44100.
+	SampleRate int
+	// Bitrate is in kbps for CodecMP3; 0 for CodecWAV.
+	Bitrate int
+	// Channels is set on delivered audio, 1 for mono; ignored in requests.
+	Channels int
+}
+
+var (
+	codecToProto = map[Codec]voicepb.AudioFormat_Codec{
+		CodecMP3: voicepb.AudioFormat_CODEC_MP3,
+		CodecWAV: voicepb.AudioFormat_CODEC_WAV,
+	}
+	codecFromProto = map[voicepb.AudioFormat_Codec]Codec{
+		voicepb.AudioFormat_CODEC_MP3: CodecMP3,
+		voicepb.AudioFormat_CODEC_WAV: CodecWAV,
+	}
+)
+
+func (f *AudioFormat) toProto() (*voicepb.AudioFormat, error) {
+	if f == nil {
+		return nil, nil //nolint:nilnil // no format is the server default
+	}
+
+	codec, ok := codecToProto[f.Codec]
+	if !ok {
+		return nil, invalidArgument(fmt.Sprintf("voice: Format.Codec %q is not a known codec", f.Codec))
+	}
+
+	if f.SampleRate <= 0 || f.SampleRate > math.MaxInt32 || f.Bitrate < 0 || f.Bitrate > math.MaxInt32 {
+		return nil, invalidArgument("voice: Format.SampleRate must be positive and Format.Bitrate not negative")
+	}
+
+	return &voicepb.AudioFormat{
+		Codec:        codec,
+		SampleRateHz: int32(f.SampleRate),
+		BitrateKbps:  int32(f.Bitrate),
+	}, nil
+}
+
+func formatFromProto(f *voicepb.AudioFormat) AudioFormat {
+	return AudioFormat{
+		Codec:      codecFromProto[f.GetCodec()],
+		SampleRate: int(f.GetSampleRateHz()),
+		Bitrate:    int(f.GetBitrateKbps()),
+		Channels:   int(f.GetChannels()),
+	}
+}
+
+func formatsFromProto(formats []*voicepb.AudioFormat) []AudioFormat {
+	out := make([]AudioFormat, 0, len(formats))
+
+	for _, f := range formats {
+		// a codec newer than this SDK cannot be requested anyway.
+		if _, ok := codecFromProto[f.GetCodec()]; !ok {
+			continue
+		}
+
+		out = append(out, formatFromProto(f))
+	}
+
+	return out
 }
 
 func (o *SpeakOptions) toProto(ref Ref, text, language string) (*voicepb.SpeakRequest, error) {
@@ -158,6 +242,13 @@ func (o *SpeakOptions) toProto(ref Ref, text, language string) (*voicepb.SpeakRe
 
 	msg.Speed = float32Ptr(o.Speed)
 	msg.Stability = float32Ptr(o.Stability)
+
+	format, err := o.Format.toProto()
+	if err != nil {
+		return nil, err
+	}
+
+	msg.Format = format
 
 	return msg, nil
 }
@@ -183,8 +274,12 @@ func float32Ptr(v *float64) *float32 {
 
 // Speech is a spoken text.
 type Speech struct {
-	// Audio is "speech_0.mp3" (audio/mpeg).
+	// Audio is "speech_0.mp3" (audio/mpeg) or "speech_0.wav" (audio/wav),
+	// as Format says.
 	Audio rootpullersdk.File
+
+	// Format is the encoding delivered, Channels included.
+	Format AudioFormat
 
 	// Model is the speech model actually used.
 	Model          string
@@ -242,6 +337,11 @@ type Capabilities struct {
 	// MaxSampleSeconds is the longest part of a Save sample the provider
 	// uses; 0 when it does not say.
 	MaxSampleSeconds int
+
+	// AudioFormats are the encodings Speak delivers, the default first.
+	// Formats the provider plan does not include are left out when the
+	// provider reports its plan.
+	AudioFormats []AudioFormat
 }
 
 // TextLimits is a length range in characters; 0 means no bound on that
@@ -285,6 +385,7 @@ func capabilitiesFromProto(c *voicepb.Capabilities) *Capabilities {
 			MaxChars: int(c.GetSampleTextLimits().GetMaxChars()),
 		},
 		MaxSampleSeconds: int(c.GetMaxSampleSeconds()),
+		AudioFormats:     formatsFromProto(c.GetAudioFormats()),
 	}
 }
 

@@ -319,9 +319,11 @@ type Output_Quality int32
 const (
 	// QUALITY_STANDARD.
 	Output_QUALITY_UNSPECIFIED Output_Quality = 0
-	// Good for social feeds, small files.
+	// Good for social feeds, small files: H.264 at x264 preset "medium",
+	// CRF 23; AAC at 128 kbps.
 	Output_QUALITY_STANDARD Output_Quality = 1
-	// Visibly better on large screens, larger files.
+	// Visibly better on large screens, larger files: H.264 at x264 preset
+	// "slow", CRF 18; AAC at 192 kbps.
 	Output_QUALITY_HIGH Output_Quality = 2
 )
 
@@ -1093,7 +1095,10 @@ func (x *Overlay) GetFadeOutMillis() int32 {
 }
 
 // The encode target. The one format today is an MP4 with H.264 video and
-// AAC audio, which every social platform accepts.
+// AAC audio, which every social platform accepts. Every asset is decoded once
+// and the result encoded once, here: lossless audio inputs (WAV, FLAC) reach
+// this encode without an intermediate lossy step. The audio is always 48 kHz
+// stereo; a mono voice-over plays on both channels.
 type Output struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Output size in pixels, both or neither (one alone is INVALID_ARGUMENT),
@@ -1115,8 +1120,11 @@ type Output struct {
 	// end, within the output's duration, in milliseconds; default 0.
 	FadeInMillis  int32 `protobuf:"varint,6,opt,name=fade_in_millis,json=fadeInMillis,proto3" json:"fade_in_millis,omitempty"`
 	FadeOutMillis int32 `protobuf:"varint,7,opt,name=fade_out_millis,json=fadeOutMillis,proto3" json:"fade_out_millis,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	// AAC bit rate in kbps, 32-320, replacing the one quality sets; outside
+	// that range is INVALID_ARGUMENT.
+	AudioBitrateKbps *int32 `protobuf:"varint,8,opt,name=audio_bitrate_kbps,json=audioBitrateKbps,proto3,oneof" json:"audio_bitrate_kbps,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *Output) Reset() {
@@ -1198,6 +1206,13 @@ func (x *Output) GetFadeOutMillis() int32 {
 	return 0
 }
 
+func (x *Output) GetAudioBitrateKbps() int32 {
+	if x != nil && x.AudioBitrateKbps != nil {
+		return *x.AudioBitrateKbps
+	}
+	return 0
+}
+
 type Progress struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	Stage Progress_Stage         `protobuf:"varint,1,opt,name=stage,proto3,enum=com.entwico.rootpuller.montage.Progress_Stage" json:"stage,omitempty"`
@@ -1268,8 +1283,12 @@ type RenderMetadata struct {
 	Width          int32   `protobuf:"varint,2,opt,name=width,proto3" json:"width,omitempty"`
 	Height         int32   `protobuf:"varint,3,opt,name=height,proto3" json:"height,omitempty"`
 	Fps            float64 `protobuf:"fixed64,4,opt,name=fps,proto3" json:"fps,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// The delivered audio: AAC at this rate, channel count and bit rate.
+	AudioSampleRateHz int32 `protobuf:"varint,5,opt,name=audio_sample_rate_hz,json=audioSampleRateHz,proto3" json:"audio_sample_rate_hz,omitempty"`
+	AudioChannels     int32 `protobuf:"varint,6,opt,name=audio_channels,json=audioChannels,proto3" json:"audio_channels,omitempty"`
+	AudioBitrateKbps  int32 `protobuf:"varint,7,opt,name=audio_bitrate_kbps,json=audioBitrateKbps,proto3" json:"audio_bitrate_kbps,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *RenderMetadata) Reset() {
@@ -1326,6 +1345,27 @@ func (x *RenderMetadata) GetHeight() int32 {
 func (x *RenderMetadata) GetFps() float64 {
 	if x != nil {
 		return x.Fps
+	}
+	return 0
+}
+
+func (x *RenderMetadata) GetAudioSampleRateHz() int32 {
+	if x != nil {
+		return x.AudioSampleRateHz
+	}
+	return 0
+}
+
+func (x *RenderMetadata) GetAudioChannels() int32 {
+	if x != nil {
+		return x.AudioChannels
+	}
+	return 0
+}
+
+func (x *RenderMetadata) GetAudioBitrateKbps() int32 {
+	if x != nil {
+		return x.AudioBitrateKbps
 	}
 	return 0
 }
@@ -1603,7 +1643,7 @@ const file_com_entwico_rootpuller_montage_montage_proto_rawDesc = "" +
 	"\x10_duration_millisB\b\n" +
 	"\x06_widthB\n" +
 	"\n" +
-	"\b_opacity\"\xda\x03\n" +
+	"\b_opacity\"\xa4\x04\n" +
 	"\x06Output\x12\x19\n" +
 	"\x05width\x18\x01 \x01(\x05H\x00R\x05width\x88\x01\x01\x12\x1b\n" +
 	"\x06height\x18\x02 \x01(\x05H\x01R\x06height\x88\x01\x01\x12\x15\n" +
@@ -1611,7 +1651,8 @@ const file_com_entwico_rootpuller_montage_montage_proto_rawDesc = "" +
 	"\x06format\x18\x04 \x01(\x0e2-.com.entwico.rootpuller.montage.Output.FormatR\x06format\x12H\n" +
 	"\aquality\x18\x05 \x01(\x0e2..com.entwico.rootpuller.montage.Output.QualityR\aquality\x12$\n" +
 	"\x0efade_in_millis\x18\x06 \x01(\x05R\ffadeInMillis\x12&\n" +
-	"\x0ffade_out_millis\x18\a \x01(\x05R\rfadeOutMillis\"9\n" +
+	"\x0ffade_out_millis\x18\a \x01(\x05R\rfadeOutMillis\x121\n" +
+	"\x12audio_bitrate_kbps\x18\b \x01(\x05H\x03R\x10audioBitrateKbps\x88\x01\x01\"9\n" +
 	"\x06Format\x12\x16\n" +
 	"\x12FORMAT_UNSPECIFIED\x10\x00\x12\x17\n" +
 	"\x13FORMAT_MP4_H264_AAC\x10\x01\"J\n" +
@@ -1621,7 +1662,8 @@ const file_com_entwico_rootpuller_montage_montage_proto_rawDesc = "" +
 	"\fQUALITY_HIGH\x10\x02B\b\n" +
 	"\x06_widthB\t\n" +
 	"\a_heightB\x06\n" +
-	"\x04_fps\"\xe6\x01\n" +
+	"\x04_fpsB\x15\n" +
+	"\x13_audio_bitrate_kbps\"\xe6\x01\n" +
 	"\bProgress\x12D\n" +
 	"\x05stage\x18\x01 \x01(\x0e2..com.entwico.rootpuller.montage.Progress.StageR\x05stage\x12\x1e\n" +
 	"\n" +
@@ -1632,12 +1674,15 @@ const file_com_entwico_rootpuller_montage_montage_proto_rawDesc = "" +
 	"\x11STAGE_UNSPECIFIED\x10\x00\x12\x10\n" +
 	"\fSTAGE_QUEUED\x10\x01\x12\x13\n" +
 	"\x0fSTAGE_RENDERING\x10\x02\x12\x13\n" +
-	"\x0fSTAGE_UPLOADING\x10\x03\"y\n" +
+	"\x0fSTAGE_UPLOADING\x10\x03\"\xff\x01\n" +
 	"\x0eRenderMetadata\x12'\n" +
 	"\x0fduration_millis\x18\x01 \x01(\x03R\x0edurationMillis\x12\x14\n" +
 	"\x05width\x18\x02 \x01(\x05R\x05width\x12\x16\n" +
 	"\x06height\x18\x03 \x01(\x05R\x06height\x12\x10\n" +
-	"\x03fps\x18\x04 \x01(\x01R\x03fps\"\xbc\x03\n" +
+	"\x03fps\x18\x04 \x01(\x01R\x03fps\x12/\n" +
+	"\x14audio_sample_rate_hz\x18\x05 \x01(\x05R\x11audioSampleRateHz\x12%\n" +
+	"\x0eaudio_channels\x18\x06 \x01(\x05R\raudioChannels\x12,\n" +
+	"\x12audio_bitrate_kbps\x18\a \x01(\x05R\x10audioBitrateKbps\"\xbc\x03\n" +
 	"\fCapabilities\x12\x1d\n" +
 	"\n" +
 	"max_assets\x18\x01 \x01(\x05R\tmaxAssets\x12&\n" +

@@ -149,15 +149,23 @@ type Output struct {
 	// FadeIn and FadeOut fade from and to black and silence.
 	FadeIn  time.Duration
 	FadeOut time.Duration
+	// AudioBitrate is the AAC bit rate in kbps, 32-320, replacing the one
+	// Quality sets; 0 keeps it. The audio is always 48 kHz stereo, and every
+	// asset is decoded once and encoded once, here: WAV or FLAC inputs reach
+	// this encode without a lossy step in between.
+	AudioBitrate int
 }
 
-// Quality selects the encoder settings.
+// Quality selects the encoder settings. Both encode H.264 video and AAC audio
+// at 48 kHz stereo.
 type Quality string
 
 const (
-	// QualityStandard suits social feeds. The default.
+	// QualityStandard suits social feeds, the default: x264 preset "medium"
+	// at CRF 23, AAC at 128 kbps.
 	QualityStandard Quality = ""
-	// QualityHigh is visibly better on large screens, at larger files.
+	// QualityHigh is visibly better on large screens, at larger files: x264
+	// preset "slow" at CRF 18, AAC at 192 kbps.
 	QualityHigh Quality = "high"
 )
 
@@ -215,6 +223,12 @@ type Metadata struct {
 	Width    int
 	Height   int
 	FPS      float64
+
+	// AudioSampleRate (Hz), AudioChannels and AudioBitrate (kbps) describe
+	// the AAC track delivered.
+	AudioSampleRate int
+	AudioChannels   int
+	AudioBitrate    int
 }
 
 // Result is a rendered montage.
@@ -320,6 +334,8 @@ func timelineToProto(t Timeline) (*montagepb.Timeline, error) {
 			Quality:       quality,
 			FadeInMillis:  millis32(t.Output.FadeIn),
 			FadeOutMillis: millis32(t.Output.FadeOut),
+
+			AudioBitrateKbps: optInt32(t.Output.AudioBitrate),
 		},
 	}
 
@@ -431,6 +447,10 @@ func metadataFromProto(m *montagepb.RenderMetadata) Metadata {
 		Width:    int(m.GetWidth()),
 		Height:   int(m.GetHeight()),
 		FPS:      m.GetFps(),
+
+		AudioSampleRate: int(m.GetAudioSampleRateHz()),
+		AudioChannels:   int(m.GetAudioChannels()),
+		AudioBitrate:    int(m.GetAudioBitrateKbps()),
 	}
 }
 

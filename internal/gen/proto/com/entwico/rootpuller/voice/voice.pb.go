@@ -23,6 +23,58 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type AudioFormat_Codec int32
+
+const (
+	AudioFormat_CODEC_UNSPECIFIED AudioFormat_Codec = 0
+	// MPEG-1 Layer III at a constant bit rate, "audio/mpeg".
+	AudioFormat_CODEC_MP3 AudioFormat_Codec = 1
+	// Uncompressed 16-bit PCM in a WAV container, "audio/wav". Lossless,
+	// about 5 MB per minute of mono speech at 44.1 kHz.
+	AudioFormat_CODEC_WAV AudioFormat_Codec = 2
+)
+
+// Enum value maps for AudioFormat_Codec.
+var (
+	AudioFormat_Codec_name = map[int32]string{
+		0: "CODEC_UNSPECIFIED",
+		1: "CODEC_MP3",
+		2: "CODEC_WAV",
+	}
+	AudioFormat_Codec_value = map[string]int32{
+		"CODEC_UNSPECIFIED": 0,
+		"CODEC_MP3":         1,
+		"CODEC_WAV":         2,
+	}
+)
+
+func (x AudioFormat_Codec) Enum() *AudioFormat_Codec {
+	p := new(AudioFormat_Codec)
+	*p = x
+	return p
+}
+
+func (x AudioFormat_Codec) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (AudioFormat_Codec) Descriptor() protoreflect.EnumDescriptor {
+	return file_com_entwico_rootpuller_voice_voice_proto_enumTypes[0].Descriptor()
+}
+
+func (AudioFormat_Codec) Type() protoreflect.EnumType {
+	return &file_com_entwico_rootpuller_voice_voice_proto_enumTypes[0]
+}
+
+func (x AudioFormat_Codec) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use AudioFormat_Codec.Descriptor instead.
+func (AudioFormat_Codec) EnumDescriptor() ([]byte, []int) {
+	return file_com_entwico_rootpuller_voice_voice_proto_rawDescGZIP(), []int{12, 0}
+}
+
 type Progress_Stage int32
 
 const (
@@ -62,11 +114,11 @@ func (x Progress_Stage) String() string {
 }
 
 func (Progress_Stage) Descriptor() protoreflect.EnumDescriptor {
-	return file_com_entwico_rootpuller_voice_voice_proto_enumTypes[0].Descriptor()
+	return file_com_entwico_rootpuller_voice_voice_proto_enumTypes[1].Descriptor()
 }
 
 func (Progress_Stage) Type() protoreflect.EnumType {
-	return &file_com_entwico_rootpuller_voice_voice_proto_enumTypes[0]
+	return &file_com_entwico_rootpuller_voice_voice_proto_enumTypes[1]
 }
 
 func (x Progress_Stage) Number() protoreflect.EnumNumber {
@@ -75,7 +127,7 @@ func (x Progress_Stage) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use Progress_Stage.Descriptor instead.
 func (Progress_Stage) EnumDescriptor() ([]byte, []int) {
-	return file_com_entwico_rootpuller_voice_voice_proto_rawDescGZIP(), []int{14, 0}
+	return file_com_entwico_rootpuller_voice_voice_proto_rawDescGZIP(), []int{15, 0}
 }
 
 type DesignVoiceRequest struct {
@@ -592,7 +644,11 @@ type SpeakRequest struct {
 	Speed *float32 `protobuf:"fixed32,5,opt,name=speed,proto3,oneof" json:"speed,omitempty"`
 	// 0.0-1.0: low values are more expressive and varied, high values more
 	// even and consistent. Default: the provider's.
-	Stability     *float32 `protobuf:"fixed32,6,opt,name=stability,proto3,oneof" json:"stability,omitempty"`
+	Stability *float32 `protobuf:"fixed32,6,opt,name=stability,proto3,oneof" json:"stability,omitempty"`
+	// The encoding of the speech: one of Capabilities.audio_formats, matched
+	// on codec, sample_rate_hz and bitrate_kbps (channels is ignored). Unset
+	// means the first of Capabilities.audio_formats, the server default.
+	Format        *AudioFormat `protobuf:"bytes,7,opt,name=format,proto3,oneof" json:"format,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -667,6 +723,13 @@ func (x *SpeakRequest) GetStability() float32 {
 		return *x.Stability
 	}
 	return 0
+}
+
+func (x *SpeakRequest) GetFormat() *AudioFormat {
+	if x != nil {
+		return x.Format
+	}
+	return nil
 }
 
 type SpeakResponse struct {
@@ -774,8 +837,11 @@ type SpeakMetadata struct {
 	DurationSeconds  float32 `protobuf:"fixed32,2,opt,name=duration_seconds,json=durationSeconds,proto3" json:"duration_seconds,omitempty"`
 	ProcessingTimeMs int64   `protobuf:"varint,3,opt,name=processing_time_ms,json=processingTimeMs,proto3" json:"processing_time_ms,omitempty"`
 	Usage            *Usage  `protobuf:"bytes,4,opt,name=usage,proto3" json:"usage,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// The encoding actually delivered, channels included. The file chunks'
+	// mime type matches the codec.
+	Format        *AudioFormat `protobuf:"bytes,5,opt,name=format,proto3" json:"format,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SpeakMetadata) Reset() {
@@ -832,6 +898,13 @@ func (x *SpeakMetadata) GetProcessingTimeMs() int64 {
 func (x *SpeakMetadata) GetUsage() *Usage {
 	if x != nil {
 		return x.Usage
+	}
+	return nil
+}
+
+func (x *SpeakMetadata) GetFormat() *AudioFormat {
+	if x != nil {
+		return x.Format
 	}
 	return nil
 }
@@ -944,8 +1017,12 @@ type Capabilities struct {
 	// Longest part of a SaveVoice sample the provider uses; 0 when it does not
 	// say.
 	MaxSampleSeconds int32 `protobuf:"varint,12,opt,name=max_sample_seconds,json=maxSampleSeconds,proto3" json:"max_sample_seconds,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// The encodings Speak delivers, the default first. Formats the provider
+	// account's plan does not include are left out when the provider reports
+	// the plan; a format listed but refused anyway is PERMISSION_DENIED.
+	AudioFormats  []*AudioFormat `protobuf:"bytes,13,rep,name=audio_formats,json=audioFormats,proto3" json:"audio_formats,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Capabilities) Reset() {
@@ -1062,6 +1139,86 @@ func (x *Capabilities) GetMaxSampleSeconds() int32 {
 	return 0
 }
 
+func (x *Capabilities) GetAudioFormats() []*AudioFormat {
+	if x != nil {
+		return x.AudioFormats
+	}
+	return nil
+}
+
+// An audio encoding.
+type AudioFormat struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Codec AudioFormat_Codec      `protobuf:"varint,1,opt,name=codec,proto3,enum=com.entwico.rootpuller.voice.AudioFormat_Codec" json:"codec,omitempty"`
+	// Samples per second, e.g. 44100.
+	SampleRateHz int32 `protobuf:"varint,2,opt,name=sample_rate_hz,json=sampleRateHz,proto3" json:"sample_rate_hz,omitempty"`
+	// Bit rate of a compressed codec; 0 for CODEC_WAV.
+	BitrateKbps int32 `protobuf:"varint,3,opt,name=bitrate_kbps,json=bitrateKbps,proto3" json:"bitrate_kbps,omitempty"`
+	// Audio channels of a delivered result, 1 for mono; 0 in requests and
+	// capability lists.
+	Channels      int32 `protobuf:"varint,4,opt,name=channels,proto3" json:"channels,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *AudioFormat) Reset() {
+	*x = AudioFormat{}
+	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *AudioFormat) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*AudioFormat) ProtoMessage() {}
+
+func (x *AudioFormat) ProtoReflect() protoreflect.Message {
+	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use AudioFormat.ProtoReflect.Descriptor instead.
+func (*AudioFormat) Descriptor() ([]byte, []int) {
+	return file_com_entwico_rootpuller_voice_voice_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *AudioFormat) GetCodec() AudioFormat_Codec {
+	if x != nil {
+		return x.Codec
+	}
+	return AudioFormat_CODEC_UNSPECIFIED
+}
+
+func (x *AudioFormat) GetSampleRateHz() int32 {
+	if x != nil {
+		return x.SampleRateHz
+	}
+	return 0
+}
+
+func (x *AudioFormat) GetBitrateKbps() int32 {
+	if x != nil {
+		return x.BitrateKbps
+	}
+	return 0
+}
+
+func (x *AudioFormat) GetChannels() int32 {
+	if x != nil {
+		return x.Channels
+	}
+	return 0
+}
+
 type ModelInfo struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	Id    string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -1077,7 +1234,7 @@ type ModelInfo struct {
 
 func (x *ModelInfo) Reset() {
 	*x = ModelInfo{}
-	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[12]
+	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1089,7 +1246,7 @@ func (x *ModelInfo) String() string {
 func (*ModelInfo) ProtoMessage() {}
 
 func (x *ModelInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[12]
+	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1102,7 +1259,7 @@ func (x *ModelInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ModelInfo.ProtoReflect.Descriptor instead.
 func (*ModelInfo) Descriptor() ([]byte, []int) {
-	return file_com_entwico_rootpuller_voice_voice_proto_rawDescGZIP(), []int{12}
+	return file_com_entwico_rootpuller_voice_voice_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *ModelInfo) GetId() string {
@@ -1144,7 +1301,7 @@ type TextLimits struct {
 
 func (x *TextLimits) Reset() {
 	*x = TextLimits{}
-	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[13]
+	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1156,7 +1313,7 @@ func (x *TextLimits) String() string {
 func (*TextLimits) ProtoMessage() {}
 
 func (x *TextLimits) ProtoReflect() protoreflect.Message {
-	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[13]
+	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1169,7 +1326,7 @@ func (x *TextLimits) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TextLimits.ProtoReflect.Descriptor instead.
 func (*TextLimits) Descriptor() ([]byte, []int) {
-	return file_com_entwico_rootpuller_voice_voice_proto_rawDescGZIP(), []int{13}
+	return file_com_entwico_rootpuller_voice_voice_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *TextLimits) GetMinChars() int32 {
@@ -1199,7 +1356,7 @@ type Progress struct {
 
 func (x *Progress) Reset() {
 	*x = Progress{}
-	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[14]
+	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1211,7 +1368,7 @@ func (x *Progress) String() string {
 func (*Progress) ProtoMessage() {}
 
 func (x *Progress) ProtoReflect() protoreflect.Message {
-	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[14]
+	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1224,7 +1381,7 @@ func (x *Progress) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Progress.ProtoReflect.Descriptor instead.
 func (*Progress) Descriptor() ([]byte, []int) {
-	return file_com_entwico_rootpuller_voice_voice_proto_rawDescGZIP(), []int{14}
+	return file_com_entwico_rootpuller_voice_voice_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *Progress) GetStage() Progress_Stage {
@@ -1262,7 +1419,7 @@ type Usage struct {
 
 func (x *Usage) Reset() {
 	*x = Usage{}
-	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[15]
+	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1274,7 +1431,7 @@ func (x *Usage) String() string {
 func (*Usage) ProtoMessage() {}
 
 func (x *Usage) ProtoReflect() protoreflect.Message {
-	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[15]
+	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1287,7 +1444,7 @@ func (x *Usage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Usage.ProtoReflect.Descriptor instead.
 func (*Usage) Descriptor() ([]byte, []int) {
-	return file_com_entwico_rootpuller_voice_voice_proto_rawDescGZIP(), []int{15}
+	return file_com_entwico_rootpuller_voice_voice_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *Usage) GetCharacters() int64 {
@@ -1330,7 +1487,7 @@ type SaveVoiceRequest_Params struct {
 
 func (x *SaveVoiceRequest_Params) Reset() {
 	*x = SaveVoiceRequest_Params{}
-	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[16]
+	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1342,7 +1499,7 @@ func (x *SaveVoiceRequest_Params) String() string {
 func (*SaveVoiceRequest_Params) ProtoMessage() {}
 
 func (x *SaveVoiceRequest_Params) ProtoReflect() protoreflect.Message {
-	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[16]
+	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1426,31 +1583,34 @@ const file_com_entwico_rootpuller_voice_voice_proto_rawDesc = "" +
 	"\x10voice_slots_used\x18\x03 \x01(\x05H\x00R\x0evoiceSlotsUsed\x88\x01\x01\x12/\n" +
 	"\x11voice_slots_limit\x18\x04 \x01(\x05H\x01R\x0fvoiceSlotsLimit\x88\x01\x01B\x13\n" +
 	"\x11_voice_slots_usedB\x14\n" +
-	"\x12_voice_slots_limit\"\xd6\x01\n" +
+	"\x12_voice_slots_limit\"\xa9\x02\n" +
 	"\fSpeakRequest\x12\x1b\n" +
 	"\tvoice_ref\x18\x01 \x01(\tR\bvoiceRef\x12\x12\n" +
 	"\x04text\x18\x02 \x01(\tR\x04text\x12\x1a\n" +
 	"\blanguage\x18\x03 \x01(\tR\blanguage\x12\x19\n" +
 	"\x05model\x18\x04 \x01(\tH\x00R\x05model\x88\x01\x01\x12\x19\n" +
 	"\x05speed\x18\x05 \x01(\x02H\x01R\x05speed\x88\x01\x01\x12!\n" +
-	"\tstability\x18\x06 \x01(\x02H\x02R\tstability\x88\x01\x01B\b\n" +
+	"\tstability\x18\x06 \x01(\x02H\x02R\tstability\x88\x01\x01\x12F\n" +
+	"\x06format\x18\a \x01(\v2).com.entwico.rootpuller.voice.AudioFormatH\x03R\x06format\x88\x01\x01B\b\n" +
 	"\x06_modelB\b\n" +
 	"\x06_speedB\f\n" +
 	"\n" +
-	"_stability\"\xe9\x01\n" +
+	"_stabilityB\t\n" +
+	"\a_format\"\xe9\x01\n" +
 	"\rSpeakResponse\x12D\n" +
 	"\bprogress\x18\x01 \x01(\v2&.com.entwico.rootpuller.voice.ProgressH\x00R\bprogress\x12I\n" +
 	"\bmetadata\x18\x02 \x01(\v2+.com.entwico.rootpuller.voice.SpeakMetadataH\x00R\bmetadata\x12>\n" +
 	"\x04file\x18\x03 \x01(\v2(.com.entwico.rootpuller.common.FileChunkH\x00R\x04fileB\a\n" +
-	"\x05event\"\xb9\x01\n" +
+	"\x05event\"\xfc\x01\n" +
 	"\rSpeakMetadata\x12\x14\n" +
 	"\x05model\x18\x01 \x01(\tR\x05model\x12)\n" +
 	"\x10duration_seconds\x18\x02 \x01(\x02R\x0fdurationSeconds\x12,\n" +
 	"\x12processing_time_ms\x18\x03 \x01(\x03R\x10processingTimeMs\x129\n" +
-	"\x05usage\x18\x04 \x01(\v2#.com.entwico.rootpuller.voice.UsageR\x05usage\"1\n" +
+	"\x05usage\x18\x04 \x01(\v2#.com.entwico.rootpuller.voice.UsageR\x05usage\x12A\n" +
+	"\x06format\x18\x05 \x01(\v2).com.entwico.rootpuller.voice.AudioFormatR\x06format\"1\n" +
 	"\x12DeleteVoiceRequest\x12\x1b\n" +
 	"\tvoice_ref\x18\x01 \x01(\tR\bvoiceRef\"\x15\n" +
-	"\x13DeleteVoiceResponse\"\xfd\x05\n" +
+	"\x13DeleteVoiceResponse\"\xcd\x06\n" +
 	"\fCapabilities\x12\x1d\n" +
 	"\n" +
 	"can_design\x18\x01 \x01(\bR\tcanDesign\x12\x1b\n" +
@@ -1465,11 +1625,21 @@ const file_com_entwico_rootpuller_voice_voice_proto_rawDesc = "" +
 	"\x12description_limits\x18\n" +
 	" \x01(\v2(.com.entwico.rootpuller.voice.TextLimitsR\x11descriptionLimits\x12V\n" +
 	"\x12sample_text_limits\x18\v \x01(\v2(.com.entwico.rootpuller.voice.TextLimitsR\x10sampleTextLimits\x12,\n" +
-	"\x12max_sample_seconds\x18\f \x01(\x05R\x10maxSampleSecondsB\x13\n" +
+	"\x12max_sample_seconds\x18\f \x01(\x05R\x10maxSampleSeconds\x12N\n" +
+	"\raudio_formats\x18\r \x03(\v2).com.entwico.rootpuller.voice.AudioFormatR\faudioFormatsB\x13\n" +
 	"\x11_voice_slots_usedB\x14\n" +
 	"\x12_voice_slots_limitB\x12\n" +
 	"\x10_characters_usedB\x13\n" +
-	"\x11_characters_limit\"s\n" +
+	"\x11_characters_limit\"\xf7\x01\n" +
+	"\vAudioFormat\x12E\n" +
+	"\x05codec\x18\x01 \x01(\x0e2/.com.entwico.rootpuller.voice.AudioFormat.CodecR\x05codec\x12$\n" +
+	"\x0esample_rate_hz\x18\x02 \x01(\x05R\fsampleRateHz\x12!\n" +
+	"\fbitrate_kbps\x18\x03 \x01(\x05R\vbitrateKbps\x12\x1a\n" +
+	"\bchannels\x18\x04 \x01(\x05R\bchannels\"<\n" +
+	"\x05Codec\x12\x15\n" +
+	"\x11CODEC_UNSPECIFIED\x10\x00\x12\r\n" +
+	"\tCODEC_MP3\x10\x01\x12\r\n" +
+	"\tCODEC_WAV\x10\x02\"s\n" +
 	"\tModelInfo\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1c\n" +
@@ -1517,62 +1687,68 @@ func file_com_entwico_rootpuller_voice_voice_proto_rawDescGZIP() []byte {
 	return file_com_entwico_rootpuller_voice_voice_proto_rawDescData
 }
 
-var file_com_entwico_rootpuller_voice_voice_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_com_entwico_rootpuller_voice_voice_proto_msgTypes = make([]protoimpl.MessageInfo, 17)
+var file_com_entwico_rootpuller_voice_voice_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
+var file_com_entwico_rootpuller_voice_voice_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
 var file_com_entwico_rootpuller_voice_voice_proto_goTypes = []any{
-	(Progress_Stage)(0),             // 0: com.entwico.rootpuller.voice.Progress.Stage
-	(*DesignVoiceRequest)(nil),      // 1: com.entwico.rootpuller.voice.DesignVoiceRequest
-	(*DesignVoiceResponse)(nil),     // 2: com.entwico.rootpuller.voice.DesignVoiceResponse
-	(*DesignMetadata)(nil),          // 3: com.entwico.rootpuller.voice.DesignMetadata
-	(*PreviewMetadata)(nil),         // 4: com.entwico.rootpuller.voice.PreviewMetadata
-	(*SaveVoiceRequest)(nil),        // 5: com.entwico.rootpuller.voice.SaveVoiceRequest
-	(*SaveVoiceResponse)(nil),       // 6: com.entwico.rootpuller.voice.SaveVoiceResponse
-	(*SpeakRequest)(nil),            // 7: com.entwico.rootpuller.voice.SpeakRequest
-	(*SpeakResponse)(nil),           // 8: com.entwico.rootpuller.voice.SpeakResponse
-	(*SpeakMetadata)(nil),           // 9: com.entwico.rootpuller.voice.SpeakMetadata
-	(*DeleteVoiceRequest)(nil),      // 10: com.entwico.rootpuller.voice.DeleteVoiceRequest
-	(*DeleteVoiceResponse)(nil),     // 11: com.entwico.rootpuller.voice.DeleteVoiceResponse
-	(*Capabilities)(nil),            // 12: com.entwico.rootpuller.voice.Capabilities
-	(*ModelInfo)(nil),               // 13: com.entwico.rootpuller.voice.ModelInfo
-	(*TextLimits)(nil),              // 14: com.entwico.rootpuller.voice.TextLimits
-	(*Progress)(nil),                // 15: com.entwico.rootpuller.voice.Progress
-	(*Usage)(nil),                   // 16: com.entwico.rootpuller.voice.Usage
-	(*SaveVoiceRequest_Params)(nil), // 17: com.entwico.rootpuller.voice.SaveVoiceRequest.Params
-	(*common.FileChunk)(nil),        // 18: com.entwico.rootpuller.common.FileChunk
-	(*emptypb.Empty)(nil),           // 19: google.protobuf.Empty
+	(AudioFormat_Codec)(0),          // 0: com.entwico.rootpuller.voice.AudioFormat.Codec
+	(Progress_Stage)(0),             // 1: com.entwico.rootpuller.voice.Progress.Stage
+	(*DesignVoiceRequest)(nil),      // 2: com.entwico.rootpuller.voice.DesignVoiceRequest
+	(*DesignVoiceResponse)(nil),     // 3: com.entwico.rootpuller.voice.DesignVoiceResponse
+	(*DesignMetadata)(nil),          // 4: com.entwico.rootpuller.voice.DesignMetadata
+	(*PreviewMetadata)(nil),         // 5: com.entwico.rootpuller.voice.PreviewMetadata
+	(*SaveVoiceRequest)(nil),        // 6: com.entwico.rootpuller.voice.SaveVoiceRequest
+	(*SaveVoiceResponse)(nil),       // 7: com.entwico.rootpuller.voice.SaveVoiceResponse
+	(*SpeakRequest)(nil),            // 8: com.entwico.rootpuller.voice.SpeakRequest
+	(*SpeakResponse)(nil),           // 9: com.entwico.rootpuller.voice.SpeakResponse
+	(*SpeakMetadata)(nil),           // 10: com.entwico.rootpuller.voice.SpeakMetadata
+	(*DeleteVoiceRequest)(nil),      // 11: com.entwico.rootpuller.voice.DeleteVoiceRequest
+	(*DeleteVoiceResponse)(nil),     // 12: com.entwico.rootpuller.voice.DeleteVoiceResponse
+	(*Capabilities)(nil),            // 13: com.entwico.rootpuller.voice.Capabilities
+	(*AudioFormat)(nil),             // 14: com.entwico.rootpuller.voice.AudioFormat
+	(*ModelInfo)(nil),               // 15: com.entwico.rootpuller.voice.ModelInfo
+	(*TextLimits)(nil),              // 16: com.entwico.rootpuller.voice.TextLimits
+	(*Progress)(nil),                // 17: com.entwico.rootpuller.voice.Progress
+	(*Usage)(nil),                   // 18: com.entwico.rootpuller.voice.Usage
+	(*SaveVoiceRequest_Params)(nil), // 19: com.entwico.rootpuller.voice.SaveVoiceRequest.Params
+	(*common.FileChunk)(nil),        // 20: com.entwico.rootpuller.common.FileChunk
+	(*emptypb.Empty)(nil),           // 21: google.protobuf.Empty
 }
 var file_com_entwico_rootpuller_voice_voice_proto_depIdxs = []int32{
-	15, // 0: com.entwico.rootpuller.voice.DesignVoiceResponse.progress:type_name -> com.entwico.rootpuller.voice.Progress
-	3,  // 1: com.entwico.rootpuller.voice.DesignVoiceResponse.metadata:type_name -> com.entwico.rootpuller.voice.DesignMetadata
-	18, // 2: com.entwico.rootpuller.voice.DesignVoiceResponse.file:type_name -> com.entwico.rootpuller.common.FileChunk
-	4,  // 3: com.entwico.rootpuller.voice.DesignMetadata.previews:type_name -> com.entwico.rootpuller.voice.PreviewMetadata
-	16, // 4: com.entwico.rootpuller.voice.DesignMetadata.usage:type_name -> com.entwico.rootpuller.voice.Usage
-	17, // 5: com.entwico.rootpuller.voice.SaveVoiceRequest.params:type_name -> com.entwico.rootpuller.voice.SaveVoiceRequest.Params
-	18, // 6: com.entwico.rootpuller.voice.SaveVoiceRequest.sample:type_name -> com.entwico.rootpuller.common.FileChunk
-	15, // 7: com.entwico.rootpuller.voice.SpeakResponse.progress:type_name -> com.entwico.rootpuller.voice.Progress
-	9,  // 8: com.entwico.rootpuller.voice.SpeakResponse.metadata:type_name -> com.entwico.rootpuller.voice.SpeakMetadata
-	18, // 9: com.entwico.rootpuller.voice.SpeakResponse.file:type_name -> com.entwico.rootpuller.common.FileChunk
-	16, // 10: com.entwico.rootpuller.voice.SpeakMetadata.usage:type_name -> com.entwico.rootpuller.voice.Usage
-	13, // 11: com.entwico.rootpuller.voice.Capabilities.speech_models:type_name -> com.entwico.rootpuller.voice.ModelInfo
-	13, // 12: com.entwico.rootpuller.voice.Capabilities.design_models:type_name -> com.entwico.rootpuller.voice.ModelInfo
-	14, // 13: com.entwico.rootpuller.voice.Capabilities.description_limits:type_name -> com.entwico.rootpuller.voice.TextLimits
-	14, // 14: com.entwico.rootpuller.voice.Capabilities.sample_text_limits:type_name -> com.entwico.rootpuller.voice.TextLimits
-	0,  // 15: com.entwico.rootpuller.voice.Progress.stage:type_name -> com.entwico.rootpuller.voice.Progress.Stage
-	1,  // 16: com.entwico.rootpuller.voice.VoiceService.DesignVoice:input_type -> com.entwico.rootpuller.voice.DesignVoiceRequest
-	5,  // 17: com.entwico.rootpuller.voice.VoiceService.SaveVoice:input_type -> com.entwico.rootpuller.voice.SaveVoiceRequest
-	7,  // 18: com.entwico.rootpuller.voice.VoiceService.Speak:input_type -> com.entwico.rootpuller.voice.SpeakRequest
-	10, // 19: com.entwico.rootpuller.voice.VoiceService.DeleteVoice:input_type -> com.entwico.rootpuller.voice.DeleteVoiceRequest
-	19, // 20: com.entwico.rootpuller.voice.VoiceService.GetCapabilities:input_type -> google.protobuf.Empty
-	2,  // 21: com.entwico.rootpuller.voice.VoiceService.DesignVoice:output_type -> com.entwico.rootpuller.voice.DesignVoiceResponse
-	6,  // 22: com.entwico.rootpuller.voice.VoiceService.SaveVoice:output_type -> com.entwico.rootpuller.voice.SaveVoiceResponse
-	8,  // 23: com.entwico.rootpuller.voice.VoiceService.Speak:output_type -> com.entwico.rootpuller.voice.SpeakResponse
-	11, // 24: com.entwico.rootpuller.voice.VoiceService.DeleteVoice:output_type -> com.entwico.rootpuller.voice.DeleteVoiceResponse
-	12, // 25: com.entwico.rootpuller.voice.VoiceService.GetCapabilities:output_type -> com.entwico.rootpuller.voice.Capabilities
-	21, // [21:26] is the sub-list for method output_type
-	16, // [16:21] is the sub-list for method input_type
-	16, // [16:16] is the sub-list for extension type_name
-	16, // [16:16] is the sub-list for extension extendee
-	0,  // [0:16] is the sub-list for field type_name
+	17, // 0: com.entwico.rootpuller.voice.DesignVoiceResponse.progress:type_name -> com.entwico.rootpuller.voice.Progress
+	4,  // 1: com.entwico.rootpuller.voice.DesignVoiceResponse.metadata:type_name -> com.entwico.rootpuller.voice.DesignMetadata
+	20, // 2: com.entwico.rootpuller.voice.DesignVoiceResponse.file:type_name -> com.entwico.rootpuller.common.FileChunk
+	5,  // 3: com.entwico.rootpuller.voice.DesignMetadata.previews:type_name -> com.entwico.rootpuller.voice.PreviewMetadata
+	18, // 4: com.entwico.rootpuller.voice.DesignMetadata.usage:type_name -> com.entwico.rootpuller.voice.Usage
+	19, // 5: com.entwico.rootpuller.voice.SaveVoiceRequest.params:type_name -> com.entwico.rootpuller.voice.SaveVoiceRequest.Params
+	20, // 6: com.entwico.rootpuller.voice.SaveVoiceRequest.sample:type_name -> com.entwico.rootpuller.common.FileChunk
+	14, // 7: com.entwico.rootpuller.voice.SpeakRequest.format:type_name -> com.entwico.rootpuller.voice.AudioFormat
+	17, // 8: com.entwico.rootpuller.voice.SpeakResponse.progress:type_name -> com.entwico.rootpuller.voice.Progress
+	10, // 9: com.entwico.rootpuller.voice.SpeakResponse.metadata:type_name -> com.entwico.rootpuller.voice.SpeakMetadata
+	20, // 10: com.entwico.rootpuller.voice.SpeakResponse.file:type_name -> com.entwico.rootpuller.common.FileChunk
+	18, // 11: com.entwico.rootpuller.voice.SpeakMetadata.usage:type_name -> com.entwico.rootpuller.voice.Usage
+	14, // 12: com.entwico.rootpuller.voice.SpeakMetadata.format:type_name -> com.entwico.rootpuller.voice.AudioFormat
+	15, // 13: com.entwico.rootpuller.voice.Capabilities.speech_models:type_name -> com.entwico.rootpuller.voice.ModelInfo
+	15, // 14: com.entwico.rootpuller.voice.Capabilities.design_models:type_name -> com.entwico.rootpuller.voice.ModelInfo
+	16, // 15: com.entwico.rootpuller.voice.Capabilities.description_limits:type_name -> com.entwico.rootpuller.voice.TextLimits
+	16, // 16: com.entwico.rootpuller.voice.Capabilities.sample_text_limits:type_name -> com.entwico.rootpuller.voice.TextLimits
+	14, // 17: com.entwico.rootpuller.voice.Capabilities.audio_formats:type_name -> com.entwico.rootpuller.voice.AudioFormat
+	0,  // 18: com.entwico.rootpuller.voice.AudioFormat.codec:type_name -> com.entwico.rootpuller.voice.AudioFormat.Codec
+	1,  // 19: com.entwico.rootpuller.voice.Progress.stage:type_name -> com.entwico.rootpuller.voice.Progress.Stage
+	2,  // 20: com.entwico.rootpuller.voice.VoiceService.DesignVoice:input_type -> com.entwico.rootpuller.voice.DesignVoiceRequest
+	6,  // 21: com.entwico.rootpuller.voice.VoiceService.SaveVoice:input_type -> com.entwico.rootpuller.voice.SaveVoiceRequest
+	8,  // 22: com.entwico.rootpuller.voice.VoiceService.Speak:input_type -> com.entwico.rootpuller.voice.SpeakRequest
+	11, // 23: com.entwico.rootpuller.voice.VoiceService.DeleteVoice:input_type -> com.entwico.rootpuller.voice.DeleteVoiceRequest
+	21, // 24: com.entwico.rootpuller.voice.VoiceService.GetCapabilities:input_type -> google.protobuf.Empty
+	3,  // 25: com.entwico.rootpuller.voice.VoiceService.DesignVoice:output_type -> com.entwico.rootpuller.voice.DesignVoiceResponse
+	7,  // 26: com.entwico.rootpuller.voice.VoiceService.SaveVoice:output_type -> com.entwico.rootpuller.voice.SaveVoiceResponse
+	9,  // 27: com.entwico.rootpuller.voice.VoiceService.Speak:output_type -> com.entwico.rootpuller.voice.SpeakResponse
+	12, // 28: com.entwico.rootpuller.voice.VoiceService.DeleteVoice:output_type -> com.entwico.rootpuller.voice.DeleteVoiceResponse
+	13, // 29: com.entwico.rootpuller.voice.VoiceService.GetCapabilities:output_type -> com.entwico.rootpuller.voice.Capabilities
+	25, // [25:30] is the sub-list for method output_type
+	20, // [20:25] is the sub-list for method input_type
+	20, // [20:20] is the sub-list for extension type_name
+	20, // [20:20] is the sub-list for extension extendee
+	0,  // [0:20] is the sub-list for field type_name
 }
 
 func init() { file_com_entwico_rootpuller_voice_voice_proto_init() }
@@ -1599,14 +1775,14 @@ func file_com_entwico_rootpuller_voice_voice_proto_init() {
 		(*SpeakResponse_File)(nil),
 	}
 	file_com_entwico_rootpuller_voice_voice_proto_msgTypes[11].OneofWrappers = []any{}
-	file_com_entwico_rootpuller_voice_voice_proto_msgTypes[16].OneofWrappers = []any{}
+	file_com_entwico_rootpuller_voice_voice_proto_msgTypes[17].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_com_entwico_rootpuller_voice_voice_proto_rawDesc), len(file_com_entwico_rootpuller_voice_voice_proto_rawDesc)),
-			NumEnums:      1,
-			NumMessages:   17,
+			NumEnums:      2,
+			NumMessages:   18,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -47,6 +47,29 @@ English sample gives an English-accented voice. The lengths the provider accepts
 are in `GetCapabilities` (`DescriptionLimits`, `SampleTextLimits`); with
 ElevenLabs a description takes 20–1000 characters and a sample text 100–1000.
 
+## Audio format
+
+`Speak` returns MP3 at 44.1 kHz and 128 kbps unless `SpeakOptions.Format`
+asks for another encoding. `GetCapabilities().AudioFormats` lists what the
+provider delivers, the default first; pick one from it:
+
+```go
+wav := voice.AudioFormat{Codec: voice.CodecWAV, SampleRate: 44100}
+speech, err := svc.Speak(ctx, saved.Ref, text, "de", &voice.SpeakOptions{Format: &wav})
+// speech.Audio is "speech_0.wav" (audio/wav); speech.Format reports what was
+// delivered, Channels included (1: ElevenLabs speaks mono).
+```
+
+- `CodecWAV` is lossless 16-bit PCM, about 5 MB per minute at 44.1 kHz. Use it
+  when the speech is mixed into a montage: the montage then encodes it once,
+  at the output, instead of decoding an MP3 and encoding it again.
+- Formats are matched on codec, sample rate and bit rate; one not in the list
+  fails with `InvalidArgument`. With ElevenLabs, 192 kbps MP3 needs the
+  Creator plan and 44.1 kHz WAV the Pro plan. The list leaves out what the
+  account's plan does not include; a format the provider refuses anyway fails
+  with `PermissionDenied`. Neither is worth retrying.
+- `Design` previews are always MP3: they are for listening and picking.
+
 ## What to store
 
 | Keep | Why |
@@ -104,8 +127,8 @@ to `GenerateTalking`.
   cloning work, the saved-voice slots in use and their limit, the speech and
   design models with their languages and each model's longest text
   (`Model.MaxTextChars`), the text limits of `Design`, and how much of a `Save`
-  sample is used (`MaxSampleSeconds`). Check it to show "not available" before
-  a call fails.
+  sample is used (`MaxSampleSeconds`), and the formats `Speak` delivers
+  (`AudioFormats`). Check it to show "not available" before a call fails.
 - Leave `SpeakOptions.Speed` nil for the voice's natural pace; 0 is the
   slowest, not the default.
 - Every saved voice takes a slot (10 on the current plan). `Delete` frees one;
@@ -123,6 +146,9 @@ to `GenerateTalking`.
 
 ## Testing
 
-`rootpullertest.Voice` fakes the service. Its hooks see the requests; return
+`rootpullertest.Voice` fakes the service. Its hooks see the requests,
+`VoiceSpeakRequest.Format` included; it accepts only the formats it reports
+(by default MP3 at 128 and 192 kbps and WAV at 44.1 and 48 kHz) and answers a
+WAV request with "speech_0.wav". Return
 `rootpullertest.VoiceProviderMismatch()` from `SpeakFunc` to test the migration
 path.
