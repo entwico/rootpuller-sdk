@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.11.0 (2026-11-05)
+
+### Minor Changes
+
+- New `montage` package for `MontageService`: `Render` turns a `Timeline` of video segments and stills (cuts or crossfades, kept, ducked or muted clip sound), audio tracks (voice-overs, looping music beds, fades) and image overlays (captions, logos) plus the assets it names into one MP4, with progress and the result's duration and size; `GetCapabilities` reports the server's limits. `rootpullertest.Montage` fakes it, enforcing the wire protocol and the timeline rules that need no media. See docs/montage.md.
+
+### Patch Changes
+
+- A streaming upload that fails part-way (its reader returns an error, or a frame cannot be sent) now cancels the call instead of ending it cleanly. Before, the server received a well-formed but truncated upload and processed it: a talking-head video could start rendering from half a voice track. This covers the uploads that stream params, then files, then read results: painter (`GenerateImage`, `EditImage`, `OutpaintImage`, `RefineFaces`), video (`Generate`, `GenerateTalking`, `GenerateTalkingSpeech`), assetia (`TransformImage`, `TransformVideo`, `GeneratePreview`), `bgremover.RemoveBackground`, `unshakaler.UpscaleImage`, facefixer (`RestoreFace`, `ColorizeFace`, `InpaintFace`), `webcontent.ExtractContent`, `composer.Transcribe`, `escriba.TranscribeRecording`, vectorops (`ClusterHdbscan`, `ProjectUmap`) and `montage.Render`. `assetia.ProbeMedia`, `escriba.Transcribe` and `completion.CompleteWithAttachments` are not covered yet.
+
 ## v0.10.1 (2026-11-04)
 
 ### Patch Changes
