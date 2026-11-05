@@ -1,4 +1,5 @@
-go = "builder"
+# the go version of the golang-builder image, bumped together with the plugin and image tags below
+go = "1.27.0"
 task = "builder"
 goreleaser = "builder"
 golangci-lint = "builder"
