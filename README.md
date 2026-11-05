@@ -107,6 +107,7 @@ links only the service packages it imports.
 | `painter` | ImagePainterService | Google / OpenAI generate/edit/outpaint; self-hosted ComfyUI models (comfy backend) with reference images and face refinement |
 | `video` | VideoGeneratorService | `Generate` (LTX 2.5 clips with sound from text, a first frame, or first and last frame), `GenerateTalking` (portrait + voice track → lip-synced talking head), `GenerateTalkingSpeech` (portrait + text in a saved voice); ComfyUI-deployment-routable |
 | `voice` | VoiceService | `Design` (voice previews from a description), `Save` (preview or sample audio → opaque `voice.Ref`), `Speak`, `Delete`, `GetCapabilities`; provider-neutral, `IsProviderMismatch` for refs from a former provider ([guide](docs/voice.md)) |
+| `montage` | MontageService | `Render` (a timeline of clips, stills, voice-overs, music and caption overlays → one MP4, with cuts, crossfades, ducking and fades), `GetCapabilities` ([guide](docs/montage.md)) |
 | `assetia` | MediaProcessingService | image crop/resize/convert/watermark, video transcode (H.265/AV1), previews, `ProbeMedia` |
 | `escriba` | TranscriptionService | `OpenLive` (full-duplex speech to text), `Transcribe` (short clips), `TranscribeRecording` (any length, optional speaker labels, progress), `GetCapabilities`; deployment-routable |
 

@@ -919,9 +919,11 @@ type GenerateTalkingVideoRequest_Speech struct {
 	// Required, from VoiceService.SaveVoice.
 	VoiceRef string `protobuf:"bytes,1,opt,name=voice_ref,json=voiceRef,proto3" json:"voice_ref,omitempty"`
 	// Required. Spoken, it must fit the server's maximum speech length
-	// (default 90 s); the server estimates the length from the text before
-	// speaking and rejects text that is clearly too long, and checks the
-	// spoken audio again afterwards.
+	// (default 90 s). Before speaking, the server rejects text longer than
+	// that at a brisk 20 characters per second (1,800 characters for 90 s);
+	// shorter text that still speaks too long fails after speaking, billed.
+	// The estimate is for alphabetic scripts; logographic scripts speak far
+	// fewer characters per second, so keep such texts well short.
 	Text string `protobuf:"bytes,2,opt,name=text,proto3" json:"text,omitempty"`
 	// Required. Language code of the text, as in VoiceService.Speak.
 	Language      string `protobuf:"bytes,3,opt,name=language,proto3" json:"language,omitempty"`

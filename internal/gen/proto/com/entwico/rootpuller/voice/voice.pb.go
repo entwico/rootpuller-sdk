@@ -1313,7 +1313,7 @@ func (x *Usage) GetCurrencyCode() string {
 
 type SaveVoiceRequest_Params struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Required. Shown in the provider's voice list.
+	// Required, at most 100 characters. Shown in the provider's voice list.
 	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	// Optional description stored with the voice.
 	Description string `protobuf:"bytes,2,opt,name=description,proto3" json:"description,omitempty"`
