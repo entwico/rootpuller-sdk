@@ -9,11 +9,14 @@ import (
 // subset; asking for a model it does not serve fails with NotFound.
 const (
 	// ComfyModelQwenImage takes up to 7 reference images and supports Edit
-	// and RefineFaces.
+	// and RefineFaces. It samples at guidance 1 by default; raise
+	// GuidanceScale to use a NegativePrompt.
 	ComfyModelQwenImage = "qwen-image-2.1"
-	// ComfyModelMOSSImage is text-only and renders readable text well.
+	// ComfyModelMOSSImage is text-only and renders readable text well. It
+	// samples at guidance 3 by default.
 	ComfyModelMOSSImage = "moss-image"
-	// ComfyModelKrea2Turbo is text-only and fast, for drafts.
+	// ComfyModelKrea2Turbo is text-only and fast, for drafts. It is distilled
+	// to sample without guidance: no NegativePrompt or GuidanceScale.
 	ComfyModelKrea2Turbo = "krea-2-turbo"
 )
 
@@ -50,6 +53,16 @@ type GenerateComfy struct {
 	Width        *int
 	Height       *int
 	OutputFormat ComfyOutputFormat
+	// NegativePrompt names what the image must not show, e.g. "text,
+	// lettering, logo, duplicate objects", at most 2000 characters. A few
+	// targeted terms per failure work better than a long generic list. The model reads it only while
+	// guidance is above 1, so it needs GuidanceScale above 1 on
+	// ComfyModelQwenImage; ComfyModelKrea2Turbo rejects it.
+	NegativePrompt string
+	// GuidanceScale is classifier-free guidance, 1-10: how strongly sampling
+	// follows the prompt and steers away from NegativePrompt. Nil keeps the
+	// model's default. Above 1 sampling takes about twice as long.
+	GuidanceScale *float64
 }
 
 func (GenerateComfy) isBackend() {}
@@ -71,6 +84,8 @@ func (b GenerateComfy) toProto() (*painterpb.GenerateImageRequest_Comfy, error) 
 		Width:          protoconv.Int32Ptr(b.Width),
 		Height:         protoconv.Int32Ptr(b.Height),
 		OutputFormat:   format,
+		NegativePrompt: optString(b.NegativePrompt),
+		GuidanceScale:  optFloat32(b.GuidanceScale),
 	}, nil
 }
 
@@ -88,6 +103,16 @@ type EditComfy struct {
 	Width        *int
 	Height       *int
 	OutputFormat ComfyOutputFormat
+	// NegativePrompt names what the image must not show, e.g. "text,
+	// lettering, logo, duplicate objects", at most 2000 characters. A few
+	// targeted terms per failure work better than a long generic list. The model reads it only while
+	// guidance is above 1, so it needs GuidanceScale above 1 on
+	// ComfyModelQwenImage; ComfyModelKrea2Turbo rejects it.
+	NegativePrompt string
+	// GuidanceScale is classifier-free guidance, 1-10: how strongly sampling
+	// follows the prompt and steers away from NegativePrompt. Nil keeps the
+	// model's default. Above 1 sampling takes about twice as long.
+	GuidanceScale *float64
 }
 
 func (EditComfy) isBackend() {}
@@ -109,6 +134,8 @@ func (b EditComfy) toProto() (*painterpb.EditImageRequest_Comfy, error) {
 		Width:          protoconv.Int32Ptr(b.Width),
 		Height:         protoconv.Int32Ptr(b.Height),
 		OutputFormat:   format,
+		NegativePrompt: optString(b.NegativePrompt),
+		GuidanceScale:  optFloat32(b.GuidanceScale),
 	}, nil
 }
 
@@ -157,4 +184,20 @@ func (b RefineFacesComfy) toProto() (*painterpb.RefineFacesRequest_Comfy, error)
 	}
 
 	return out, nil
+}
+
+func optString(s string) *string {
+	if s == "" {
+		return nil
+	}
+
+	return &s
+}
+
+func optFloat32(v *float64) *float32 {
+	if v == nil {
+		return nil
+	}
+
+	return new(float32(*v))
 }

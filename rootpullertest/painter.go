@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"io"
+	"math"
 	"net/http"
+	"strings"
+	"unicode/utf8"
 
 	"connectrpc.com/connect"
 
@@ -35,7 +38,10 @@ type Painter struct {
 	// comfyui-deployment header the client sent.
 	GenerateRequestFunc func(req GenerateRequest) ([]rootpullersdk.File, error)
 	EditFunc            func(prompt string, image rootpullersdk.File, mask *rootpullersdk.File) ([]rootpullersdk.File, error)
-	OutpaintFunc        func(prompt string, image rootpullersdk.File) ([]rootpullersdk.File, error)
+	// EditRequestFunc, when set, replaces EditFunc and also sees the backend,
+	// the model and the comfy sampling options.
+	EditRequestFunc func(req EditRequest) ([]rootpullersdk.File, error)
+	OutpaintFunc    func(prompt string, image rootpullersdk.File) ([]rootpullersdk.File, error)
 	// RefineFacesFunc sees the whole RefineFaces request; RefineFaces
 	// accepts input_image chunks only after params and reference_image
 	// chunks only after the input.
@@ -90,6 +96,23 @@ type GenerateRequest struct {
 	Model             string
 	References        []rootpullersdk.File
 	ComfyUIDeployment string
+	// NegativePrompt and GuidanceScale are the comfy backend's; empty and
+	// nil otherwise.
+	NegativePrompt string
+	GuidanceScale  *float64
+}
+
+// EditRequest is what the fake received on one EditImage call.
+type EditRequest struct {
+	Prompt  string
+	Backend string
+	Model   string
+	Image   rootpullersdk.File
+	Mask    *rootpullersdk.File
+	// NegativePrompt and GuidanceScale are the comfy backend's; empty and
+	// nil otherwise.
+	NegativePrompt string
+	GuidanceScale  *float64
 }
 
 // RefineFacesRequest is what a RefineFaces call sent, in facade types.
@@ -255,14 +278,7 @@ func (h *painterHandler) EditImage(_ context.Context, stream *connect.BidiStream
 		return invalidArgument(errMissingInputImage)
 	}
 
-	edit := h.fake.EditFunc
-	if edit == nil {
-		edit = func(string, rootpullersdk.File, *rootpullersdk.File) ([]rootpullersdk.File, error) {
-			return cannedPainterImages(), nil
-		}
-	}
-
-	files, err := edit(frames.params.GetPrompt(), frames.input, frames.mask)
+	files, err := h.edit(frames.params, frames.input, frames.mask)
 	if err != nil {
 		return err
 	}
@@ -490,6 +506,12 @@ func (h *painterHandler) generate(
 	references []rootpullersdk.File,
 	deployment string,
 ) ([]rootpullersdk.File, error) {
+	if c := params.GetComfy(); c != nil {
+		if err := comfySampling(c.GetModel(), c.GetNegativePrompt(), c.GuidanceScale); err != nil {
+			return nil, err
+		}
+	}
+
 	if h.fake.GenerateRequestFunc != nil {
 		req := GenerateRequest{
 			Prompt:            params.GetPrompt(),
@@ -504,6 +526,8 @@ func (h *painterHandler) generate(
 			req.Backend, req.Model = painter.BackendNameOpenAI, b.Openai.GetModel()
 		case *painterpb.GenerateImageRequest_Params_Comfy:
 			req.Backend, req.Model = painter.BackendNameComfy, b.Comfy.GetModel()
+			req.NegativePrompt = b.Comfy.GetNegativePrompt()
+			req.GuidanceScale = roundedGuidance(b.Comfy.GuidanceScale)
 		}
 
 		return h.fake.GenerateRequestFunc(req)
@@ -636,4 +660,106 @@ func painterMetadataToProto(m *painter.Metadata, files []rootpullersdk.File) *pa
 	}
 
 	return msg
+}
+
+func (h *painterHandler) edit(
+	params *painterpb.EditImageRequest_Params,
+	image rootpullersdk.File,
+	mask *rootpullersdk.File,
+) ([]rootpullersdk.File, error) {
+	if c := params.GetComfy(); c != nil {
+		if err := comfySampling(c.GetModel(), c.GetNegativePrompt(), c.GuidanceScale); err != nil {
+			return nil, err
+		}
+	}
+
+	if h.fake.EditRequestFunc != nil {
+		req := EditRequest{Prompt: params.GetPrompt(), Image: image, Mask: mask}
+
+		switch b := params.GetBackend().(type) {
+		case *painterpb.EditImageRequest_Params_Google:
+			req.Backend, req.Model = painter.BackendNameGoogle, b.Google.GetModel()
+		case *painterpb.EditImageRequest_Params_Openai:
+			req.Backend, req.Model = painter.BackendNameOpenAI, b.Openai.GetModel()
+		case *painterpb.EditImageRequest_Params_Comfy:
+			req.Backend, req.Model = painter.BackendNameComfy, b.Comfy.GetModel()
+			req.NegativePrompt = b.Comfy.GetNegativePrompt()
+			req.GuidanceScale = roundedGuidance(b.Comfy.GuidanceScale)
+		}
+
+		return h.fake.EditRequestFunc(req)
+	}
+
+	if h.fake.EditFunc != nil {
+		return h.fake.EditFunc(params.GetPrompt(), image, mask)
+	}
+
+	return cannedPainterImages(), nil
+}
+
+// comfyDefaultGuidance is each guided comfy model's guidance as the server
+// samples it.
+var comfyDefaultGuidance = map[string]float64{
+	painter.ComfyModelQwenImage: 1,
+	painter.ComfyModelMOSSImage: 3,
+}
+
+// comfyMaxNegativeChars is the server's cap on the negative prompt.
+const comfyMaxNegativeChars = 2000
+
+// roundedGuidance widens the wire's float32 the way the server does: rounded
+// to 3 decimals, so 3.1 stays 3.1.
+func roundedGuidance(v *float32) *float64 {
+	if v == nil {
+		return nil
+	}
+
+	return new(math.Round(float64(*v)*1000) / 1000)
+}
+
+var (
+	errComfyUnguided      = errors.New("the model is distilled to sample without guidance; it takes no negative_prompt or guidance_scale")
+	errComfyGuidanceRange = errors.New("guidance_scale must be within 1-10")
+	errComfyNegativeAtOne = errors.New("negative_prompt needs guidance_scale above 1")
+	errComfyNegativeLong  = errors.New("negative_prompt is longer than 2000 characters")
+)
+
+// comfySampling is the server's check of the comfy negative prompt and
+// guidance. A model the fake does not know is left to the hooks, as the
+// server's answer for it depends on what the deployment serves.
+func comfySampling(model, negative string, guidance *float32) error {
+	negative = strings.TrimSpace(negative)
+
+	if negative == "" && guidance == nil {
+		return nil
+	}
+
+	effective, guided := comfyDefaultGuidance[model]
+	if !guided {
+		if model == painter.ComfyModelKrea2Turbo {
+			return invalidArgument(errComfyUnguided)
+		}
+
+		return nil
+	}
+
+	if utf8.RuneCountInString(negative) > comfyMaxNegativeChars {
+		return invalidArgument(errComfyNegativeLong)
+	}
+
+	if guidance != nil {
+		g := *roundedGuidance(guidance)
+
+		if !(g >= 1 && g <= 10) {
+			return invalidArgument(errComfyGuidanceRange)
+		}
+
+		effective = g
+	}
+
+	if negative != "" && effective <= 1 {
+		return invalidArgument(errComfyNegativeAtOne)
+	}
+
+	return nil
 }

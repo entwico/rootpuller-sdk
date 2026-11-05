@@ -3,6 +3,7 @@ package painter_test
 import (
 	"bytes"
 	"errors"
+	"strings"
 	"testing"
 
 	rootpullersdk "github.com/entwico/rootpuller-sdk"
@@ -222,3 +223,105 @@ func oneImage() []rootpullersdk.File {
 
 const mimePNG = "image/png"
 const image0PNG = "image_0.png"
+
+func TestComfySamplingReachesTheServer(t *testing.T) {
+	t.Parallel()
+
+	var (
+		gen  rootpullertest.GenerateRequest
+		edit rootpullertest.EditRequest
+	)
+
+	srv := rootpullertest.NewServer(t, &rootpullertest.Painter{
+		GenerateRequestFunc: func(req rootpullertest.GenerateRequest) ([]rootpullersdk.File, error) {
+			gen = req
+
+			return oneImage(), nil
+		},
+		EditRequestFunc: func(req rootpullertest.EditRequest) ([]rootpullersdk.File, error) {
+			edit = req
+
+			return oneImage(), nil
+		},
+	})
+
+	sdk, err := rootpullersdk.New(srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	svc := painter.NewService(sdk)
+	negative := "text, lettering, logo"
+
+	_, err = svc.Generate(t.Context(), "a photographer", &painter.GenerateOptions{
+		Backend: painter.GenerateComfy{Model: painter.ComfyModelQwenImage, NegativePrompt: negative, GuidanceScale: new(3.1)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 3.1 is not exact in float32; the fake reports it the way the server
+	// uses it.
+	if gen.NegativePrompt != negative || gen.GuidanceScale == nil || *gen.GuidanceScale != 3.1 {
+		t.Fatalf("generate = %q / %v", gen.NegativePrompt, gen.GuidanceScale)
+	}
+
+	_, err = svc.Edit(t.Context(), "the same person as a photo", pngUpload("sheet.png", []byte{0x89}), &painter.EditOptions{
+		Backend: painter.EditComfy{Model: painter.ComfyModelQwenImage, NegativePrompt: negative, GuidanceScale: new(2.5)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if edit.Backend != painter.BackendNameComfy || edit.NegativePrompt != negative || edit.GuidanceScale == nil || *edit.GuidanceScale != 2.5 {
+		t.Fatalf("edit = %+v", edit)
+	}
+}
+
+const negativeText = "text"
+
+func TestComfySamplingRulesInTheFake(t *testing.T) {
+	t.Parallel()
+
+	srv := rootpullertest.NewServer(t, &rootpullertest.Painter{})
+
+	sdk, err := rootpullersdk.New(srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	svc := painter.NewService(sdk)
+
+	for name, backend := range map[string]painter.GenerateComfy{
+		"qwen negative at its default guidance": {Model: painter.ComfyModelQwenImage, NegativePrompt: negativeText},
+		"negative at guidance 1":                {Model: painter.ComfyModelMOSSImage, NegativePrompt: negativeText, GuidanceScale: new(1.0)},
+		"krea takes no guidance":                {Model: painter.ComfyModelKrea2Turbo, GuidanceScale: new(3.0)},
+		"guidance above 10":                     {Model: painter.ComfyModelQwenImage, GuidanceScale: new(11.0)},
+		"guidance that rounds to 1 with a negative": {
+			Model: painter.ComfyModelMOSSImage, NegativePrompt: negativeText, GuidanceScale: new(1.0004),
+		},
+		"negative over 2000 characters": {
+			Model: painter.ComfyModelQwenImage, NegativePrompt: strings.Repeat("ä", 2001), GuidanceScale: new(4.0),
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := svc.Generate(t.Context(), "p", &painter.GenerateOptions{Backend: backend})
+			if !errors.Is(err, rootpullersdk.ErrInvalidArgument) {
+				t.Fatalf("err = %v, want ErrInvalidArgument", err)
+			}
+		})
+	}
+
+	for name, backend := range map[string]painter.GenerateComfy{
+		"moss guides at 3 by default":            {Model: painter.ComfyModelMOSSImage, NegativePrompt: negativeText},
+		"guidance that rounds into range":        {Model: painter.ComfyModelQwenImage, GuidanceScale: new(10.0004)},
+		"negative at exactly 2000 characters":    {Model: painter.ComfyModelQwenImage, NegativePrompt: strings.Repeat("ä", 2000), GuidanceScale: new(4.0)},
+		"a model the fake does not know is left": {Model: "some-new-model", NegativePrompt: negativeText},
+	} {
+		if _, err := svc.Generate(t.Context(), "p", &painter.GenerateOptions{Backend: backend}); err != nil {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+}

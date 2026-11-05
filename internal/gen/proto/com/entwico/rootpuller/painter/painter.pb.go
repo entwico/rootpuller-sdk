@@ -2096,8 +2096,9 @@ func (x *GenerateImageRequest_OpenAI) GetUser() string {
 	return ""
 }
 
-// Self-hosted open-weight model options. Sampling settings (steps, cfg,
-// sampler) are fixed per model on the server.
+// Self-hosted open-weight model options. Steps and sampler are fixed per
+// model on the server; guidance and the negative prompt are adjustable on
+// the models that sample with guidance.
 type GenerateImageRequest_Comfy struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Model name, e.g. "qwen-image-2.1", "moss-image", "krea-2-turbo".
@@ -2109,9 +2110,22 @@ type GenerateImageRequest_Comfy struct {
 	Seed *int64 `protobuf:"varint,3,opt,name=seed,proto3,oneof" json:"seed,omitempty"`
 	// Output size in pixels, multiples of 16. Default: per model
 	// (e.g. 1152×1536 portrait).
-	Width         *int32             `protobuf:"varint,4,opt,name=width,proto3,oneof" json:"width,omitempty"`
-	Height        *int32             `protobuf:"varint,5,opt,name=height,proto3,oneof" json:"height,omitempty"`
-	OutputFormat  *ComfyOutputFormat `protobuf:"varint,6,opt,name=output_format,json=outputFormat,proto3,enum=com.entwico.rootpuller.painter.ComfyOutputFormat,oneof" json:"output_format,omitempty"`
+	Width        *int32             `protobuf:"varint,4,opt,name=width,proto3,oneof" json:"width,omitempty"`
+	Height       *int32             `protobuf:"varint,5,opt,name=height,proto3,oneof" json:"height,omitempty"`
+	OutputFormat *ComfyOutputFormat `protobuf:"varint,6,opt,name=output_format,json=outputFormat,proto3,enum=com.entwico.rootpuller.painter.ComfyOutputFormat,oneof" json:"output_format,omitempty"`
+	// What the image must not show, e.g. "text, lettering, logo, duplicate
+	// objects", at most 2000 characters. A few targeted terms per failure
+	// work better than a long generic list. The model reads it only while
+	// guidance_scale is above 1, so a negative prompt where the guidance in
+	// effect is 1 is INVALID_ARGUMENT; so is one for a model without
+	// guidance (krea-2-turbo).
+	NegativePrompt *string `protobuf:"bytes,7,opt,name=negative_prompt,json=negativePrompt,proto3,oneof" json:"negative_prompt,omitempty"`
+	// Classifier-free guidance, 1-10: how strongly sampling follows the
+	// prompt and steers away from negative_prompt. Above 1 the model runs
+	// twice per step, so sampling takes about twice as long. Default per
+	// model: qwen-image-2.1 1, moss-image 3. krea-2-turbo is distilled to
+	// sample at 1 and rejects it.
+	GuidanceScale *float32 `protobuf:"fixed32,8,opt,name=guidance_scale,json=guidanceScale,proto3,oneof" json:"guidance_scale,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2186,6 +2200,20 @@ func (x *GenerateImageRequest_Comfy) GetOutputFormat() ComfyOutputFormat {
 		return *x.OutputFormat
 	}
 	return ComfyOutputFormat_COMFY_OUTPUT_FORMAT_UNSPECIFIED
+}
+
+func (x *GenerateImageRequest_Comfy) GetNegativePrompt() string {
+	if x != nil && x.NegativePrompt != nil {
+		return *x.NegativePrompt
+	}
+	return ""
+}
+
+func (x *GenerateImageRequest_Comfy) GetGuidanceScale() float32 {
+	if x != nil && x.GuidanceScale != nil {
+		return *x.GuidanceScale
+	}
+	return 0
 }
 
 type GenerateImageRequest_Params struct {
@@ -2540,9 +2568,22 @@ type EditImageRequest_Comfy struct {
 	Seed *int64 `protobuf:"varint,3,opt,name=seed,proto3,oneof" json:"seed,omitempty"`
 	// Output size in pixels, multiples of 16. Default: the input image's
 	// size rounded to multiples of 16.
-	Width         *int32             `protobuf:"varint,4,opt,name=width,proto3,oneof" json:"width,omitempty"`
-	Height        *int32             `protobuf:"varint,5,opt,name=height,proto3,oneof" json:"height,omitempty"`
-	OutputFormat  *ComfyOutputFormat `protobuf:"varint,6,opt,name=output_format,json=outputFormat,proto3,enum=com.entwico.rootpuller.painter.ComfyOutputFormat,oneof" json:"output_format,omitempty"`
+	Width        *int32             `protobuf:"varint,4,opt,name=width,proto3,oneof" json:"width,omitempty"`
+	Height       *int32             `protobuf:"varint,5,opt,name=height,proto3,oneof" json:"height,omitempty"`
+	OutputFormat *ComfyOutputFormat `protobuf:"varint,6,opt,name=output_format,json=outputFormat,proto3,enum=com.entwico.rootpuller.painter.ComfyOutputFormat,oneof" json:"output_format,omitempty"`
+	// What the image must not show, e.g. "text, lettering, logo, duplicate
+	// objects", at most 2000 characters. A few targeted terms per failure
+	// work better than a long generic list. The model reads it only while
+	// guidance_scale is above 1, so a negative prompt where the guidance in
+	// effect is 1 is INVALID_ARGUMENT; so is one for a model without
+	// guidance (krea-2-turbo).
+	NegativePrompt *string `protobuf:"bytes,7,opt,name=negative_prompt,json=negativePrompt,proto3,oneof" json:"negative_prompt,omitempty"`
+	// Classifier-free guidance, 1-10: how strongly sampling follows the
+	// prompt and steers away from negative_prompt. Above 1 the model runs
+	// twice per step, so sampling takes about twice as long. Default per
+	// model: qwen-image-2.1 1, moss-image 3. krea-2-turbo is distilled to
+	// sample at 1 and rejects it.
+	GuidanceScale *float32 `protobuf:"fixed32,8,opt,name=guidance_scale,json=guidanceScale,proto3,oneof" json:"guidance_scale,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -2617,6 +2658,20 @@ func (x *EditImageRequest_Comfy) GetOutputFormat() ComfyOutputFormat {
 		return *x.OutputFormat
 	}
 	return ComfyOutputFormat_COMFY_OUTPUT_FORMAT_UNSPECIFIED
+}
+
+func (x *EditImageRequest_Comfy) GetNegativePrompt() string {
+	if x != nil && x.NegativePrompt != nil {
+		return *x.NegativePrompt
+	}
+	return ""
+}
+
+func (x *EditImageRequest_Comfy) GetGuidanceScale() float32 {
+	if x != nil && x.GuidanceScale != nil {
+		return *x.GuidanceScale
+	}
+	return 0
 }
 
 type EditImageRequest_Params struct {
@@ -3316,7 +3371,7 @@ const file_com_entwico_rootpuller_painter_painter_proto_rawDesc = "" +
 	"\x13BACKEND_UNSPECIFIED\x10\x00\x12\x12\n" +
 	"\x0eBACKEND_GOOGLE\x10\x01\x12\x12\n" +
 	"\x0eBACKEND_OPENAI\x10\x02\x12\x11\n" +
-	"\rBACKEND_COMFY\x10\x03\"\x88\x15\n" +
+	"\rBACKEND_COMFY\x10\x03\"\x89\x16\n" +
 	"\x14GenerateImageRequest\x12U\n" +
 	"\x06params\x18\x01 \x01(\v2;.com.entwico.rootpuller.painter.GenerateImageRequest.ParamsH\x00R\x06params\x12S\n" +
 	"\x0freference_image\x18\x02 \x01(\v2(.com.entwico.rootpuller.common.FileChunkH\x00R\x0ereferenceImage\x1a\xbe\b\n" +
@@ -3380,19 +3435,23 @@ const file_com_entwico_rootpuller_painter_painter_proto_rawDesc = "" +
 	"\x0e_output_formatB\x15\n" +
 	"\x13_output_compressionB\r\n" +
 	"\v_moderationB\a\n" +
-	"\x05_user\x1a\xbf\x02\n" +
+	"\x05_user\x1a\xc0\x03\n" +
 	"\x05Comfy\x12\x14\n" +
 	"\x05model\x18\x01 \x01(\tR\x05model\x12-\n" +
 	"\x10number_of_images\x18\x02 \x01(\x05H\x00R\x0enumberOfImages\x88\x01\x01\x12\x17\n" +
 	"\x04seed\x18\x03 \x01(\x03H\x01R\x04seed\x88\x01\x01\x12\x19\n" +
 	"\x05width\x18\x04 \x01(\x05H\x02R\x05width\x88\x01\x01\x12\x1b\n" +
 	"\x06height\x18\x05 \x01(\x05H\x03R\x06height\x88\x01\x01\x12[\n" +
-	"\routput_format\x18\x06 \x01(\x0e21.com.entwico.rootpuller.painter.ComfyOutputFormatH\x04R\foutputFormat\x88\x01\x01B\x13\n" +
+	"\routput_format\x18\x06 \x01(\x0e21.com.entwico.rootpuller.painter.ComfyOutputFormatH\x04R\foutputFormat\x88\x01\x01\x12,\n" +
+	"\x0fnegative_prompt\x18\a \x01(\tH\x05R\x0enegativePrompt\x88\x01\x01\x12*\n" +
+	"\x0eguidance_scale\x18\b \x01(\x02H\x06R\rguidanceScale\x88\x01\x01B\x13\n" +
 	"\x11_number_of_imagesB\a\n" +
 	"\x05_seedB\b\n" +
 	"\x06_widthB\t\n" +
 	"\a_heightB\x10\n" +
-	"\x0e_output_format\x1a\xad\x02\n" +
+	"\x0e_output_formatB\x12\n" +
+	"\x10_negative_promptB\x11\n" +
+	"\x0f_guidance_scale\x1a\xad\x02\n" +
 	"\x06Params\x12\x16\n" +
 	"\x06prompt\x18\x01 \x01(\tR\x06prompt\x12U\n" +
 	"\x06google\x18\x02 \x01(\v2;.com.entwico.rootpuller.painter.GenerateImageRequest.GoogleH\x00R\x06google\x12U\n" +
@@ -3405,7 +3464,7 @@ const file_com_entwico_rootpuller_painter_painter_proto_rawDesc = "" +
 	"\bmetadata\x18\x02 \x01(\v22.com.entwico.rootpuller.painter.GenerationMetadataH\x00R\bmetadata\x12>\n" +
 	"\x04file\x18\x03 \x01(\v2(.com.entwico.rootpuller.common.FileChunkH\x00R\x04fileB\n" +
 	"\n" +
-	"\bresponse\"\x91\x13\n" +
+	"\bresponse\"\x92\x14\n" +
 	"\x10EditImageRequest\x12Q\n" +
 	"\x06params\x18\x01 \x01(\v27.com.entwico.rootpuller.painter.EditImageRequest.ParamsH\x00R\x06params\x12K\n" +
 	"\vinput_image\x18\x02 \x01(\v2(.com.entwico.rootpuller.common.FileChunkH\x00R\n" +
@@ -3459,19 +3518,23 @@ const file_com_entwico_rootpuller_painter_painter_proto_rawDesc = "" +
 	"\v_backgroundB\x10\n" +
 	"\x0e_output_formatB\x15\n" +
 	"\x13_output_compressionB\a\n" +
-	"\x05_user\x1a\xbf\x02\n" +
+	"\x05_user\x1a\xc0\x03\n" +
 	"\x05Comfy\x12\x14\n" +
 	"\x05model\x18\x01 \x01(\tR\x05model\x12-\n" +
 	"\x10number_of_images\x18\x02 \x01(\x05H\x00R\x0enumberOfImages\x88\x01\x01\x12\x17\n" +
 	"\x04seed\x18\x03 \x01(\x03H\x01R\x04seed\x88\x01\x01\x12\x19\n" +
 	"\x05width\x18\x04 \x01(\x05H\x02R\x05width\x88\x01\x01\x12\x1b\n" +
 	"\x06height\x18\x05 \x01(\x05H\x03R\x06height\x88\x01\x01\x12[\n" +
-	"\routput_format\x18\x06 \x01(\x0e21.com.entwico.rootpuller.painter.ComfyOutputFormatH\x04R\foutputFormat\x88\x01\x01B\x13\n" +
+	"\routput_format\x18\x06 \x01(\x0e21.com.entwico.rootpuller.painter.ComfyOutputFormatH\x04R\foutputFormat\x88\x01\x01\x12,\n" +
+	"\x0fnegative_prompt\x18\a \x01(\tH\x05R\x0enegativePrompt\x88\x01\x01\x12*\n" +
+	"\x0eguidance_scale\x18\b \x01(\x02H\x06R\rguidanceScale\x88\x01\x01B\x13\n" +
 	"\x11_number_of_imagesB\a\n" +
 	"\x05_seedB\b\n" +
 	"\x06_widthB\t\n" +
 	"\a_heightB\x10\n" +
-	"\x0e_output_format\x1a\xa1\x02\n" +
+	"\x0e_output_formatB\x12\n" +
+	"\x10_negative_promptB\x11\n" +
+	"\x0f_guidance_scale\x1a\xa1\x02\n" +
 	"\x06Params\x12\x16\n" +
 	"\x06prompt\x18\x01 \x01(\tR\x06prompt\x12Q\n" +
 	"\x06google\x18\x02 \x01(\v27.com.entwico.rootpuller.painter.EditImageRequest.GoogleH\x00R\x06google\x12Q\n" +

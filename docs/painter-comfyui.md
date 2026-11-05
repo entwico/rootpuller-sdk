@@ -215,6 +215,45 @@ res, err := p.RefineFaces(ctx, "", // the prompt is optional
   comes back as 8-bit. JPEG re-encodes the
   whole image.
 
+## Negative prompt and guidance
+
+`GuidanceScale` (1–10) sets classifier-free guidance: how strongly sampling
+follows the prompt. `NegativePrompt` names what the picture must not show, and
+the model reads it only while guidance is above 1.
+
+```go
+res, err := p.Edit(ctx, prompt, sheet, &painter.EditOptions{
+    Backend: painter.EditComfy{
+        Model:          painter.ComfyModelQwenImage,
+        GuidanceScale:  new(2.5),
+        NegativePrompt: "text, lettering, logo, duplicate camera, visible screen content, glossy skin, airbrushed",
+    },
+})
+```
+
+| Model | Default guidance | Negative prompt |
+|---|---|---|
+| `qwen-image-2.1` | 1: fastest, but the negative prompt is never read | needs `GuidanceScale` above 1 |
+| `moss-image` | 3 | works as is |
+| `krea-2-turbo` | none: distilled to sample without it | rejected, and so is `GuidanceScale` |
+
+On Qwen, guidance above 1 is the bigger step toward a photo that does not
+look generated: the subject follows the prompt more closely (a pose, an
+object that has to be there), and skin keeps its texture instead of turning
+glossy. The negative prompt then removes specific failures; in our tests,
+`text, lettering, logo` removed the invented lettering on a camera that a
+guided render without it still had. Start at 2.5 and compare a few seeds
+before going higher.
+
+- Keep the negative prompt short and targeted: a few terms per failure you
+  actually see, not a long generic list. The server takes at most 2000
+  characters.
+- Guidance above 1 runs the model twice per step, so the sampling takes about
+  twice as long. On our test GPU a Qwen image at 768×1024 took 32 s at
+  guidance 1 and 57 s at 2.5 or 4.
+- A negative prompt with guidance 1, either set or the Qwen default, fails
+  with `InvalidArgument`: it would otherwise be ignored without a word.
+
 ## Queueing and progress
 
 A ComfyUI deployment runs one job at a time. Jobs from all callers wait in its
@@ -270,7 +309,7 @@ false, so a call never comes back with a blocked image.
 
 | Code | When |
 |---|---|
-| `InvalidArgument` | missing `Model`; references with a text-only model or more than 7; `Edit` or `RefineFaces` with MOSS or Krea; more than 3 `RefineFaces` references; regions outside 0–1; a mask with `EditComfy`; a size that is not a multiple of 16 or outside 256–2048; `NumberOfImages` outside 1–4; an input that is not a PNG, JPEG or WebP image |
+| `InvalidArgument` | missing `Model`; a `NegativePrompt` without guidance above 1 or longer than 2000 characters, or `NegativePrompt` / `GuidanceScale` with Krea; `GuidanceScale` outside 1–10; references with a text-only model or more than 7; `Edit` or `RefineFaces` with MOSS or Krea; more than 3 `RefineFaces` references; regions outside 0–1; a mask with `EditComfy`; a size that is not a multiple of 16 or outside 256–2048; `NumberOfImages` outside 1–4; an input that is not a PNG, JPEG or WebP image |
 | `FailedPrecondition` | `RefineFaces` found no face (try `FaceBoxes`, a lower `MinFaceSize`, or wider `SearchRegions`) |
 | `NotFound` | the deployment named in the header is not configured, or that deployment does not serve the model. The message lists the models it does serve |
 | `Unavailable` | the comfy backend is not configured on this rootpuller-api, the deployment cannot be reached, or a job ran longer than 20 minutes per image |
@@ -280,7 +319,9 @@ false, so a call never comes back with a blocked image.
 
 `rootpullertest` fakes the painter service. `GenerateRequestFunc` gives you the
 decoded request, including the reference images in order and the
-`comfyui-deployment` header, so you can assert on them without a GPU.
+`comfyui-deployment` header, so you can assert on them without a GPU; it
+also carries `NegativePrompt` and `GuidanceScale`, which `EditRequestFunc`
+reports for `Edit` too. The fake applies the server's rules for those two.
 `RefineFacesFunc` does the same for `RefineFaces`, and `Metadata.Faces` sets
 the face boxes the fake reports.
 
