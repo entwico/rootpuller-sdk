@@ -114,9 +114,10 @@ func (s *ScrapeService) OpenSession(ctx context.Context, opts *SessionOptions) (
 	procedure := webcontentconnect.ScrapeServiceFetchSessionProcedure
 
 	stream := s.rpc.FetchSession(ctx)
-	if err := stream.Send(&webcontentpb.FetchSessionRequest{
+	err = stream.Send(&webcontentpb.FetchSessionRequest{
 		Message: &webcontentpb.FetchSessionRequest_Init_{Init: init},
-	}); err != nil {
+	})
+	if err != nil {
 		_ = stream.CloseRequest()
 		_ = stream.CloseResponse()
 

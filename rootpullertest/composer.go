@@ -229,9 +229,10 @@ func (h *composerHandler) Plan(
 	}
 
 	for _, p := range h.fake.Progress {
-		if err := stream.Send(&composerpb.PlanResponse{
+		err := stream.Send(&composerpb.PlanResponse{
 			Event: &composerpb.PlanResponse_Progress{Progress: composerProgressToProto(p)},
-		}); err != nil {
+		})
+		if err != nil {
 			return err
 		}
 	}
@@ -294,9 +295,10 @@ func (h *composerHandler) ComposeSong(
 	}
 
 	for _, p := range h.fake.Progress {
-		if err := stream.Send(&composerpb.ComposeSongResponse{
+		err := stream.Send(&composerpb.ComposeSongResponse{
 			Event: &composerpb.ComposeSongResponse_Progress{Progress: composerProgressToProto(p)},
-		}); err != nil {
+		})
+		if err != nil {
 			return err
 		}
 	}
@@ -323,18 +325,20 @@ func (h *composerHandler) ComposeSong(
 		})
 	}
 
-	if err := stream.Send(&composerpb.ComposeSongResponse{
+	err := stream.Send(&composerpb.ComposeSongResponse{
 		Event: &composerpb.ComposeSongResponse_Metadata{Metadata: metadata},
-	}); err != nil {
+	})
+	if err != nil {
 		return err
 	}
 
 	for i := range song.Candidates {
-		if err := SendFileChunks(&song.Candidates[i].Audio, func(chunk *commonpb.FileChunk) error {
+		err := SendFileChunks(&song.Candidates[i].Audio, func(chunk *commonpb.FileChunk) error {
 			return stream.Send(&composerpb.ComposeSongResponse{
 				Event: &composerpb.ComposeSongResponse_File{File: chunk},
 			})
-		}); err != nil {
+		})
+		if err != nil {
 			return err
 		}
 	}
@@ -454,9 +458,10 @@ func (h *composerHandler) Transcribe(
 	}
 
 	for _, p := range h.fake.Progress {
-		if err := stream.Send(&composerpb.TranscribeResponse{
+		err := stream.Send(&composerpb.TranscribeResponse{
 			Event: &composerpb.TranscribeResponse_Progress{Progress: composerProgressToProto(p)},
-		}); err != nil {
+		})
+		if err != nil {
 			return err
 		}
 	}

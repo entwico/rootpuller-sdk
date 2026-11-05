@@ -147,9 +147,10 @@ func (h *assetiaHandler) TransformImage(_ context.Context, stream *connect.BidiS
 		return err
 	}
 
-	if err := stream.Send(&assetiapb.TransformImageResponse{
+	err = stream.Send(&assetiapb.TransformImageResponse{
 		Response: &assetiapb.TransformImageResponse_Metadata{Metadata: metaPb},
-	}); err != nil {
+	})
+	if err != nil {
 		return err
 	}
 
@@ -220,9 +221,10 @@ func (h *assetiaHandler) TransformVideo(_ context.Context, stream *connect.BidiS
 			pb.Fps = &fps
 		}
 
-		if err := stream.Send(&assetiapb.TransformVideoResponse{
+		err := stream.Send(&assetiapb.TransformVideoResponse{
 			Response: &assetiapb.TransformVideoResponse_Progress{Progress: pb},
-		}); err != nil {
+		})
+		if err != nil {
 			return err
 		}
 	}
@@ -237,9 +239,10 @@ func (h *assetiaHandler) TransformVideo(_ context.Context, stream *connect.BidiS
 		return err
 	}
 
-	if err := stream.Send(&assetiapb.TransformVideoResponse{
+	err = stream.Send(&assetiapb.TransformVideoResponse{
 		Response: &assetiapb.TransformVideoResponse_Metadata{Metadata: metaPb},
-	}); err != nil {
+	})
+	if err != nil {
 		return err
 	}
 
@@ -313,9 +316,10 @@ func (h *assetiaHandler) GeneratePreview(_ context.Context, stream *connect.Bidi
 		return err
 	}
 
-	if err := stream.Send(&assetiapb.GeneratePreviewResponse{
+	err = stream.Send(&assetiapb.GeneratePreviewResponse{
 		Response: &assetiapb.GeneratePreviewResponse_Metadata{Metadata: metaPb},
-	}); err != nil {
+	})
+	if err != nil {
 		return err
 	}
 

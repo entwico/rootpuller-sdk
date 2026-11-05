@@ -222,9 +222,10 @@ func (h *voiceHandler) DesignVoice(
 		}
 	}
 
-	if err := h.sendProgress(func(p *voicepb.Progress) error {
+	err := h.sendProgress(func(p *voicepb.Progress) error {
 		return stream.Send(&voicepb.DesignVoiceResponse{Event: &voicepb.DesignVoiceResponse_Progress{Progress: p}})
-	}); err != nil {
+	})
+	if err != nil {
 		return err
 	}
 
@@ -409,9 +410,10 @@ func (h *voiceHandler) Speak(
 		}
 	}
 
-	if err := h.sendProgress(func(p *voicepb.Progress) error {
+	err := h.sendProgress(func(p *voicepb.Progress) error {
 		return stream.Send(&voicepb.SpeakResponse{Event: &voicepb.SpeakResponse_Progress{Progress: p}})
-	}); err != nil {
+	})
+	if err != nil {
 		return err
 	}
 

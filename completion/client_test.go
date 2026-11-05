@@ -17,6 +17,12 @@ import (
 	"github.com/entwico/rootpuller-sdk/rootpullertest"
 )
 
+const (
+	schemaObject    = `{"type":"object"}`
+	modelClaudeFake = "claude-fake"
+	systemBeBrief   = "be brief"
+)
+
 func newService(t *testing.T, baseURL string, opts ...completion.Option) *completion.Service {
 	t.Helper()
 
@@ -39,7 +45,7 @@ func TestComplete(t *testing.T) {
 
 	svc := newFakeService(t, &rootpullertest.Completion{
 		CompleteFunc: func(lastContent string, _ map[string][]byte) (*completion.Response, error) {
-			return &completion.Response{Content: "echo: " + lastContent, Model: "claude-fake"}, nil
+			return &completion.Response{Content: "echo: " + lastContent, Model: modelClaudeFake}, nil
 		},
 	})
 
@@ -47,13 +53,13 @@ func TestComplete(t *testing.T) {
 		[]completion.Message{completion.UserMessage("hi there")},
 		&completion.Options{
 			Provider: completion.ProviderAnthropic,
-			System:   "be brief",
+			System:   systemBeBrief,
 		})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if resp.Content != "echo: hi there" || resp.Model != "claude-fake" {
+	if resp.Content != "echo: hi there" || resp.Model != modelClaudeFake {
 		t.Fatalf("unexpected response: %+v", resp)
 	}
 }
@@ -225,8 +231,8 @@ func TestServiceDefaults(t *testing.T) {
 	_, err := svc.Complete(t.Context(), []completion.Message{completion.UserMessage("hi")}, &completion.Options{
 		Provider:       completion.ProviderOllama,
 		Model:          "llama3",
-		System:         "be brief",
-		ResponseSchema: `{"type":"object"}`,
+		System:         systemBeBrief,
+		ResponseSchema: schemaObject,
 		Temperature:    &temperature,
 		MaxTokens:      64,
 	})
@@ -239,7 +245,7 @@ func TestServiceDefaults(t *testing.T) {
 		t.Errorf("provider/model = %v/%q, want per-call override", msg.GetProvider(), msg.GetModel())
 	}
 
-	if msg.GetSystem() != "be brief" || msg.GetResponseSchema() != `{"type":"object"}` {
+	if msg.GetSystem() != systemBeBrief || msg.GetResponseSchema() != schemaObject {
 		t.Errorf("system/schema = %q/%q, want per-call values", msg.GetSystem(), msg.GetResponseSchema())
 	}
 	// Temperature 0 is meaningful and must survive as an explicit 0.
@@ -262,13 +268,13 @@ func TestJSON(t *testing.T) {
 
 	svc := newFakeService(t, &rootpullertest.Completion{
 		CompleteFunc: func(string, map[string][]byte) (*completion.Response, error) {
-			return &completion.Response{Content: `{"answer":"yes","confidence":0.9}`, Model: "claude-fake"}, nil
+			return &completion.Response{Content: `{"answer":"yes","confidence":0.9}`, Model: modelClaudeFake}, nil
 		},
 	})
 
 	got, resp, err := completion.JSON[verdict](t.Context(), svc,
 		[]completion.Message{completion.UserMessage("is water wet?")},
-		&completion.Options{ResponseSchema: `{"type":"object"}`})
+		&completion.Options{ResponseSchema: schemaObject})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -277,7 +283,7 @@ func TestJSON(t *testing.T) {
 		t.Errorf("unmarshaled value = %+v", got)
 	}
 
-	if resp == nil || resp.Model != "claude-fake" {
+	if resp == nil || resp.Model != modelClaudeFake {
 		t.Errorf("response = %+v, want the raw completion response", resp)
 	}
 }

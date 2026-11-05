@@ -201,9 +201,10 @@ func TestServerErrorWithRetryInfo(t *testing.T) {
 	srv := rootpullertest.NewServer(t, &rootpullertest.Chunker{
 		ChunkFunc: func(string, []string) ([][]rootpullersdk.TextChunk, error) {
 			cerr := connect.NewError(connect.CodeResourceExhausted, errDeploymentSaturated)
-			if detail, derr := connect.NewErrorDetail(&errdetails.RetryInfo{
+			detail, derr := connect.NewErrorDetail(&errdetails.RetryInfo{
 				RetryDelay: durationpb.New(1500 * time.Millisecond),
-			}); derr == nil {
+			})
+			if derr == nil {
 				cerr.AddDetail(detail)
 			}
 

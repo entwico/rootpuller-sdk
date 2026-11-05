@@ -127,9 +127,10 @@ func (s *Service) CompleteWithAttachments(ctx context.Context, messages []Messag
 	procedure := completionconnect.CompletionServiceCompleteUploadProcedure
 
 	stream := s.rpc.CompleteUpload(ctx)
-	if err := stream.Send(&completionpb.CompleteUploadRequest{
+	err = stream.Send(&completionpb.CompleteUploadRequest{
 		Frame: &completionpb.CompleteUploadRequest_Request{Request: msg},
-	}); err != nil {
+	})
+	if err != nil {
 		return nil, closeAndWrap(stream, err, procedure)
 	}
 
@@ -154,9 +155,10 @@ func (s *Service) CompleteWithAttachments(ctx context.Context, messages []Messag
 					Data:         buf[:n:n],
 				}
 				// Send marshals before returning, so buf is reusable.
-				if serr := stream.Send(&completionpb.CompleteUploadRequest{
+				serr := stream.Send(&completionpb.CompleteUploadRequest{
 					Frame: &completionpb.CompleteUploadRequest_Chunk{Chunk: chunk},
-				}); serr != nil {
+				})
+				if serr != nil {
 					return nil, closeAndWrap(stream, serr, procedure)
 				}
 
@@ -175,9 +177,10 @@ func (s *Service) CompleteWithAttachments(ctx context.Context, messages []Messag
 		if !sentAny {
 			// The server requires at least one (possibly empty) chunk
 			// per declared attachment.
-			if serr := stream.Send(&completionpb.CompleteUploadRequest{
+			serr := stream.Send(&completionpb.CompleteUploadRequest{
 				Frame: &completionpb.CompleteUploadRequest_Chunk{Chunk: &completionpb.CompleteUploadRequest_AttachmentChunk{AttachmentId: att.ID}},
-			}); serr != nil {
+			})
+			if serr != nil {
 				return nil, closeAndWrap(stream, serr, procedure)
 			}
 		}

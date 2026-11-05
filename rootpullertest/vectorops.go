@@ -122,11 +122,12 @@ func (h *vectorOpsHandler) ClusterHdbscan(_ context.Context, stream *connect.Bid
 		return connect.NewError(connect.CodeInternal, errClusterResultMismatch)
 	}
 
-	if err := stream.Send(&vectoropspb.ClusterHdbscanResponse{
+	err = stream.Send(&vectoropspb.ClusterHdbscanResponse{
 		Response: &vectoropspb.ClusterHdbscanResponse_Metadata_{
 			Metadata: &vectoropspb.ClusterHdbscanResponse_Metadata{NumClusters: int32(result.NumClusters)}, //nolint:gosec // test-fixture counts fit int32
 		},
-	}); err != nil {
+	})
+	if err != nil {
 		return err
 	}
 
@@ -142,9 +143,10 @@ func (h *vectorOpsHandler) ClusterHdbscan(_ context.Context, stream *connect.Bid
 			chunk.Ids = result.IDs[offset:end]
 		}
 
-		if err := stream.Send(&vectoropspb.ClusterHdbscanResponse{
+		err := stream.Send(&vectoropspb.ClusterHdbscanResponse{
 			Response: &vectoropspb.ClusterHdbscanResponse_Chunk{Chunk: chunk},
-		}); err != nil {
+		})
+		if err != nil {
 			return err
 		}
 	}
@@ -252,11 +254,12 @@ func (h *vectorOpsHandler) ProjectUmap(_ context.Context, stream *connect.BidiSt
 		return connect.NewError(connect.CodeInternal, errUmapResultMismatch)
 	}
 
-	if err := stream.Send(&vectoropspb.ProjectUmapResponse{
+	err = stream.Send(&vectoropspb.ProjectUmapResponse{
 		Response: &vectoropspb.ProjectUmapResponse_Metadata_{
 			Metadata: &vectoropspb.ProjectUmapResponse_Metadata{Rows: int32(emb.Rows), Cols: int32(emb.Cols)}, //nolint:gosec // test-fixture dimensions fit int32
 		},
-	}); err != nil {
+	})
+	if err != nil {
 		return err
 	}
 
@@ -268,9 +271,10 @@ func (h *vectorOpsHandler) ProjectUmap(_ context.Context, stream *connect.BidiSt
 			chunk.Ids = emb.IDs[offset:end]
 		}
 
-		if err := stream.Send(&vectoropspb.ProjectUmapResponse{
+		err := stream.Send(&vectoropspb.ProjectUmapResponse{
 			Response: &vectoropspb.ProjectUmapResponse_Embedding{Embedding: chunk},
-		}); err != nil {
+		})
+		if err != nil {
 			return err
 		}
 	}

@@ -11,6 +11,10 @@ import (
 	"github.com/entwico/rootpuller-sdk/webcontent"
 )
 
+const (
+	urlExampleA = "https://example.com/a"
+)
+
 func newScrapeService(t *testing.T, fake *rootpullertest.Scrape) *webcontent.ScrapeService {
 	t.Helper()
 	srv := rootpullertest.NewServer(t, fake)
@@ -25,7 +29,7 @@ func TestCrawlPagesDemux(t *testing.T) {
 	pageB := bytes.Repeat([]byte("bb"), 1<<20)   // 2 MiB
 	svc := newScrapeService(t, &rootpullertest.Scrape{
 		Pages: []rootpullertest.CrawlPageFixture{
-			{PageID: 1, URL: "https://example.com/a", Artifacts: map[webcontent.ArtifactKind][]byte{
+			{PageID: 1, URL: urlExampleA, Artifacts: map[webcontent.ArtifactKind][]byte{
 				webcontent.ArtifactKindExtractedMarkdown: pageA,
 			}},
 			{PageID: 2, URL: "https://example.com/b", Artifacts: map[webcontent.ArtifactKind][]byte{
@@ -38,7 +42,7 @@ func TestCrawlPagesDemux(t *testing.T) {
 	results := map[int64]webcontent.CrawlPage{}
 
 	for page, err := range svc.CrawlPages(t.Context(),
-		webcontent.PageSeeds{URLs: []string{"https://example.com/a", "https://example.com/b"}},
+		webcontent.PageSeeds{URLs: []string{urlExampleA, "https://example.com/b"}},
 		&webcontent.CrawlOptions{
 			Jobs: []webcontent.ExtractionJob{{Kind: webcontent.ArtifactKindExtractedMarkdown}},
 		}) {
@@ -62,7 +66,7 @@ func TestCrawlPagesDemux(t *testing.T) {
 		t.Error("page 2 artifact corrupted by interleaving")
 	}
 
-	if results[1].Result.Page.FinalURL != "https://example.com/a" {
+	if results[1].Result.Page.FinalURL != urlExampleA {
 		t.Errorf("page 1 metadata = %+v", results[1].Result.Page)
 	}
 

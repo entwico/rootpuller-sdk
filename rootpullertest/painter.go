@@ -538,9 +538,10 @@ func painterRespond[Resp any](
 	}
 
 	for i := range files {
-		if err := SendFileChunks(&files[i], func(chunk *commonpb.FileChunk) error {
+		err := SendFileChunks(&files[i], func(chunk *commonpb.FileChunk) error {
 			return send(wrapFile(chunk))
-		}); err != nil {
+		})
+		if err != nil {
 			return err
 		}
 	}

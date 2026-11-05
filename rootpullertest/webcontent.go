@@ -115,11 +115,12 @@ func sendArtifactChunks(kind webcontentpb.Artifact_Kind, data []byte, send func(
 	const chunkSize = 2 << 20
 	for first := true; first || len(data) > 0; first = false {
 		n := min(len(data), chunkSize)
-		if err := send(&webcontentpb.Artifact{
+		err := send(&webcontentpb.Artifact{
 			Kind:      kind,
 			Chunk:     data[:n],
 			LastChunk: n == len(data),
-		}); err != nil {
+		})
+		if err != nil {
 			return err
 		}
 
@@ -261,9 +262,10 @@ func (h *webContentHandler) ExtractContent(_ context.Context, stream *connect.Bi
 	}
 
 	for k, data := range artifacts {
-		if err := sendArtifactChunks(artifactKindToProtoKind(k), data, func(a *webcontentpb.Artifact) error {
+		err := sendArtifactChunks(artifactKindToProtoKind(k), data, func(a *webcontentpb.Artifact) error {
 			return stream.Send(&webcontentpb.ExtractContentResponse{Message: &webcontentpb.ExtractContentResponse_Artifact{Artifact: a}})
-		}); err != nil {
+		})
+		if err != nil {
 			return err
 		}
 	}

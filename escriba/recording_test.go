@@ -243,11 +243,12 @@ func (h *truncatedRecording) TranscribeRecording(
 		}
 	}
 
-	if err := stream.Send(&escribapb.TranscribeRecordingResponse{
+	err := stream.Send(&escribapb.TranscribeRecordingResponse{
 		Event: &escribapb.TranscribeRecordingResponse_Segment{
 			Segment: &escribapb.TranscriptSegment{Text: "nur der Anfang"},
 		},
-	}); err != nil {
+	})
+	if err != nil {
 		return err
 	}
 

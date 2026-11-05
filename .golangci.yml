@@ -12,6 +12,7 @@ linters:
     - dupl
     - errchkjson
     - exhaustruct
+    - exhaustruct_v5
     - forbidigo
     - funlen
     - gochecknoglobals
@@ -25,6 +26,7 @@ linters:
     - varnamelen
     - wrapcheck
     - wsl
+    - wsl_v5
   settings:
     revive:
       severity: warning
@@ -79,4 +81,6 @@ formatters:
       - examples$
 
 issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
   fix: true

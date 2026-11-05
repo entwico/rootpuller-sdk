@@ -11,6 +11,12 @@ import (
 	"github.com/entwico/rootpuller-sdk/rootpullertest"
 )
 
+const (
+	opColorize      = "colorize"
+	modelCodeFormer = "codeformer"
+	opRestore       = "restore"
+)
+
 var errNoFaceDetected = errors.New("no face detected")
 
 func newService(t *testing.T, baseURL string) *facefixer.Service {
@@ -38,8 +44,8 @@ func TestRestoreFaceRoundTrip(t *testing.T) {
 		ProcessingTime:    2300 * time.Millisecond,
 		InputSize:         rootpullersdk.ImageSize{Width: 512, Height: 512},
 		OutputSize:        rootpullersdk.ImageSize{Width: 2048, Height: 2048},
-		Model:             "codeformer",
-		Operation:         "restore",
+		Model:             modelCodeFormer,
+		Operation:         opRestore,
 		Faces: []facefixer.FaceInfo{
 			{
 				OriginalBBox: rootpullersdk.BoundingBox{
@@ -99,7 +105,7 @@ func TestRestoreFaceRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if gotOp != "restore" {
+	if gotOp != opRestore {
 		t.Errorf("server saw op %q, want restore", gotOp)
 	}
 
@@ -128,7 +134,7 @@ func TestRestoreFaceRoundTrip(t *testing.T) {
 		t.Errorf("sizes = %+v / %+v", m.InputSize, m.OutputSize)
 	}
 
-	if m.Model != "codeformer" || m.Operation != "restore" {
+	if m.Model != modelCodeFormer || m.Operation != opRestore {
 		t.Errorf("Model/Operation = %q/%q", m.Model, m.Operation)
 	}
 
@@ -169,7 +175,7 @@ func TestColorizeFaceRoundTrip(t *testing.T) {
 	var gotOp string
 
 	srv := rootpullertest.NewServer(t, &rootpullertest.FaceFixer{
-		Metadata: &facefixer.Metadata{Operation: "colorize", Model: "codeformer"},
+		Metadata: &facefixer.Metadata{Operation: opColorize, Model: modelCodeFormer},
 		FixFunc: func(op string, image rootpullersdk.File, _ *rootpullersdk.File) (*rootpullersdk.File, error) {
 			gotOp = op
 
@@ -186,7 +192,7 @@ func TestColorizeFaceRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if gotOp != "colorize" {
+	if gotOp != opColorize {
 		t.Errorf("server saw op %q, want colorize", gotOp)
 	}
 
@@ -194,7 +200,7 @@ func TestColorizeFaceRoundTrip(t *testing.T) {
 		t.Errorf("result file = %q", result.File.Name)
 	}
 
-	if result.Metadata.Operation != "colorize" {
+	if result.Metadata.Operation != opColorize {
 		t.Errorf("Operation = %q, want colorize", result.Metadata.Operation)
 	}
 }

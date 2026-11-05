@@ -16,6 +16,11 @@ import (
 	"github.com/entwico/rootpuller-sdk/internal/streamio"
 )
 
+const (
+	transcriptGutenTag = "Guten Tag."
+	modelSmall         = "small"
+)
+
 // LiveScript is what a fake live session sends back, in order. The fake always
 // prepends a ready event and appends the transcript, so a script only describes
 // what happens in between.
@@ -143,13 +148,13 @@ func cannedScript() LiveScript {
 			{Kind: escriba.EventKindPartial, Partial: &escriba.Partial{Text: "guten"}},
 			{Kind: escriba.EventKindCommitted, Committed: &escriba.Committed{Text: "guten tag"}},
 			{Kind: escriba.EventKindUtteranceEnd, UtteranceEnd: &escriba.UtteranceEnd{}},
-			{Kind: escriba.EventKindRevision, Revision: &escriba.Revision{Text: "Guten Tag."}},
+			{Kind: escriba.EventKindRevision, Revision: &escriba.Revision{Text: transcriptGutenTag}},
 		},
 		Complete: escriba.Complete{
-			Text:       "Guten Tag.",
+			Text:       transcriptGutenTag,
 			Language:   "de",
 			Reason:     escriba.EndReasonClientClosed,
-			Utterances: []escriba.Utterance{{Text: "Guten Tag.", Refined: true}},
+			Utterances: []escriba.Utterance{{Text: transcriptGutenTag, Refined: true}},
 		},
 	}
 }
@@ -197,7 +202,7 @@ func (h *escribaHandler) Transcribe(
 		return nil, invalidArgument(errMissingParams)
 	}
 
-	transcript := escriba.Transcript{Text: "Guten Tag.", Model: "small"}
+	transcript := escriba.Transcript{Text: transcriptGutenTag, Model: modelSmall}
 
 	if h.fake.TranscribeFunc != nil {
 		opts := escriba.TranscribeOptions{
@@ -300,10 +305,10 @@ func cannedRecording() RecordingScript {
 			Text:     "Praxis Dr. Weber. Guten Tag. Ich brauche einen Termin.",
 			Duration: 6 * time.Second,
 			Language: escriba.DetectedLanguage{Language: "de", Probability: 0.98, Detected: true},
-			Model:    "small",
+			Model:    modelSmall,
 			Segments: []escriba.Segment{
 				{Index: 0, Start: 0, End: 2 * time.Second, Text: "Praxis Dr. Weber.", Speaker: &first},
-				{Index: 1, Start: 2 * time.Second, End: 3 * time.Second, Text: "Guten Tag.", Speaker: &first},
+				{Index: 1, Start: 2 * time.Second, End: 3 * time.Second, Text: transcriptGutenTag, Speaker: &first},
 				{Index: 2, Start: 4 * time.Second, End: 6 * time.Second, Text: "Ich brauche einen Termin.", Speaker: &second},
 			},
 			Speakers: []escriba.Speaker{
@@ -351,7 +356,7 @@ func liveConfigFromProto(cfg *escribapb.TranscribeLiveConfig) escriba.LiveConfig
 func readyResponse(cfg *escribapb.TranscribeLiveConfig) *escribapb.TranscribeLiveResponse {
 	model := cfg.GetModel().GetModelId()
 	if model == "" {
-		model = "small"
+		model = modelSmall
 	}
 
 	return &escribapb.TranscribeLiveResponse{

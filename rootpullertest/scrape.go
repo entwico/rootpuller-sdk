@@ -77,21 +77,23 @@ func (h *scrapeHandler) Crawl(_ context.Context, _ *connect.Request[webcontentpb
 			continue
 		}
 
-		if err := sendPage(&webcontentpb.CrawlResponse_PageEvent{
+		err := sendPage(&webcontentpb.CrawlResponse_PageEvent{
 			PageId: page.PageID,
 			Event: &webcontentpb.CrawlResponse_PageEvent_PageMetadata{
 				PageMetadata: &webcontentpb.PageMetadata{RequestedUrl: page.URL, FinalUrl: page.URL, StatusCode: 200},
 			},
-		}); err != nil {
+		})
+		if err != nil {
 			return err
 		}
 	}
 	// One crawl-progress frame in the middle.
-	if err := stream.Send(&webcontentpb.CrawlResponse{
+	err := stream.Send(&webcontentpb.CrawlResponse{
 		Message: &webcontentpb.CrawlResponse_Progress_{Progress: &webcontentpb.CrawlResponse_Progress{
 			PagesEmitted: 0, PagesQueued: int64(len(h.fake.Pages)),
 		}},
-	}); err != nil {
+	})
+	if err != nil {
 		return err
 	}
 	// Artifact chunks round-robin across pages to force real demuxing.
@@ -125,10 +127,11 @@ func (h *scrapeHandler) Crawl(_ context.Context, _ *connect.Request[webcontentpb
 
 		for _, items := range perPage {
 			if i < len(items) {
-				if err := sendPage(&webcontentpb.CrawlResponse_PageEvent{
+				err := sendPage(&webcontentpb.CrawlResponse_PageEvent{
 					PageId: items[i].pageID,
 					Event:  &webcontentpb.CrawlResponse_PageEvent_Artifact{Artifact: items[i].art},
-				}); err != nil {
+				})
+				if err != nil {
 					return err
 				}
 
@@ -261,9 +264,10 @@ func (h *scrapeHandler) Map(_ context.Context, _ *connect.Request[webcontentpb.M
 	urls := h.fake.MapURLs
 	for len(urls) > 0 {
 		n := min(len(urls), batchSize)
-		if err := stream.Send(&webcontentpb.MapResponse{
+		err := stream.Send(&webcontentpb.MapResponse{
 			Message: &webcontentpb.MapResponse_Batch{Batch: &webcontentpb.MapResponse_UrlBatch{Urls: urls[:n]}},
-		}); err != nil {
+		})
+		if err != nil {
 			return err
 		}
 

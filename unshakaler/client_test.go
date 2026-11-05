@@ -11,6 +11,10 @@ import (
 	"github.com/entwico/rootpuller-sdk/unshakaler"
 )
 
+const (
+	modelRealESRGAN = "realesrgan-x4plus"
+)
+
 var errModelNotFound = errors.New("model not found")
 
 func newService(t *testing.T, baseURL string, opts ...unshakaler.Option) *unshakaler.Service {
@@ -48,7 +52,7 @@ func TestUpscaleImageRoundTrip(t *testing.T) {
 	result, err := svc.UpscaleImage(t.Context(),
 		rootpullersdk.UploadBytes("photo.png", "image/png", payload),
 		&unshakaler.Options{
-			Model:       "realesrgan-x4plus",
+			Model:       modelRealESRGAN,
 			ScaleFactor: 4,
 			Format:      rootpullersdk.ImageFormatPNG,
 			OnProgress:  func(p float32) { progress = append(progress, p) },
@@ -58,7 +62,7 @@ func TestUpscaleImageRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if gotModel != "realesrgan-x4plus" {
+	if gotModel != modelRealESRGAN {
 		t.Errorf("server saw model %q", gotModel)
 	}
 
@@ -88,7 +92,7 @@ func TestServiceDefaults(t *testing.T) {
 		},
 	})
 
-	svc := newService(t, srv.URL, unshakaler.WithDefaultModel("realesrgan-x4plus"))
+	svc := newService(t, srv.URL, unshakaler.WithDefaultModel(modelRealESRGAN))
 
 	// The construction-time default model applies when Options leave it
 	// empty...
@@ -98,7 +102,7 @@ func TestServiceDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if gotModel != "realesrgan-x4plus" {
+	if gotModel != modelRealESRGAN {
 		t.Errorf("model = %q, want service default", gotModel)
 	}
 

@@ -214,8 +214,9 @@ func TestTranscribeDefaultsToMelodyOnly(t *testing.T) {
 		},
 	})
 
-	if _, err := newService(t, srv.URL).Transcribe(t.Context(),
-		rootpullersdk.UploadBytes("clip.wav", "audio/wav", []byte{1}), nil); err != nil {
+	_, err := newService(t, srv.URL).Transcribe(t.Context(),
+		rootpullersdk.UploadBytes("clip.wav", "audio/wav", []byte{1}), nil)
+	if err != nil {
 		t.Fatal(err)
 	}
 

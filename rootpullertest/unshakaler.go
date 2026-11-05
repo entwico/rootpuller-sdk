@@ -87,9 +87,10 @@ func (h *unshakalerHandler) UpscaleImage(_ context.Context, stream *connect.Bidi
 	}
 
 	for _, p := range h.fake.Progress {
-		if err := stream.Send(&unshakalerpb.UpscaleImageResponse{
+		err := stream.Send(&unshakalerpb.UpscaleImageResponse{
 			Response: &unshakalerpb.UpscaleImageResponse_ProgressPercentage{ProgressPercentage: p},
-		}); err != nil {
+		})
+		if err != nil {
 			return err
 		}
 	}

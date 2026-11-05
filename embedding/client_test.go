@@ -15,6 +15,10 @@ import (
 	"github.com/entwico/rootpuller-sdk/rootpullertest"
 )
 
+const (
+	modelBgeM3 = "bge-m3"
+)
+
 var errModelNotLoaded = errors.New("model not loaded")
 
 func newService(t *testing.T, baseURL string, opts ...embedding.Option) *embedding.Service {
@@ -154,7 +158,7 @@ func TestListModels(t *testing.T) {
 
 	svc := newFakeService(t, &rootpullertest.Embedding{
 		Models: []embedding.ModelInfo{
-			{Model: embedding.ModelRef{ModelID: "bge-m3"}, DenseDimension: 1024, MaxTokens: 8192, Loaded: true, Description: "BGE-M3"},
+			{Model: embedding.ModelRef{ModelID: modelBgeM3}, DenseDimension: 1024, MaxTokens: 8192, Loaded: true, Description: "BGE-M3"},
 		},
 	})
 
@@ -163,7 +167,7 @@ func TestListModels(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if len(models) != 1 || models[0].Model.ModelID != "bge-m3" || models[0].DenseDimension != 1024 {
+	if len(models) != 1 || models[0].Model.ModelID != modelBgeM3 || models[0].DenseDimension != 1024 {
 		t.Fatalf("unexpected models: %+v", models)
 	}
 }
@@ -271,7 +275,7 @@ func TestServiceDefaults(t *testing.T) {
 
 	srv, requests := newCapturingServer(t)
 	svc := newService(t, srv.URL,
-		embedding.WithDefaultModel(embedding.ModelRef{Backend: embedding.BackendLocal, ModelID: "bge-m3"}))
+		embedding.WithDefaultModel(embedding.ModelRef{Backend: embedding.BackendLocal, ModelID: modelBgeM3}))
 
 	// The construction-time default model applies when Options leave it
 	// empty...
@@ -280,14 +284,15 @@ func TestServiceDefaults(t *testing.T) {
 	}
 
 	msg := <-requests
-	if msg.GetModel().GetModelId() != "bge-m3" || msg.GetModel().GetBackend() != embeddingpb.ModelBackend_MODEL_BACKEND_LOCAL {
+	if msg.GetModel().GetModelId() != modelBgeM3 || msg.GetModel().GetBackend() != embeddingpb.ModelBackend_MODEL_BACKEND_LOCAL {
 		t.Errorf("model = %v, want service default", msg.GetModel())
 	}
 
 	// ...and a per-call model wins over the default.
-	if _, err := svc.Embed(t.Context(), embedding.Text("x"), &embedding.Options{
+	_, err := svc.Embed(t.Context(), embedding.Text("x"), &embedding.Options{
 		Model: embedding.ModelRef{ModelID: "other"},
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatal(err)
 	}
 

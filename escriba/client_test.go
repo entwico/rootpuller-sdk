@@ -430,8 +430,9 @@ func TestTranscribeAppliesConstructionDefaults(t *testing.T) {
 
 	svc := newService(t, fake, escriba.WithDefaultLanguage("es"), escriba.WithDefaultModel("large-v3"))
 
-	if _, err := svc.Transcribe(t.Context(),
-		rootpullersdk.UploadBytes("audio.wav", "audio/wav", []byte("audio")), nil); err != nil {
+	_, err := svc.Transcribe(t.Context(),
+		rootpullersdk.UploadBytes("audio.wav", "audio/wav", []byte("audio")), nil)
+	if err != nil {
 		t.Fatalf("Transcribe: %v", err)
 	}
 

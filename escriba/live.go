@@ -75,9 +75,10 @@ func (s *Service) OpenLive(ctx context.Context, cfg LiveConfig) (*LiveSession, e
 	procedure := escribaconnect.TranscriptionServiceTranscribeLiveProcedure
 	stream := s.rpc.TranscribeLive(ctx)
 
-	if err := stream.Send(&escribapb.TranscribeLiveRequest{
+	err := stream.Send(&escribapb.TranscribeLiveRequest{
 		Frame: &escribapb.TranscribeLiveRequest_Config{Config: cfg.toProto()},
-	}); err != nil {
+	})
+	if err != nil {
 		_ = stream.CloseRequest()
 		_ = stream.CloseResponse()
 
@@ -108,11 +109,12 @@ func (l *LiveSession) Send(pcm []byte) error {
 	l.sendMu.Lock()
 	defer l.sendMu.Unlock()
 
-	if err := l.stream.Send(&escribapb.TranscribeLiveRequest{
+	err := l.stream.Send(&escribapb.TranscribeLiveRequest{
 		Frame: &escribapb.TranscribeLiveRequest_Audio{
 			Audio: &escribapb.TranscribeLiveRequest_AudioChunk{Data: pcm},
 		},
-	}); err != nil {
+	})
+	if err != nil {
 		// The definitive reason is on the receive side; surface it from Events.
 		if errors.Is(err, io.EOF) {
 			return ErrLiveClosed

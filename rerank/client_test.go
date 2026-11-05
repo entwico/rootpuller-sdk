@@ -15,6 +15,10 @@ import (
 	"github.com/entwico/rootpuller-sdk/rootpullertest"
 )
 
+const (
+	modelBgeReranker = "BAAI/bge-reranker-v2-m3"
+)
+
 func newService(t *testing.T, baseURL string, opts ...rerank.Option) *rerank.Service {
 	t.Helper()
 
@@ -51,7 +55,7 @@ func TestRerankRoundTrip(t *testing.T) {
 	resp, err := svc.Rerank(t.Context(), "what is chunking",
 		[]string{"unrelated", "chunking splits text"},
 		&rerank.Options{
-			Model:            "BAAI/bge-reranker-v2-m3",
+			Model:            modelBgeReranker,
 			InferenceBackend: rerank.InferenceBackendFlagReranker,
 		})
 	if err != nil {
@@ -79,7 +83,7 @@ func TestRerankRoundTrip(t *testing.T) {
 	}
 	// The fake echoes the request model, so the full ModelRef (including
 	// the backend enum) must survive the round trip.
-	want := rerank.ModelRef{ModelID: "BAAI/bge-reranker-v2-m3", InferenceBackend: rerank.InferenceBackendFlagReranker}
+	want := rerank.ModelRef{ModelID: modelBgeReranker, InferenceBackend: rerank.InferenceBackendFlagReranker}
 	if resp.Model != want {
 		t.Errorf("Model = %+v, want %+v", resp.Model, want)
 	}
@@ -160,7 +164,7 @@ func TestServiceDefaults(t *testing.T) {
 
 	srv, requests := newCapturingServer(t)
 	svc := newService(t, srv.URL,
-		rerank.WithDefaultModel("BAAI/bge-reranker-v2-m3"))
+		rerank.WithDefaultModel(modelBgeReranker))
 
 	// The construction-time default model applies when Options leave it
 	// empty...
@@ -168,7 +172,7 @@ func TestServiceDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got := (<-requests).GetModel().GetModelId(); got != "BAAI/bge-reranker-v2-m3" {
+	if got := (<-requests).GetModel().GetModelId(); got != modelBgeReranker {
 		t.Errorf("model = %q, want service default", got)
 	}
 
@@ -197,7 +201,7 @@ func TestListModelsRoundTrip(t *testing.T) {
 				Description: "Qwen3 reranker",
 			},
 			{
-				Model:  rerank.ModelRef{ModelID: "BAAI/bge-reranker-v2-m3"},
+				Model:  rerank.ModelRef{ModelID: modelBgeReranker},
 				Loaded: false,
 			},
 		},

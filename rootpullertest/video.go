@@ -16,6 +16,10 @@ import (
 	"github.com/entwico/rootpuller-sdk/voice"
 )
 
+const (
+	mimeVideoMP4 = "video/mp4"
+)
+
 // Video is a facade-typed fake VideoGeneratorService. It enforces the wire
 // protocol like the real server: params first and exactly once; on
 // GenerateVideo no first_frame after last_frame and no last_frame without a
@@ -370,7 +374,7 @@ func videoRespond[Resp any](
 }
 
 func cannedVideo() rootpullersdk.File {
-	return rootpullersdk.File{Name: "video_0.mp4", MIMEType: "video/mp4", Data: []byte{0, 0, 0, 0x18}}
+	return rootpullersdk.File{Name: "video_0.mp4", MIMEType: mimeVideoMP4, Data: []byte{0, 0, 0, 0x18}}
 }
 
 var videoStageToProto = map[video.Stage]videopb.GenerationProgress_Stage{

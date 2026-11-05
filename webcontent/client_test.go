@@ -193,7 +193,7 @@ type botCapturingWebContent struct {
 }
 
 func (h *botCapturingWebContent) FetchUrl(_ context.Context, req *connect.Request[webcontentpb.FetchUrlRequest], stream *connect.ServerStream[webcontentpb.FetchUrlResponse]) error { //nolint:revive // implements the generated connect handler interface
-	h.bots <- req.Header().Get("rootpuller-bot")
+	h.bots <- req.Header().Get("Rootpuller-Bot")
 
 	return stream.Send(&webcontentpb.FetchUrlResponse{
 		Message: &webcontentpb.FetchUrlResponse_Done{Done: &webcontentpb.Summary{}},

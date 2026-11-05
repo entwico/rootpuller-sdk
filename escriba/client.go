@@ -91,9 +91,10 @@ func (s *Service) Transcribe(
 		cfg.Model = &escribapb.TranscriptionModelRef{ModelId: model}
 	}
 
-	if err := stream.Send(&escribapb.TranscribeRequest{
+	err := stream.Send(&escribapb.TranscribeRequest{
 		Frame: &escribapb.TranscribeRequest_Config{Config: cfg},
-	}); err != nil {
+	})
+	if err != nil {
 		return nil, closeAndWrap(stream, err, procedure)
 	}
 

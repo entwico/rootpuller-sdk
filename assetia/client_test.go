@@ -20,6 +20,13 @@ import (
 	"github.com/entwico/rootpuller-sdk/rootpullertest"
 )
 
+const (
+	fileOutBin     = "out.bin"
+	codecH264      = "h264"
+	codecAAC       = "aac"
+	colorSpaceSRGB = "srgb"
+)
+
 var errTransformFailed = errors.New("transform failed")
 
 func newService(t *testing.T, baseURL string) *assetia.Service {
@@ -44,7 +51,7 @@ func TestTransformImageRoundTrip(t *testing.T) {
 		Original: assetia.ImageMetadata{
 			Size:            rootpullersdk.ImageSize{Width: 4000, Height: 3000},
 			Format:          rootpullersdk.ImageFormatJPG,
-			ColorSpace:      "srgb",
+			ColorSpace:      colorSpaceSRGB,
 			HasICCProfile:   true,
 			Channels:        3,
 			EXIFOrientation: 6,
@@ -53,7 +60,7 @@ func TestTransformImageRoundTrip(t *testing.T) {
 		Result: assetia.ImageMetadata{
 			Size:       rootpullersdk.ImageSize{Width: 800, Height: 600},
 			Format:     rootpullersdk.ImageFormatWebP,
-			ColorSpace: "srgb",
+			ColorSpace: colorSpaceSRGB,
 			HasAlpha:   true,
 			Channels:   4,
 		},
@@ -112,7 +119,7 @@ func TestTransformImageRoundTrip(t *testing.T) {
 	}
 
 	o := result.Original
-	if o.Size != meta.Original.Size || o.Format != rootpullersdk.ImageFormatJPG || o.ColorSpace != "srgb" {
+	if o.Size != meta.Original.Size || o.Format != rootpullersdk.ImageFormatJPG || o.ColorSpace != colorSpaceSRGB {
 		t.Errorf("unexpected original metadata: %+v", o)
 	}
 
@@ -174,14 +181,15 @@ func (h *capturingMedia) TransformImage(_ context.Context, stream *connect.BidiS
 		return err
 	}
 
-	if err := stream.Send(&assetiapb.TransformImageResponse{
+	err = stream.Send(&assetiapb.TransformImageResponse{
 		Response: &assetiapb.TransformImageResponse_Metadata{Metadata: &assetiapb.TransformImageMetadata{}},
-	}); err != nil {
+	})
+	if err != nil {
 		return err
 	}
 
 	return stream.Send(&assetiapb.TransformImageResponse{
-		Response: &assetiapb.TransformImageResponse_File{File: &commonpb.FileChunk{Name: "out.bin", Data: []byte{1}, ContentLength: 1}},
+		Response: &assetiapb.TransformImageResponse_File{File: &commonpb.FileChunk{Name: fileOutBin, Data: []byte{1}, ContentLength: 1}},
 	})
 }
 
@@ -198,14 +206,15 @@ func (h *capturingMedia) TransformVideo(_ context.Context, stream *connect.BidiS
 		return err
 	}
 
-	if err := stream.Send(&assetiapb.TransformVideoResponse{
+	err = stream.Send(&assetiapb.TransformVideoResponse{
 		Response: &assetiapb.TransformVideoResponse_Metadata{Metadata: &assetiapb.TransformVideoMetadata{}},
-	}); err != nil {
+	})
+	if err != nil {
 		return err
 	}
 
 	return stream.Send(&assetiapb.TransformVideoResponse{
-		Response: &assetiapb.TransformVideoResponse_File{File: &commonpb.FileChunk{Name: "out.bin", Data: []byte{1}, ContentLength: 1}},
+		Response: &assetiapb.TransformVideoResponse_File{File: &commonpb.FileChunk{Name: fileOutBin, Data: []byte{1}, ContentLength: 1}},
 	})
 }
 
@@ -222,14 +231,15 @@ func (h *capturingMedia) GeneratePreview(_ context.Context, stream *connect.Bidi
 		return err
 	}
 
-	if err := stream.Send(&assetiapb.GeneratePreviewResponse{
+	err = stream.Send(&assetiapb.GeneratePreviewResponse{
 		Response: &assetiapb.GeneratePreviewResponse_Metadata{Metadata: &assetiapb.GeneratePreviewMetadata{}},
-	}); err != nil {
+	})
+	if err != nil {
 		return err
 	}
 
 	return stream.Send(&assetiapb.GeneratePreviewResponse{
-		Response: &assetiapb.GeneratePreviewResponse_File{File: &commonpb.FileChunk{Name: "out.bin", Data: []byte{1}, ContentLength: 1}},
+		Response: &assetiapb.GeneratePreviewResponse_File{File: &commonpb.FileChunk{Name: fileOutBin, Data: []byte{1}, ContentLength: 1}},
 	})
 }
 
@@ -344,10 +354,10 @@ func TestTransformVideoRoundTrip(t *testing.T) {
 	meta := &rootpullertest.AssetiaVideoMetadata{
 		Original: assetia.VideoMetadata{
 			Size:       rootpullersdk.ImageSize{Width: 1920, Height: 1080},
-			Codec:      "h264",
+			Codec:      codecH264,
 			Duration:   90 * time.Second,
 			FrameRate:  29.97,
-			AudioCodec: "aac",
+			AudioCodec: codecAAC,
 			Extra:      map[string]any{"bitrate": float64(2500000)},
 		},
 		Result: assetia.VideoMetadata{
@@ -407,11 +417,11 @@ func TestTransformVideoRoundTrip(t *testing.T) {
 	}
 
 	o := result.Original
-	if o.Size != meta.Original.Size || o.Codec != "h264" || o.Duration != 90*time.Second || o.FrameRate != 29.97 {
+	if o.Size != meta.Original.Size || o.Codec != codecH264 || o.Duration != 90*time.Second || o.FrameRate != 29.97 {
 		t.Errorf("unexpected original metadata: %+v", o)
 	}
 
-	if o.AudioCodec != "aac" || o.Extra["bitrate"] != float64(2500000) {
+	if o.AudioCodec != codecAAC || o.Extra["bitrate"] != float64(2500000) {
 		t.Errorf("original audio/extra = %q/%v", o.AudioCodec, o.Extra)
 	}
 
@@ -524,10 +534,10 @@ func TestGeneratePreviewRoundTrip(t *testing.T) {
 	meta := &rootpullertest.AssetiaPreviewMetadata{
 		Source: assetia.MediaMetadata{Video: &assetia.VideoMetadata{
 			Size:       rootpullersdk.ImageSize{Width: 1920, Height: 1080},
-			Codec:      "h264",
+			Codec:      codecH264,
 			Duration:   30 * time.Second,
 			FrameRate:  25,
-			AudioCodec: "aac",
+			AudioCodec: codecAAC,
 		}},
 		Result: assetia.ImageMetadata{
 			Size:     rootpullersdk.ImageSize{Width: 320, Height: 180},
@@ -557,7 +567,7 @@ func TestGeneratePreviewRoundTrip(t *testing.T) {
 	}
 
 	v := result.Source.Video
-	if v.Size != (rootpullersdk.ImageSize{Width: 1920, Height: 1080}) || v.Codec != "h264" || v.AudioCodec != "aac" {
+	if v.Size != (rootpullersdk.ImageSize{Width: 1920, Height: 1080}) || v.Codec != codecH264 || v.AudioCodec != codecAAC {
 		t.Errorf("unexpected source video: %+v", v)
 	}
 
@@ -636,7 +646,7 @@ func TestProbeMediaRoundTrip(t *testing.T) {
 				return &assetia.MediaMetadata{Image: &assetia.ImageMetadata{
 					Size:            rootpullersdk.ImageSize{Width: 640, Height: 480},
 					Format:          rootpullersdk.ImageFormatPNG,
-					ColorSpace:      "srgb",
+					ColorSpace:      colorSpaceSRGB,
 					HasAlpha:        true,
 					Channels:        4,
 					EXIFOrientation: 1,

@@ -1,0 +1,16 @@
+go = "builder"
+task = "builder"
+goreleaser = "builder"
+golangci-lint = "builder"
+
+# the plugin tags pin the golang-builder release whose tool versions local
+# development uses (the sdk has no CI pipeline of its own)
+[plugins]
+go = "registry://harbor.entwi.co/public/proto-go:1.1.0"
+task = "registry://harbor.entwi.co/public/proto-task:1.1.0"
+goreleaser = "registry://harbor.entwi.co/public/proto-goreleaser:1.1.0"
+golangci-lint = "registry://harbor.entwi.co/public/proto-golangci-lint:1.1.0"
+
+# built-ins must be off for the go plugin override to take effect (see golang-builder README)
+[settings]
+builtin-plugins = false

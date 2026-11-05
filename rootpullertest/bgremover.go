@@ -89,9 +89,10 @@ func (h *bgRemoverHandler) RemoveBackground(_ context.Context, stream *connect.B
 	}
 
 	if m := h.fake.Metadata; m != nil {
-		if err := stream.Send(&bgremoverpb.RemoveBackgroundResponse{
+		err := stream.Send(&bgremoverpb.RemoveBackgroundResponse{
 			Response: &bgremoverpb.RemoveBackgroundResponse_Metadata{Metadata: toProtoBgRemoverMetadata(m)},
-		}); err != nil {
+		})
+		if err != nil {
 			return err
 		}
 	}

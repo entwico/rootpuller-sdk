@@ -91,7 +91,7 @@ func (h *montageHandler) Render(
 		req.Assets[a.id] = a.file
 	}
 
-	file := rootpullersdk.File{Name: "montage_0.mp4", MIMEType: "video/mp4", Data: []byte{0, 0, 0, 0x18}}
+	file := rootpullersdk.File{Name: "montage_0.mp4", MIMEType: mimeVideoMP4, Data: []byte{0, 0, 0, 0x18}}
 
 	if h.fake.RenderFunc != nil {
 		if file, err = h.fake.RenderFunc(req); err != nil {
@@ -267,7 +267,7 @@ func (f *Montage) capabilities() montage.Capabilities {
 		MaxAudioTracks: 32,
 		MaxOverlays:    32,
 		MaxDimension:   3840,
-		VideoMIMETypes: []string{"video/mp4", "video/quicktime", "video/webm"},
+		VideoMIMETypes: []string{mimeVideoMP4, "video/quicktime", "video/webm"},
 		AudioMIMETypes: []string{"audio/mpeg", "audio/mp4", "audio/aac", "audio/wav", "audio/ogg", "audio/flac"},
 		ImageMIMETypes: []string{"image/png", "image/jpeg", "image/webp"},
 	}
