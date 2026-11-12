@@ -736,7 +736,7 @@ func comfySampling(model, negative string, guidance *float32) error {
 
 	effective, guided := comfyDefaultGuidance[model]
 	if !guided {
-		if model == painter.ComfyModelKrea2Turbo {
+		if model == painter.ComfyModelKrea2Turbo || model == painter.ComfyModelMiniMaxH3Image {
 			return invalidArgument(errComfyUnguided)
 		}
 

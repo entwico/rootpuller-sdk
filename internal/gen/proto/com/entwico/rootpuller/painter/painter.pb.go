@@ -2101,7 +2101,8 @@ func (x *GenerateImageRequest_OpenAI) GetUser() string {
 // the models that sample with guidance.
 type GenerateImageRequest_Comfy struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Model name, e.g. "qwen-image-2.1", "moss-image", "krea-2-turbo".
+	// Model name, e.g. "qwen-image-2.1", "minimax-h3-image", "moss-image",
+	// "krea-2-turbo".
 	// Must be served by the chosen deployment.
 	Model string `protobuf:"bytes,1,opt,name=model,proto3" json:"model,omitempty"`
 	// 1–4. Default: 1. Each image is a separate job with seed + index.
@@ -2118,13 +2119,13 @@ type GenerateImageRequest_Comfy struct {
 	// work better than a long generic list. The model reads it only while
 	// guidance_scale is above 1, so a negative prompt where the guidance in
 	// effect is 1 is INVALID_ARGUMENT; so is one for a model without
-	// guidance (krea-2-turbo).
+	// guidance (krea-2-turbo, minimax-h3-image).
 	NegativePrompt *string `protobuf:"bytes,7,opt,name=negative_prompt,json=negativePrompt,proto3,oneof" json:"negative_prompt,omitempty"`
 	// Classifier-free guidance, 1-10: how strongly sampling follows the
 	// prompt and steers away from negative_prompt. Above 1 the model runs
 	// twice per step, so sampling takes about twice as long. Default per
-	// model: qwen-image-2.1 1, moss-image 3. krea-2-turbo is distilled to
-	// sample at 1 and rejects it.
+	// model: qwen-image-2.1 1, moss-image 3. krea-2-turbo and
+	// minimax-h3-image are distilled to sample at 1 and reject it.
 	GuidanceScale *float32 `protobuf:"fixed32,8,opt,name=guidance_scale,json=guidanceScale,proto3,oneof" json:"guidance_scale,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -2560,7 +2561,8 @@ func (x *EditImageRequest_OpenAI) GetUser() string {
 // Self-hosted open-weight model options for a layout-keeping edit.
 type EditImageRequest_Comfy struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Model name; must support editing, e.g. "qwen-image-2.1".
+	// Model name; must support editing, e.g. "qwen-image-2.1",
+	// "minimax-h3-image".
 	Model string `protobuf:"bytes,1,opt,name=model,proto3" json:"model,omitempty"`
 	// 1–4. Default: 1. Each image is a separate job with seed + index.
 	NumberOfImages *int32 `protobuf:"varint,2,opt,name=number_of_images,json=numberOfImages,proto3,oneof" json:"number_of_images,omitempty"`
@@ -2576,13 +2578,13 @@ type EditImageRequest_Comfy struct {
 	// work better than a long generic list. The model reads it only while
 	// guidance_scale is above 1, so a negative prompt where the guidance in
 	// effect is 1 is INVALID_ARGUMENT; so is one for a model without
-	// guidance (krea-2-turbo).
+	// guidance (krea-2-turbo, minimax-h3-image).
 	NegativePrompt *string `protobuf:"bytes,7,opt,name=negative_prompt,json=negativePrompt,proto3,oneof" json:"negative_prompt,omitempty"`
 	// Classifier-free guidance, 1-10: how strongly sampling follows the
 	// prompt and steers away from negative_prompt. Above 1 the model runs
 	// twice per step, so sampling takes about twice as long. Default per
-	// model: qwen-image-2.1 1, moss-image 3. krea-2-turbo is distilled to
-	// sample at 1 and rejects it.
+	// model: qwen-image-2.1 1, moss-image 3. krea-2-turbo and
+	// minimax-h3-image are distilled to sample at 1 and reject it.
 	GuidanceScale *float32 `protobuf:"fixed32,8,opt,name=guidance_scale,json=guidanceScale,proto3,oneof" json:"guidance_scale,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

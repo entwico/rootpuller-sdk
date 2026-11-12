@@ -296,6 +296,7 @@ func TestComfySamplingRulesInTheFake(t *testing.T) {
 		"qwen negative at its default guidance": {Model: painter.ComfyModelQwenImage, NegativePrompt: negativeText},
 		"negative at guidance 1":                {Model: painter.ComfyModelMOSSImage, NegativePrompt: negativeText, GuidanceScale: new(1.0)},
 		"krea takes no guidance":                {Model: painter.ComfyModelKrea2Turbo, GuidanceScale: new(3.0)},
+		"minimax takes no negative":             {Model: painter.ComfyModelMiniMaxH3Image, NegativePrompt: negativeText},
 		"guidance above 10":                     {Model: painter.ComfyModelQwenImage, GuidanceScale: new(11.0)},
 		"guidance that rounds to 1 with a negative": {
 			Model: painter.ComfyModelMOSSImage, NegativePrompt: negativeText, GuidanceScale: new(1.0004),

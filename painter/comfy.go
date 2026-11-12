@@ -18,6 +18,12 @@ const (
 	// ComfyModelKrea2Turbo is text-only and fast, for drafts. It is distilled
 	// to sample without guidance: no NegativePrompt or GuidanceScale.
 	ComfyModelKrea2Turbo = "krea-2-turbo"
+	// ComfyModelMiniMaxH3Image takes up to 16 reference images, named
+	// <Picture 1>, <Picture 2>, … in the prompt, and supports Edit, where the
+	// input image is <Picture 1>. It renders at about 4 megapixels: sizes are
+	// multiples of 32 up to 3072. It is distilled to sample without
+	// guidance: no NegativePrompt or GuidanceScale, and no RefineFaces.
+	ComfyModelMiniMaxH3Image = "minimax-h3-image"
 )
 
 // ComfyOutputFormat selects the output encoding on the comfy backend. The

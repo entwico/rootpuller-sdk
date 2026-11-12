@@ -15,13 +15,16 @@ rootpuller-api v3.5.0.
 | Model | Constant | Input | Use it for | Default size | Speed on our GPU |
 |---|---|---|---|---|---|
 | `qwen-image-2.1` | `painter.ComfyModelQwenImage` | text, up to 7 reference images; **edit** | putting a real product, person or logo into a new scene; combining several references; editing an existing image (change the text on a sign, swap an object, change the season) | 1152×1536 | about 30 s at 768×1024 (40 steps); full size takes longer |
+| `minimax-h3-image` | `painter.ComfyModelMiniMaxH3Image` | text, up to 16 reference images (`<Picture 1>`, `<Picture 2>`, …); **edit** | the most photographic results: people, products and places that should look shot, not generated; edits that keep a person and change the scene | 1728×2304 (about 4 MP; sizes in multiples of 32, up to 3072) | about 30 s for text-to-image and about 70 s for an edit at full size on the test GPU (6 steps) |
 | `moss-image` | `painter.ComfyModelMOSSImage` | text only | photorealistic scenes from a description, especially with **readable text** in the picture: menus, signs, labels, posters | 1152×1536 | about 2 min at full size (50 steps) |
 | `krea-2-turbo` | `painter.ComfyModelKrea2Turbo` | text only | quick drafts to explore an idea or a composition before rendering it with one of the other models | 1536×1024 | the fastest of the three (8 steps) |
 
 Rules of thumb:
 
 - **Something that has to look like a real thing you have a picture of?** Use
-  Qwen with references.
+  Qwen with references, or MiniMax for a more photographic result.
+- **A photo that must not look generated?** Use MiniMax. It renders at about
+  4 megapixels; smaller sizes look worse, not just smaller.
 - **Changing an image you already have?** Use Qwen through `Edit`.
 - **A small face in a bigger picture is soft or drifts from the person?** Use
   Qwen through `RefineFaces`.
@@ -236,6 +239,7 @@ res, err := p.Edit(ctx, prompt, sheet, &painter.EditOptions{
 | `qwen-image-2.1` | 1: fastest, but the negative prompt is never read | needs `GuidanceScale` above 1 |
 | `moss-image` | 3 | works as is |
 | `krea-2-turbo` | none: distilled to sample without it | rejected, and so is `GuidanceScale` |
+| `minimax-h3-image` | none: distilled to sample without it | rejected, and so is `GuidanceScale` |
 
 On Qwen, guidance above 1 is the bigger step toward a photo that does not
 look generated: the subject follows the prompt more closely (a pose, an
@@ -309,7 +313,7 @@ false, so a call never comes back with a blocked image.
 
 | Code | When |
 |---|---|
-| `InvalidArgument` | missing `Model`; a `NegativePrompt` without guidance above 1 or longer than 2000 characters, or `NegativePrompt` / `GuidanceScale` with Krea; `GuidanceScale` outside 1–10; references with a text-only model or more than 7; `Edit` or `RefineFaces` with MOSS or Krea; more than 3 `RefineFaces` references; regions outside 0–1; a mask with `EditComfy`; a size that is not a multiple of 16 or outside 256–2048; `NumberOfImages` outside 1–4; an input that is not a PNG, JPEG or WebP image |
+| `InvalidArgument` | missing `Model`; a `NegativePrompt` without guidance above 1 or longer than 2000 characters, or `NegativePrompt` / `GuidanceScale` with Krea or MiniMax; `GuidanceScale` outside 1–10; references with a text-only model, more than 7 with Qwen or more than 16 with MiniMax; `Edit` with MOSS or Krea; `RefineFaces` with anything but Qwen; more than 3 `RefineFaces` references; regions outside 0–1; a mask with `EditComfy`; a size that is not a multiple of 16 or outside 256–2048 (MiniMax: a multiple of 32, up to 3072); `NumberOfImages` outside 1–4; an input that is not a PNG, JPEG or WebP image |
 | `FailedPrecondition` | `RefineFaces` found no face (try `FaceBoxes`, a lower `MinFaceSize`, or wider `SearchRegions`) |
 | `NotFound` | the deployment named in the header is not configured, or that deployment does not serve the model. The message lists the models it does serve |
 | `Unavailable` | the comfy backend is not configured on this rootpuller-api, the deployment cannot be reached, or a job ran longer than 20 minutes per image |
