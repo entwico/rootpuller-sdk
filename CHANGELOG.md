@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.14.0 (2026-11-12)
+
+### Minor Changes
+
+- painter: `ComfyModelMiniMaxH3Image` (`minimax-h3-image`), photographic text-to-image and edits with up to 16 reference images; the fake rejects a negative prompt or guidance for it.
+
 ## v0.13.0 (2026-11-05)
 
 ### Minor Changes
