@@ -9,7 +9,6 @@ import (
 	context "context"
 	errors "errors"
 	voice "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/voice"
-	emptypb "google.golang.org/protobuf/types/known/emptypb"
 	http "net/http"
 	strings "strings"
 )
@@ -41,6 +40,8 @@ const (
 	VoiceServiceSaveVoiceProcedure = "/com.entwico.rootpuller.voice.VoiceService/SaveVoice"
 	// VoiceServiceSpeakProcedure is the fully-qualified name of the VoiceService's Speak RPC.
 	VoiceServiceSpeakProcedure = "/com.entwico.rootpuller.voice.VoiceService/Speak"
+	// VoiceServiceCloneSpeakProcedure is the fully-qualified name of the VoiceService's CloneSpeak RPC.
+	VoiceServiceCloneSpeakProcedure = "/com.entwico.rootpuller.voice.VoiceService/CloneSpeak"
 	// VoiceServiceDeleteVoiceProcedure is the fully-qualified name of the VoiceService's DeleteVoice
 	// RPC.
 	VoiceServiceDeleteVoiceProcedure = "/com.entwico.rootpuller.voice.VoiceService/DeleteVoice"
@@ -53,7 +54,7 @@ const (
 type VoiceServiceClient interface {
 	// Creates previews of new voices from a text description. The server
 	// streams progress, then exactly one metadata frame, then each preview's
-	// audio as FileChunks named "preview_<index>.mp3", in index order.
+	// audio as FileChunks named "preview_<index>.<ext>", in index order.
 	DesignVoice(context.Context, *connect.Request[voice.DesignVoiceRequest]) (*connect.ServerStreamForClient[voice.DesignVoiceResponse], error)
 	// Turns a design preview, or sample audio, into a permanent voice. The
 	// client streams params first, then optionally the sample's chunks, and
@@ -61,17 +62,23 @@ type VoiceServiceClient interface {
 	SaveVoice(context.Context) *connect.ClientStreamForClient[voice.SaveVoiceRequest, voice.SaveVoiceResponse]
 	// Speaks a text in a saved voice. The server streams progress, then
 	// exactly one metadata frame, then the audio as FileChunks named
-	// "speech_0.mp3".
+	// "speech_0.<ext>", the extension matching SpeakMetadata.format.
 	Speak(context.Context, *connect.Request[voice.SpeakRequest]) (*connect.ServerStreamForClient[voice.SpeakResponse], error)
-	// Deletes a saved voice and frees its slot. Deleting a voice the active
-	// provider no longer has succeeds; a ref from a provider that is no longer
-	// active fails with FAILED_PRECONDITION like every other call.
+	// Speaks a text in a voice cloned from sample audio, without saving the
+	// voice. The client streams params first, then the sample's chunks, and
+	// half-closes. The server streams progress, then exactly one metadata
+	// frame, then the audio as FileChunks named "speech_0.<ext>", like Speak.
+	// A provider without inline cloning saves a temporary voice and deletes
+	// it after speaking; it takes a voice slot while the call runs.
+	CloneSpeak(context.Context) *connect.BidiStreamForClient[voice.CloneSpeakRequest, voice.CloneSpeakResponse]
+	// Deletes a saved voice, freeing its slot at providers with slots.
+	// Deleting a voice the provider no longer has succeeds; a ref from a
+	// provider that is not configured fails with FAILED_PRECONDITION like
+	// every other call.
 	DeleteVoice(context.Context, *connect.Request[voice.DeleteVoiceRequest]) (*connect.Response[voice.DeleteVoiceResponse], error)
-	// What the active provider supports, read live from it.
-	// buf:lint:ignore RPC_REQUEST_RESPONSE_UNIQUE
+	// What a provider supports, read live from it.
 	// buf:lint:ignore RPC_RESPONSE_STANDARD_NAME
-	// buf:lint:ignore RPC_REQUEST_STANDARD_NAME
-	GetCapabilities(context.Context, *connect.Request[emptypb.Empty]) (*connect.Response[voice.Capabilities], error)
+	GetCapabilities(context.Context, *connect.Request[voice.GetCapabilitiesRequest]) (*connect.Response[voice.Capabilities], error)
 }
 
 // NewVoiceServiceClient constructs a client for the com.entwico.rootpuller.voice.VoiceService
@@ -103,13 +110,19 @@ func NewVoiceServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(voiceServiceMethods.ByName("Speak")),
 			connect.WithClientOptions(opts...),
 		),
+		cloneSpeak: connect.NewClient[voice.CloneSpeakRequest, voice.CloneSpeakResponse](
+			httpClient,
+			baseURL+VoiceServiceCloneSpeakProcedure,
+			connect.WithSchema(voiceServiceMethods.ByName("CloneSpeak")),
+			connect.WithClientOptions(opts...),
+		),
 		deleteVoice: connect.NewClient[voice.DeleteVoiceRequest, voice.DeleteVoiceResponse](
 			httpClient,
 			baseURL+VoiceServiceDeleteVoiceProcedure,
 			connect.WithSchema(voiceServiceMethods.ByName("DeleteVoice")),
 			connect.WithClientOptions(opts...),
 		),
-		getCapabilities: connect.NewClient[emptypb.Empty, voice.Capabilities](
+		getCapabilities: connect.NewClient[voice.GetCapabilitiesRequest, voice.Capabilities](
 			httpClient,
 			baseURL+VoiceServiceGetCapabilitiesProcedure,
 			connect.WithSchema(voiceServiceMethods.ByName("GetCapabilities")),
@@ -123,8 +136,9 @@ type voiceServiceClient struct {
 	designVoice     *connect.Client[voice.DesignVoiceRequest, voice.DesignVoiceResponse]
 	saveVoice       *connect.Client[voice.SaveVoiceRequest, voice.SaveVoiceResponse]
 	speak           *connect.Client[voice.SpeakRequest, voice.SpeakResponse]
+	cloneSpeak      *connect.Client[voice.CloneSpeakRequest, voice.CloneSpeakResponse]
 	deleteVoice     *connect.Client[voice.DeleteVoiceRequest, voice.DeleteVoiceResponse]
-	getCapabilities *connect.Client[emptypb.Empty, voice.Capabilities]
+	getCapabilities *connect.Client[voice.GetCapabilitiesRequest, voice.Capabilities]
 }
 
 // DesignVoice calls com.entwico.rootpuller.voice.VoiceService.DesignVoice.
@@ -142,13 +156,18 @@ func (c *voiceServiceClient) Speak(ctx context.Context, req *connect.Request[voi
 	return c.speak.CallServerStream(ctx, req)
 }
 
+// CloneSpeak calls com.entwico.rootpuller.voice.VoiceService.CloneSpeak.
+func (c *voiceServiceClient) CloneSpeak(ctx context.Context) *connect.BidiStreamForClient[voice.CloneSpeakRequest, voice.CloneSpeakResponse] {
+	return c.cloneSpeak.CallBidiStream(ctx)
+}
+
 // DeleteVoice calls com.entwico.rootpuller.voice.VoiceService.DeleteVoice.
 func (c *voiceServiceClient) DeleteVoice(ctx context.Context, req *connect.Request[voice.DeleteVoiceRequest]) (*connect.Response[voice.DeleteVoiceResponse], error) {
 	return c.deleteVoice.CallUnary(ctx, req)
 }
 
 // GetCapabilities calls com.entwico.rootpuller.voice.VoiceService.GetCapabilities.
-func (c *voiceServiceClient) GetCapabilities(ctx context.Context, req *connect.Request[emptypb.Empty]) (*connect.Response[voice.Capabilities], error) {
+func (c *voiceServiceClient) GetCapabilities(ctx context.Context, req *connect.Request[voice.GetCapabilitiesRequest]) (*connect.Response[voice.Capabilities], error) {
 	return c.getCapabilities.CallUnary(ctx, req)
 }
 
@@ -157,7 +176,7 @@ func (c *voiceServiceClient) GetCapabilities(ctx context.Context, req *connect.R
 type VoiceServiceHandler interface {
 	// Creates previews of new voices from a text description. The server
 	// streams progress, then exactly one metadata frame, then each preview's
-	// audio as FileChunks named "preview_<index>.mp3", in index order.
+	// audio as FileChunks named "preview_<index>.<ext>", in index order.
 	DesignVoice(context.Context, *connect.Request[voice.DesignVoiceRequest], *connect.ServerStream[voice.DesignVoiceResponse]) error
 	// Turns a design preview, or sample audio, into a permanent voice. The
 	// client streams params first, then optionally the sample's chunks, and
@@ -165,17 +184,23 @@ type VoiceServiceHandler interface {
 	SaveVoice(context.Context, *connect.ClientStream[voice.SaveVoiceRequest]) (*connect.Response[voice.SaveVoiceResponse], error)
 	// Speaks a text in a saved voice. The server streams progress, then
 	// exactly one metadata frame, then the audio as FileChunks named
-	// "speech_0.mp3".
+	// "speech_0.<ext>", the extension matching SpeakMetadata.format.
 	Speak(context.Context, *connect.Request[voice.SpeakRequest], *connect.ServerStream[voice.SpeakResponse]) error
-	// Deletes a saved voice and frees its slot. Deleting a voice the active
-	// provider no longer has succeeds; a ref from a provider that is no longer
-	// active fails with FAILED_PRECONDITION like every other call.
+	// Speaks a text in a voice cloned from sample audio, without saving the
+	// voice. The client streams params first, then the sample's chunks, and
+	// half-closes. The server streams progress, then exactly one metadata
+	// frame, then the audio as FileChunks named "speech_0.<ext>", like Speak.
+	// A provider without inline cloning saves a temporary voice and deletes
+	// it after speaking; it takes a voice slot while the call runs.
+	CloneSpeak(context.Context, *connect.BidiStream[voice.CloneSpeakRequest, voice.CloneSpeakResponse]) error
+	// Deletes a saved voice, freeing its slot at providers with slots.
+	// Deleting a voice the provider no longer has succeeds; a ref from a
+	// provider that is not configured fails with FAILED_PRECONDITION like
+	// every other call.
 	DeleteVoice(context.Context, *connect.Request[voice.DeleteVoiceRequest]) (*connect.Response[voice.DeleteVoiceResponse], error)
-	// What the active provider supports, read live from it.
-	// buf:lint:ignore RPC_REQUEST_RESPONSE_UNIQUE
+	// What a provider supports, read live from it.
 	// buf:lint:ignore RPC_RESPONSE_STANDARD_NAME
-	// buf:lint:ignore RPC_REQUEST_STANDARD_NAME
-	GetCapabilities(context.Context, *connect.Request[emptypb.Empty]) (*connect.Response[voice.Capabilities], error)
+	GetCapabilities(context.Context, *connect.Request[voice.GetCapabilitiesRequest]) (*connect.Response[voice.Capabilities], error)
 }
 
 // NewVoiceServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -203,6 +228,12 @@ func NewVoiceServiceHandler(svc VoiceServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(voiceServiceMethods.ByName("Speak")),
 		connect.WithHandlerOptions(opts...),
 	)
+	voiceServiceCloneSpeakHandler := connect.NewBidiStreamHandler(
+		VoiceServiceCloneSpeakProcedure,
+		svc.CloneSpeak,
+		connect.WithSchema(voiceServiceMethods.ByName("CloneSpeak")),
+		connect.WithHandlerOptions(opts...),
+	)
 	voiceServiceDeleteVoiceHandler := connect.NewUnaryHandler(
 		VoiceServiceDeleteVoiceProcedure,
 		svc.DeleteVoice,
@@ -223,6 +254,8 @@ func NewVoiceServiceHandler(svc VoiceServiceHandler, opts ...connect.HandlerOpti
 			voiceServiceSaveVoiceHandler.ServeHTTP(w, r)
 		case VoiceServiceSpeakProcedure:
 			voiceServiceSpeakHandler.ServeHTTP(w, r)
+		case VoiceServiceCloneSpeakProcedure:
+			voiceServiceCloneSpeakHandler.ServeHTTP(w, r)
 		case VoiceServiceDeleteVoiceProcedure:
 			voiceServiceDeleteVoiceHandler.ServeHTTP(w, r)
 		case VoiceServiceGetCapabilitiesProcedure:
@@ -248,10 +281,14 @@ func (UnimplementedVoiceServiceHandler) Speak(context.Context, *connect.Request[
 	return connect.NewError(connect.CodeUnimplemented, errors.New("com.entwico.rootpuller.voice.VoiceService.Speak is not implemented"))
 }
 
+func (UnimplementedVoiceServiceHandler) CloneSpeak(context.Context, *connect.BidiStream[voice.CloneSpeakRequest, voice.CloneSpeakResponse]) error {
+	return connect.NewError(connect.CodeUnimplemented, errors.New("com.entwico.rootpuller.voice.VoiceService.CloneSpeak is not implemented"))
+}
+
 func (UnimplementedVoiceServiceHandler) DeleteVoice(context.Context, *connect.Request[voice.DeleteVoiceRequest]) (*connect.Response[voice.DeleteVoiceResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("com.entwico.rootpuller.voice.VoiceService.DeleteVoice is not implemented"))
 }
 
-func (UnimplementedVoiceServiceHandler) GetCapabilities(context.Context, *connect.Request[emptypb.Empty]) (*connect.Response[voice.Capabilities], error) {
+func (UnimplementedVoiceServiceHandler) GetCapabilities(context.Context, *connect.Request[voice.GetCapabilitiesRequest]) (*connect.Response[voice.Capabilities], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("com.entwico.rootpuller.voice.VoiceService.GetCapabilities is not implemented"))
 }

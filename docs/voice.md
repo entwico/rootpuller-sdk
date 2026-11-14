@@ -2,13 +2,35 @@
 
 The voice service turns a written description of a voice into a real voice
 you can keep and use. You design previews, save the one you like, and then
-speak any text in it. A talking-head video can speak a text in a saved voice
-directly.
+speak any text in it. `CloneSpeak` speaks a text in a voice cloned from a
+sample you upload, without saving anything. A talking-head video can speak a
+text in a saved voice directly.
 
-The provider behind it (ElevenLabs today) is rootpuller-api's configuration.
-This package never names it, and switching providers later changes no client
-code. You need the SDK release after v0.9.0 and the rootpuller-api release
-after v3.5.0.
+## Providers
+
+rootpuller-api can serve two providers, each enabled by its API key in the
+server's configuration: `voice.ProviderElevenLabs` and
+`voice.ProviderFishAudio`. One of them is the server's default. A call picks
+a provider through `DesignOptions.Provider`, `SaveOptions.Provider`,
+`CloneSpeakOptions.Provider` or `GetCapabilities`' argument;
+`voice.ProviderDefault` (the zero value) is the server's default.
+`GetCapabilities(...).AvailableProviders` lists what the server has
+configured, its default first.
+
+A `Ref` and a preview `Handle` remember the provider that made them, so
+`Speak`, `Delete` and `Save` with a handle need no provider.
+
+| | ElevenLabs | Fish Audio |
+|---|---|---|
+| Design | previews as MP3 | previews as WAV; the handle lives in the server's memory for an hour |
+| Save | slots per plan | voice models, no slots; the account needs a model quota (it comes with topped-up API credit) |
+| CloneSpeak | emulated: a temporary voice is saved, used and deleted, so it takes a slot and a voice addition while it runs | inline: nothing is saved |
+| Billing | characters (`CharactersUsed`, `CharactersLimit`) | UTF-8 bytes of text from a prepaid credit (`CreditBalanceMicros`) |
+| Speed | 0 → 0.7×, 0.5 → 1×, 1 → 1.2× | 0 → 0.5×, 0.5 → 1×, 1 → 2× |
+| Stability | the voice setting | maps to temperature: 0 → 1.0, 1 → 0.1 |
+
+You need the SDK release after v0.14.0 and the rootpuller-api release after
+v3.10.0 for providers and `CloneSpeak`.
 
 ## The flow
 
@@ -47,10 +69,25 @@ English sample gives an English-accented voice. The lengths the provider accepts
 are in `GetCapabilities` (`DescriptionLimits`, `SampleTextLimits`); with
 ElevenLabs a description takes 20–1000 characters and a sample text 100–1000.
 
+## Cloning without saving
+
+```go
+sample := rootpullersdk.UploadBytes("me.wav", "audio/wav", recording)
+
+speech, err := svc.CloneSpeak(ctx, &sample, "Guten Morgen zusammen!", "de", &voice.CloneSpeakOptions{
+    Provider:   voice.ProviderFishAudio,
+    SampleText: "what the recording says, word for word", // optional; clones more faithfully
+})
+```
+
+10–30 seconds of clean speech work best. `CloneSpeakOptions` embeds
+`SpeakOptions`, so model, speed, stability and format work as for `Speak`.
+Clone only voices you have the rights to.
+
 ## Audio format
 
 `Speak` returns MP3 at 44.1 kHz and 128 kbps unless `SpeakOptions.Format`
-asks for another encoding. `GetCapabilities().AudioFormats` lists what the
+asks for another encoding. `GetCapabilities(ctx, provider).AudioFormats` lists what the
 provider delivers, the default first; pick one from it:
 
 ```go
@@ -80,10 +117,10 @@ speech, err := svc.Speak(ctx, saved.Ref, text, "de", &voice.SpeakOptions{Format:
 Do not treat the `Ref` as the voice. It is a cache of the voice at one
 provider.
 
-## When the provider changes
+## When a provider goes away
 
-A `Ref` saved with a provider the server no longer uses cannot be spoken: the
-new provider does not know its voice id. `Speak` fails with
+A `Ref` saved with a provider the server no longer has configured cannot be
+spoken: no other provider knows its voice id. `Speak` fails with
 `FailedPrecondition`, never with some other voice, and `voice.IsProviderMismatch`
 recognises the error. Save the stored sample again and replace the `Ref`:
 
@@ -123,31 +160,39 @@ to `GenerateTalking`.
 
 ## Limits and costs
 
-- `GetCapabilities` reports what the provider allows: whether designing and
-  cloning work, the saved-voice slots in use and their limit, the speech and
+- `GetCapabilities` reports what a provider allows: whether designing,
+  cloning and `CloneSpeak` work, the saved-voice slots in use and their limit, the speech and
   design models with their languages and each model's longest text
   (`Model.MaxTextChars`), the text limits of `Design`, and how much of a `Save`
   sample is used (`MaxSampleSeconds`), and the formats `Speak` delivers
   (`AudioFormats`). Check it to show "not available" before a call fails.
 - Leave `SpeakOptions.Speed` nil for the voice's natural pace; 0 is the
   slowest, not the default.
-- Every saved voice takes a slot (10 on the current plan). `Delete` frees one;
-  delete voices you no longer need.
-- Designs and speech are billed per character. `Usage.Characters` on each
-  result is what the provider billed; `EstimatedCostMicros` is an estimate.
+- With ElevenLabs every saved voice takes a slot (10 on the current plan).
+  `Delete` frees one; delete voices you no longer need.
+- ElevenLabs bills designs and speech per character, Fish Audio speech per
+  UTF-8 byte and a design per request. `Usage.Characters` is the text's
+  length in characters, which is what ElevenLabs bills; Fish Audio bills the
+  UTF-8 bytes, more for non-ASCII text. `EstimatedCostMicros` is an estimate
+  in each provider's own unit.
 - Out of characters, slots or concurrent requests fails with
   `ResourceExhausted`; an operation the plan does not include fails with
   `PermissionDenied`.
 - Preview handles expire. `Preview.ExpiresAt` says when, if the provider
-  tells (ElevenLabs does not, so it is nil today). Save soon after designing,
-  and always pass the preview's audio as the sample too: an expired handle, or
-  one from a provider the server no longer uses, then falls back to cloning
+  tells: ElevenLabs does not (nil), Fish Audio handles last an hour. A Fish
+  Audio handle lives in one server process's memory, so on another replica or
+  after a restart it counts as expired. Save soon after designing, and always
+  pass the preview's audio as the sample too: an expired handle, or one from
+  a provider the server does not have configured, then falls back to cloning
   it.
 
 ## Testing
 
 `rootpullertest.Voice` fakes the service. Its hooks see the requests,
-`VoiceSpeakRequest.Format` included; it accepts only the formats it reports
+providers and `VoiceSpeakRequest.Format` included; `CloneSpeakFunc` sees the
+whole sample. By default it reports ElevenLabs (the default) and Fish Audio
+as available; a provider missing from `Capabilities.AvailableProviders` fails
+with `Unavailable`. It accepts only the formats it reports
 (by default MP3 at 128 and 192 kbps and WAV at 44.1 and 48 kHz) and answers a
 WAV request with "speech_0.wav". Return
 `rootpullertest.VoiceProviderMismatch()` from `SpeakFunc` to test the migration

@@ -2,17 +2,20 @@
 // voices designed from a text description, saved as permanent voices and
 // speaking any text.
 //
-// The voice provider is the server's configuration choice; this package
-// never names it. A saved voice is an opaque Ref, valid as long as the
-// server keeps its provider. Keep each voice's sample audio (a preview's
-// Audio, or what you cloned from): it is the voice's real identity. When the
-// provider changes, Speak with an old Ref fails and IsProviderMismatch
-// reports it; Save the sample again for a new Ref.
+// The server can serve several voice providers (ProviderElevenLabs,
+// ProviderFishAudio); a call picks one through its options, or gets the
+// server's default. A saved voice is an opaque Ref that remembers its
+// provider, valid as long as the server has that provider configured. Keep
+// each voice's sample audio (a preview's Audio, or what you cloned from): it
+// is the voice's real identity. When the provider is gone, Speak with an old
+// Ref fails and IsProviderMismatch reports it; Save the sample again for a
+// new Ref.
 //
 // The typical flow: Design previews from a description, listen, Save the
 // one you like (passing its Handle and its Audio as the sample), store the
-// Ref and the sample, then Speak. A talking-head video can speak a text in a
-// saved voice directly; see video.Service.GenerateTalkingSpeech.
+// Ref and the sample, then Speak. CloneSpeak speaks a text in a voice cloned
+// from a sample without saving anything. A talking-head video can speak a
+// text in a saved voice directly; see video.Service.GenerateTalkingSpeech.
 package voice
 
 import (
@@ -22,7 +25,6 @@ import (
 
 	"connectrpc.com/connect"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
-	"google.golang.org/protobuf/types/known/emptypb"
 
 	rootpullersdk "github.com/entwico/rootpuller-sdk"
 	"github.com/entwico/rootpuller-sdk/internal/apierr"
@@ -136,7 +138,8 @@ func (s *Service) Design(ctx context.Context, description, sampleText, language 
 }
 
 // Save turns a preview, or sample audio, into a permanent voice named name.
-// The voice takes one of the provider's slots until Delete frees it.
+// At providers with slots (ElevenLabs) the voice takes one until Delete frees
+// it; Fish Audio has none but needs the account's voice model quota.
 func (s *Service) Save(ctx context.Context, name string, opts *SaveOptions) (*SaveResult, error) {
 	if opts == nil {
 		opts = &SaveOptions{}
@@ -144,6 +147,15 @@ func (s *Service) Save(ctx context.Context, name string, opts *SaveOptions) (*Sa
 
 	if opts.Handle == "" && opts.Sample == nil {
 		return nil, invalidArgument("voice: Save needs a Handle or a Sample")
+	}
+
+	if opts.Sample != nil && opts.Sample.Content == nil {
+		return nil, invalidArgument("voice: Save's Sample has no Content")
+	}
+
+	provider, err := opts.Provider.toProto()
+	if err != nil {
+		return nil, err
 	}
 
 	procedure := voiceconnect.VoiceServiceSaveVoiceProcedure
@@ -156,7 +168,7 @@ func (s *Service) Save(ctx context.Context, name string, opts *SaveOptions) (*Sa
 
 	stream := s.rpc.SaveVoice(ctx)
 
-	params := &voicepb.SaveVoiceRequest_Params{Name: name, Description: opts.Description}
+	params := &voicepb.SaveVoiceRequest_Params{Name: name, Description: opts.Description, Provider: provider}
 	if opts.Handle != "" {
 		params.Handle = &opts.Handle
 	}
@@ -298,6 +310,64 @@ func (s *Service) Speak(ctx context.Context, ref Ref, text, language string, opt
 		return nil, transport.WrapError(err, procedure)
 	}
 
+	return speechFrom(meta, &files, procedure)
+}
+
+// CloneSpeak says text in a voice cloned from sample (MP3, WAV, FLAC, M4A or
+// OGG, up to 64 MiB; 10-30 seconds of clean speech work best) without
+// saving the voice. language is the text's ISO 639-1 code (or 639-3), e.g.
+// "de". Capabilities.CanCloneSpeak tells whether a provider can.
+func (s *Service) CloneSpeak(ctx context.Context, sample *rootpullersdk.Upload, text, language string, opts *CloneSpeakOptions) (*Speech, error) {
+	if opts == nil {
+		opts = &CloneSpeakOptions{}
+	}
+
+	if sample == nil || sample.Content == nil {
+		return nil, invalidArgument("voice: CloneSpeak needs a sample with Content")
+	}
+
+	params, err := opts.toProto(text, language)
+	if err != nil {
+		return nil, err
+	}
+
+	procedure := voiceconnect.VoiceServiceCloneSpeakProcedure
+
+	frames := streamio.Frames(
+		&voicepb.CloneSpeakRequest{Request: &voicepb.CloneSpeakRequest_Params_{Params: params}},
+		streamio.FileChunkFrames(*sample, func(c *commonpb.FileChunk) *voicepb.CloneSpeakRequest {
+			return &voicepb.CloneSpeakRequest{Request: &voicepb.CloneSpeakRequest_Sample{Sample: c}}
+		}),
+	)
+
+	var (
+		meta  *voicepb.SpeakMetadata
+		files streamio.FileCollector
+	)
+
+	err = streamio.UploadCollect(ctx, s.rpc.CloneSpeak, procedure, frames, func(resp *voicepb.CloneSpeakResponse) error {
+		switch event := resp.GetEvent().(type) {
+		case *voicepb.CloneSpeakResponse_Progress:
+			if opts.OnProgress != nil {
+				opts.OnProgress(progressFromProto(event.Progress))
+			}
+		case *voicepb.CloneSpeakResponse_Metadata:
+			meta = event.Metadata
+		case *voicepb.CloneSpeakResponse_File:
+			files.Add(event.File)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return speechFrom(meta, &files, procedure)
+}
+
+// speechFrom joins a speech call's metadata and its one audio file.
+func speechFrom(meta *voicepb.SpeakMetadata, files *streamio.FileCollector, procedure string) (*Speech, error) {
 	audio, err := files.Files()
 	if err != nil {
 		return nil, err
@@ -317,18 +387,23 @@ func (s *Service) Speak(ctx context.Context, ref Ref, text, language string, opt
 	}, nil
 }
 
-// Delete deletes a saved voice and frees its slot. Deleting a voice the
-// provider no longer has succeeds.
+// Delete deletes a saved voice, freeing its slot at providers with slots.
+// Deleting a voice the provider no longer has succeeds.
 func (s *Service) Delete(ctx context.Context, ref Ref) error {
 	_, err := s.rpc.DeleteVoice(ctx, connect.NewRequest(&voicepb.DeleteVoiceRequest{VoiceRef: string(ref)}))
 
 	return transport.WrapError(err, voiceconnect.VoiceServiceDeleteVoiceProcedure)
 }
 
-// GetCapabilities reports what the server's voice provider supports, read
-// live from it.
-func (s *Service) GetCapabilities(ctx context.Context) (*Capabilities, error) {
-	resp, err := s.rpc.GetCapabilities(ctx, connect.NewRequest(&emptypb.Empty{}))
+// GetCapabilities reports what a voice provider supports, read live from
+// it; ProviderDefault describes the server's default.
+func (s *Service) GetCapabilities(ctx context.Context, provider Provider) (*Capabilities, error) {
+	p, err := provider.toProto()
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := s.rpc.GetCapabilities(ctx, connect.NewRequest(&voicepb.GetCapabilitiesRequest{Provider: p}))
 	if err != nil {
 		return nil, transport.WrapError(err, voiceconnect.VoiceServiceGetCapabilitiesProcedure)
 	}
@@ -337,8 +412,8 @@ func (s *Service) GetCapabilities(ctx context.Context) (*Capabilities, error) {
 }
 
 // IsProviderMismatch reports whether err is a Ref (or Handle) that belongs
-// to a voice provider the server no longer uses. The voice is not lost:
-// Save its sample again and store the new Ref.
+// to a voice provider the server does not have configured. The voice is not
+// lost: Save its sample again and store the new Ref.
 func IsProviderMismatch(err error) bool {
 	ce, ok := errors.AsType[*connect.Error](err)
 	if !ok || ce.Code() != connect.CodeFailedPrecondition {

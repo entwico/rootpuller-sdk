@@ -7,12 +7,12 @@ import (
 	"io"
 	"net/http"
 	"regexp"
+	"slices"
 	"strings"
 	"unicode/utf8"
 
 	"connectrpc.com/connect"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
-	"google.golang.org/protobuf/types/known/emptypb"
 
 	rootpullersdk "github.com/entwico/rootpuller-sdk"
 	commonpb "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/common"
@@ -32,26 +32,37 @@ import (
 // 5000, or the chosen model's MaxTextChars). Violations fail with
 // InvalidArgument.
 //
-// A Speak format must be one of the AudioFormats it reports (by default MP3
-// 44.1 kHz at 128 and 192 kbps, WAV at 44.1 and 48 kHz).
+// A Speak or CloneSpeak format must be one of the AudioFormats it reports
+// (by default MP3 44.1 kHz at 128 and 192 kbps, WAV at 44.1 and 48 kHz).
+//
+// A provider named on Design, CloneSpeak or GetCapabilities, or on a Save
+// that clones (no handle), must be one of the AvailableProviders it reports
+// (by default ElevenLabs, the default, and Fish Audio), or the call fails
+// with Unavailable; a Save with a handle saves at the handle's provider and
+// ignores it, like the server. CloneSpeak
+// takes params first and exactly once, then the sample's chunks, and needs a
+// sample, a text and a language.
 //
 // Nil hooks answer with canned data: three previews with handles
 // "handle-0".."handle-2", a ref "fake-ref:<name>" (cloned when no handle was
 // sent), a canned mono "speech_0.mp3", or "speech_0.wav" for a WAV format,
-// and Delete succeeds. Progress frames are
+// for Speak and CloneSpeak, and Delete succeeds. Progress frames are
 // streamed before the metadata on Design and Speak. Return
 // VoiceProviderMismatch() from a hook to simulate a provider switch.
 type Voice struct {
-	DesignFunc   func(req VoiceDesignRequest) (*voice.DesignResult, error)
-	SaveFunc     func(req VoiceSaveRequest) (*voice.SaveResult, error)
-	SpeakFunc    func(req VoiceSpeakRequest) (*voice.Speech, error)
-	DeleteFunc   func(ref voice.Ref) error
-	Capabilities *voice.Capabilities
-	Progress     []voice.Progress
+	DesignFunc     func(req VoiceDesignRequest) (*voice.DesignResult, error)
+	SaveFunc       func(req VoiceSaveRequest) (*voice.SaveResult, error)
+	SpeakFunc      func(req VoiceSpeakRequest) (*voice.Speech, error)
+	CloneSpeakFunc func(req VoiceCloneSpeakRequest) (*voice.Speech, error)
+	DeleteFunc     func(ref voice.Ref) error
+	Capabilities   *voice.Capabilities
+	Progress       []voice.Progress
 }
 
 // VoiceDesignRequest is what the fake received on one DesignVoice call.
 type VoiceDesignRequest struct {
+	// Provider is the provider the request named, ProviderDefault when none.
+	Provider    voice.Provider
 	Description string
 	SampleText  string
 	Language    string
@@ -61,6 +72,8 @@ type VoiceDesignRequest struct {
 
 // VoiceSaveRequest is what the fake received on one SaveVoice call.
 type VoiceSaveRequest struct {
+	// Provider is the provider the request named, ProviderDefault when none.
+	Provider    voice.Provider
 	Name        string
 	Description string
 	Handle      *string
@@ -79,8 +92,24 @@ type VoiceSpeakRequest struct {
 	Format *voice.AudioFormat
 }
 
+// VoiceCloneSpeakRequest is what the fake received on one CloneSpeak call.
+type VoiceCloneSpeakRequest struct {
+	// Provider is the provider the request named, ProviderDefault when none.
+	Provider   voice.Provider
+	Sample     *rootpullersdk.File
+	SampleText *string
+	Text       string
+	Language   string
+	Model      *string
+	Speed      *float64
+	Stability  *float64
+	// Format is the requested encoding, nil for the default; Channels is 0.
+	Format *voice.AudioFormat
+}
+
 // VoiceProviderMismatch is the error the server returns for a voice.Ref
-// from a provider it no longer uses; voice.IsProviderMismatch recognises it.
+// from a provider it does not have configured; voice.IsProviderMismatch
+// recognises it.
 func VoiceProviderMismatch() error {
 	err := connect.NewError(connect.CodeFailedPrecondition, errVoiceProviderMismatch)
 
@@ -113,6 +142,9 @@ var (
 	errVoiceEmptyModel       = errors.New("model must not be empty when set")
 	errVoiceUnitRange        = errors.New("speed and stability must be between 0 and 1")
 	errVoiceTextTooLong      = errors.New("text is longer than 40000 characters")
+	errVoiceMissingSample    = errors.New("sample is required")
+	errVoiceUnknownProvider  = errors.New("provider is unknown")
+	errVoiceNotConfigured    = errors.New("voice provider is not configured")
 )
 
 // the server's own bounds (rootpuller-api internal/voice/validation.go and
@@ -173,7 +205,10 @@ func validateSpeech(ref, text, language string) error {
 	return validateVoiceLanguage(language)
 }
 
-const fakeVoiceMime = "audio/mpeg"
+const (
+	fakeVoiceMime   = "audio/mpeg"
+	fakeSpeechModel = "fake-speech"
+)
 
 func (f *Voice) register(mux *http.ServeMux) {
 	mux.Handle(voiceconnect.NewVoiceServiceHandler(&voiceHandler{fake: f}))
@@ -191,6 +226,11 @@ func (h *voiceHandler) DesignVoice(
 	stream *connect.ServerStream[voicepb.DesignVoiceResponse],
 ) error {
 	m := req.Msg
+
+	if _, err := h.provider(m.GetProvider()); err != nil {
+		return err
+	}
+
 	if blank(m.GetDescription()) || blank(m.GetSampleText()) || m.GetLanguage() == "" {
 		return invalidArgument(errVoiceMissingText)
 	}
@@ -213,6 +253,7 @@ func (h *voiceHandler) DesignVoice(
 	}
 
 	got := VoiceDesignRequest{
+		Provider:    voiceProviderFromProto(m.GetProvider()),
 		Description: m.GetDescription(),
 		SampleText:  m.GetSampleText(),
 		Language:    m.GetLanguage(),
@@ -222,14 +263,15 @@ func (h *voiceHandler) DesignVoice(
 
 	result := cannedDesign(got)
 
+	var err error
+
 	if h.fake.DesignFunc != nil {
-		var err error
 		if result, err = h.fake.DesignFunc(got); err != nil {
 			return err
 		}
 	}
 
-	err := h.sendProgress(func(p *voicepb.Progress) error {
+	err = h.sendProgress(func(p *voicepb.Progress) error {
 		return stream.Send(&voicepb.DesignVoiceResponse{Event: &voicepb.DesignVoiceResponse_Progress{Progress: p}})
 	})
 	if err != nil {
@@ -264,7 +306,7 @@ func (h *voiceHandler) DesignVoice(
 
 	for i, p := range result.Previews {
 		file := p.Audio
-		file.Name = fmt.Sprintf("preview_%d.mp3", i)
+		file.Name = fmt.Sprintf("preview_%d.%s", i, audioExt(file.MIMEType))
 
 		err := SendFileChunks(&file, func(c *commonpb.FileChunk) error {
 			return stream.Send(&voicepb.DesignVoiceResponse{Event: &voicepb.DesignVoiceResponse_File{File: c}})
@@ -334,9 +376,18 @@ func (h *voiceHandler) SaveVoice(
 		return nil, err
 	}
 
-	switch {
-	case params == nil:
+	if params == nil {
 		return nil, invalidArgument(errMissingParams)
+	}
+
+	// the server reads the provider with the params, but only uses it to
+	// clone: a handle saves at its own provider.
+	requested, err := requestedProvider(params.GetProvider())
+	if err != nil {
+		return nil, err
+	}
+
+	switch {
 	case blank(params.GetName()):
 		return nil, invalidArgument(errVoiceMissingName)
 	case utf8.RuneCountInString(params.GetName()) > voiceMaxNameChars:
@@ -349,7 +400,14 @@ func (h *voiceHandler) SaveVoice(
 		return nil, invalidArgument(errVoiceEmptySample)
 	}
 
+	if params.Handle == nil {
+		if _, err := h.provider(params.GetProvider()); err != nil {
+			return nil, err
+		}
+	}
+
 	got := VoiceSaveRequest{
+		Provider:    requested,
 		Name:        params.GetName(),
 		Description: params.GetDescription(),
 		Handle:      params.Handle,
@@ -359,7 +417,6 @@ func (h *voiceHandler) SaveVoice(
 	result := &voice.SaveResult{Ref: voice.Ref("fake-ref:" + got.Name), Cloned: got.Handle == nil}
 
 	if h.fake.SaveFunc != nil {
-		var err error
 		if result, err = h.fake.SaveFunc(got); err != nil {
 			return nil, err
 		}
@@ -418,7 +475,7 @@ func (h *voiceHandler) Speak(
 	speech := &voice.Speech{
 		Audio:  cannedSpeech(format),
 		Format: format,
-		Model:  "fake-speech",
+		Model:  fakeSpeechModel,
 		Usage:  voice.Usage{Characters: int64(len([]rune(got.Text)))},
 	}
 
@@ -433,30 +490,101 @@ func (h *voiceHandler) Speak(
 		}
 	}
 
-	err = h.sendProgress(func(p *voicepb.Progress) error {
-		return stream.Send(&voicepb.SpeakResponse{Event: &voicepb.SpeakResponse_Progress{Progress: p}})
+	return h.sendSpeech(speech, func(e speechEvent) error {
+		switch {
+		case e.progress != nil:
+			return stream.Send(&voicepb.SpeakResponse{Event: &voicepb.SpeakResponse_Progress{Progress: e.progress}})
+		case e.meta != nil:
+			return stream.Send(&voicepb.SpeakResponse{Event: &voicepb.SpeakResponse_Metadata{Metadata: e.meta}})
+		default:
+			return stream.Send(&voicepb.SpeakResponse{Event: &voicepb.SpeakResponse_File{File: e.file}})
+		}
 	})
+}
+
+// speechEvent is one response frame of a speech call; exactly one field is
+// set.
+type speechEvent struct {
+	progress *voicepb.Progress
+	meta     *voicepb.SpeakMetadata
+	file     *commonpb.FileChunk
+}
+
+func (h *voiceHandler) CloneSpeak(
+	_ context.Context,
+	stream *connect.BidiStream[voicepb.CloneSpeakRequest, voicepb.CloneSpeakResponse],
+) error {
+	var (
+		params *voicepb.CloneSpeakRequest_Params
+		sample *rootpullersdk.File
+	)
+
+	for {
+		msg, err := stream.Receive()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+
+		if err != nil {
+			return err
+		}
+
+		switch r := msg.GetRequest().(type) {
+		case *voicepb.CloneSpeakRequest_Params_:
+			if params != nil {
+				return invalidArgument(errDuplicateParamsFrame)
+			}
+
+			params = r.Params
+		case *voicepb.CloneSpeakRequest_Sample:
+			if params == nil {
+				return errBeforeParams("sample")
+			}
+
+			if sample != nil && len(sample.Data)+len(r.Sample.GetData()) > voiceMaxSampleBytes {
+				return invalidArgument(errVoiceSampleTooLarge)
+			}
+
+			if err := appendFrame(&sample, r.Sample); err != nil {
+				return err
+			}
+		default:
+			return invalidArgument(errUnexpectedVariant)
+		}
+	}
+
+	got, format, err := h.cloneSpeakRequest(params, sample)
 	if err != nil {
 		return err
 	}
 
-	meta := &voicepb.SpeakMetadata{
-		Model:            speech.Model,
-		DurationSeconds:  float32(speech.Duration.Seconds()),
-		ProcessingTimeMs: speech.ProcessingTime.Milliseconds(),
-		Usage:            voiceUsageToProto(speech.Usage),
-		Format:           voiceFormatToProto(speech.Format),
+	speech := &voice.Speech{
+		Audio:  cannedSpeech(format),
+		Format: format,
+		Model:  fakeSpeechModel,
+		Usage:  voice.Usage{Characters: int64(len([]rune(got.Text)))},
 	}
 
-	if err := stream.Send(&voicepb.SpeakResponse{Event: &voicepb.SpeakResponse_Metadata{Metadata: meta}}); err != nil {
-		return err
+	if h.fake.CloneSpeakFunc != nil {
+		if speech, err = h.fake.CloneSpeakFunc(got); err != nil {
+			return err
+		}
+
+		// a hook that leaves the format out delivered the requested one.
+		if speech.Format.Codec == "" {
+			speech.Format = format
+		}
 	}
 
-	file := speech.Audio
-	file.Name = "speech_0." + string(speech.Format.Codec)
-
-	return SendFileChunks(&file, func(c *commonpb.FileChunk) error {
-		return stream.Send(&voicepb.SpeakResponse{Event: &voicepb.SpeakResponse_File{File: c}})
+	return h.sendSpeech(speech, func(e speechEvent) error {
+		switch {
+		case e.progress != nil:
+			return stream.Send(&voicepb.CloneSpeakResponse{Event: &voicepb.CloneSpeakResponse_Progress{Progress: e.progress}})
+		case e.meta != nil:
+			return stream.Send(&voicepb.CloneSpeakResponse{Event: &voicepb.CloneSpeakResponse_Metadata{Metadata: e.meta}})
+		default:
+			return stream.Send(&voicepb.CloneSpeakResponse{Event: &voicepb.CloneSpeakResponse_File{File: e.file}})
+		}
 	})
 }
 
@@ -478,21 +606,36 @@ func (h *voiceHandler) DeleteVoice(
 }
 
 func (h *voiceHandler) GetCapabilities(
-	context.Context,
-	*connect.Request[emptypb.Empty],
+	_ context.Context,
+	req *connect.Request[voicepb.GetCapabilitiesRequest],
 ) (*connect.Response[voicepb.Capabilities], error) {
+	provider, err := h.provider(req.Msg.GetProvider())
+	if err != nil {
+		return nil, err
+	}
+
 	c := h.capabilities()
 
+	providers := make([]voicepb.Provider, len(c.AvailableProviders))
+	for i, p := range c.AvailableProviders {
+		providers[i] = voiceProviderToProto[p]
+	}
+
 	return connect.NewResponse(&voicepb.Capabilities{
-		CanDesign:       c.CanDesign,
-		CanClone:        c.CanClone,
-		VoiceSlotsUsed:  protoconv.Int32Ptr(c.SlotsUsed),
-		VoiceSlotsLimit: protoconv.Int32Ptr(c.SlotsLimit),
-		SpeechModels:    voiceModelsToProto(c.SpeechModels),
-		DesignModels:    voiceModelsToProto(c.DesignModels),
-		MaxTextChars:    int32(c.MaxTextChars), //nolint:gosec // test fixture limits
-		CharactersUsed:  c.CharactersUsed,
-		CharactersLimit: c.CharactersLimit,
+		Provider:            voiceProviderToProto[provider],
+		AvailableProviders:  providers,
+		CanCloneSpeak:       c.CanCloneSpeak,
+		CreditBalanceMicros: c.CreditBalanceMicros,
+		CreditCurrencyCode:  c.CreditCurrencyCode,
+		CanDesign:           c.CanDesign,
+		CanClone:            c.CanClone,
+		VoiceSlotsUsed:      protoconv.Int32Ptr(c.SlotsUsed),
+		VoiceSlotsLimit:     protoconv.Int32Ptr(c.SlotsLimit),
+		SpeechModels:        voiceModelsToProto(c.SpeechModels),
+		DesignModels:        voiceModelsToProto(c.DesignModels),
+		MaxTextChars:        int32(c.MaxTextChars), //nolint:gosec // test fixture limits
+		CharactersUsed:      c.CharactersUsed,
+		CharactersLimit:     c.CharactersLimit,
 		DescriptionLimits: &voicepb.TextLimits{
 			MinChars: int32(c.DescriptionLimits.MinChars), //nolint:gosec // test fixture limits
 			MaxChars: int32(c.DescriptionLimits.MaxChars), //nolint:gosec // test fixture limits
@@ -504,6 +647,146 @@ func (h *voiceHandler) GetCapabilities(
 		MaxSampleSeconds: int32(c.MaxSampleSeconds), //nolint:gosec // test fixture limits
 		AudioFormats:     voiceFormatsToProto(c.AudioFormats),
 	}), nil
+}
+
+// sendSpeech streams a speech result: progress, the metadata, the audio.
+func (h *voiceHandler) sendSpeech(speech *voice.Speech, send func(speechEvent) error) error {
+	err := h.sendProgress(func(p *voicepb.Progress) error { return send(speechEvent{progress: p}) })
+	if err != nil {
+		return err
+	}
+
+	meta := &voicepb.SpeakMetadata{
+		Model:            speech.Model,
+		DurationSeconds:  float32(speech.Duration.Seconds()),
+		ProcessingTimeMs: speech.ProcessingTime.Milliseconds(),
+		Usage:            voiceUsageToProto(speech.Usage),
+		Format:           voiceFormatToProto(speech.Format),
+	}
+
+	if err := send(speechEvent{meta: meta}); err != nil {
+		return err
+	}
+
+	file := speech.Audio
+	file.Name = "speech_0." + string(speech.Format.Codec)
+
+	return SendFileChunks(&file, func(c *commonpb.FileChunk) error { return send(speechEvent{file: c}) })
+}
+
+// cloneSpeakRequest checks a CloneSpeak call like the server and records it.
+func (h *voiceHandler) cloneSpeakRequest(
+	params *voicepb.CloneSpeakRequest_Params,
+	sample *rootpullersdk.File,
+) (VoiceCloneSpeakRequest, voice.AudioFormat, error) {
+	if params == nil {
+		return VoiceCloneSpeakRequest{}, voice.AudioFormat{}, invalidArgument(errMissingParams)
+	}
+
+	if _, err := h.provider(params.GetProvider()); err != nil {
+		return VoiceCloneSpeakRequest{}, voice.AudioFormat{}, err
+	}
+
+	if sample == nil || len(sample.Data) == 0 {
+		return VoiceCloneSpeakRequest{}, voice.AudioFormat{}, invalidArgument(errVoiceMissingSample)
+	}
+
+	// the ref is not part of a clone-speak call; any non-blank one passes.
+	if err := validateSpeech("sample", params.GetText(), params.GetLanguage()); err != nil {
+		return VoiceCloneSpeakRequest{}, voice.AudioFormat{}, err
+	}
+
+	if utf8.RuneCountInString(params.GetSampleText()) > voiceMaxTextChars {
+		return VoiceCloneSpeakRequest{}, voice.AudioFormat{}, invalidArgument(errVoiceTextTooLong)
+	}
+
+	if err := optionalModel(params.Model); err != nil {
+		return VoiceCloneSpeakRequest{}, voice.AudioFormat{}, err
+	}
+
+	if err := unitRange(params.Speed, params.Stability); err != nil {
+		return VoiceCloneSpeakRequest{}, voice.AudioFormat{}, err
+	}
+
+	if limit := h.textLimit(params.GetModel()); limit > 0 && utf8.RuneCountInString(params.GetText()) > limit {
+		return VoiceCloneSpeakRequest{}, voice.AudioFormat{}, invalidArgument(errVoiceTextLength)
+	}
+
+	format, err := h.speakFormat(params.GetFormat())
+	if err != nil {
+		return VoiceCloneSpeakRequest{}, voice.AudioFormat{}, err
+	}
+
+	got := VoiceCloneSpeakRequest{
+		Provider:   voiceProviderFromProto(params.GetProvider()),
+		Sample:     sample,
+		SampleText: params.SampleText,
+		Text:       params.GetText(),
+		Language:   params.GetLanguage(),
+		Model:      params.Model,
+		Speed:      float64Ptr(params.Speed),
+		Stability:  float64Ptr(params.Stability),
+	}
+
+	if params.GetFormat() != nil {
+		requested := format
+		requested.Channels = 0
+		got.Format = &requested
+	}
+
+	return got, format, nil
+}
+
+var voiceProviderToProto = map[voice.Provider]voicepb.Provider{
+	voice.ProviderDefault:    voicepb.Provider_PROVIDER_UNSPECIFIED,
+	voice.ProviderElevenLabs: voicepb.Provider_PROVIDER_ELEVENLABS,
+	voice.ProviderFishAudio:  voicepb.Provider_PROVIDER_FISHAUDIO,
+}
+
+// provider resolves a requested provider like the server: unspecified is the
+// first of the reported AvailableProviders, an unknown value is
+// InvalidArgument, and one not available is Unavailable.
+func (h *voiceHandler) provider(requested voicepb.Provider) (voice.Provider, error) {
+	p, err := requestedProvider(requested)
+	if err != nil {
+		return "", err
+	}
+
+	available := h.capabilities().AvailableProviders
+
+	if p == voice.ProviderDefault {
+		if len(available) == 0 {
+			return voice.ProviderDefault, nil
+		}
+
+		return available[0], nil
+	}
+
+	if !slices.Contains(available, p) {
+		return "", connect.NewError(connect.CodeUnavailable, errVoiceNotConfigured)
+	}
+
+	return p, nil
+}
+
+// voiceProviderFromProto names an already validated provider; the request
+// records keep what was asked for, not the default it resolved to.
+func voiceProviderFromProto(requested voicepb.Provider) voice.Provider {
+	p, _ := requestedProvider(requested)
+
+	return p
+}
+
+// requestedProvider names the provider a request carries, ProviderDefault
+// when unspecified; an unknown value is InvalidArgument.
+func requestedProvider(requested voicepb.Provider) (voice.Provider, error) {
+	for p, v := range voiceProviderToProto {
+		if v == requested {
+			return p, nil
+		}
+	}
+
+	return "", invalidArgument(errVoiceUnknownProvider)
 }
 
 // speakFormat resolves a requested format against the reported ones: nil is
@@ -566,6 +849,15 @@ func voiceFormatsToProto(formats []voice.AudioFormat) []*voicepb.AudioFormat {
 
 // cannedSpeech is a few bytes that start like the format: an MP3 frame
 // header, or a RIFF/WAVE header.
+// audioExt is the file extension the server gives audio of a mime type.
+func audioExt(mimeType string) string {
+	if strings.Contains(mimeType, "wav") {
+		return "wav"
+	}
+
+	return "mp3"
+}
+
 func cannedSpeech(f voice.AudioFormat) rootpullersdk.File {
 	if f.Codec == voice.CodecWAV {
 		return rootpullersdk.File{MIMEType: "audio/wav", Data: []byte("RIFF\x24\x00\x00\x00WAVE")}
@@ -575,22 +867,25 @@ func cannedSpeech(f voice.AudioFormat) rootpullersdk.File {
 }
 
 // capabilities is what the fake reports and enforces: Capabilities, or
-// defaults matching the ElevenLabs provider.
+// defaults matching the ElevenLabs provider with Fish Audio available too.
 func (h *voiceHandler) capabilities() voice.Capabilities {
 	if h.fake.Capabilities != nil {
 		return *h.fake.Capabilities
 	}
 
 	return voice.Capabilities{
-		CanDesign:         true,
-		CanClone:          true,
-		SpeechModels:      []voice.Model{{ID: "fake-speech", Name: "Fake speech", Languages: []string{"de", "en"}, MaxTextChars: 5000}},
-		DesignModels:      []voice.Model{{ID: "fake-design", Name: "Fake design"}},
-		MaxTextChars:      5000,
-		DescriptionLimits: voice.TextLimits{MinChars: 20, MaxChars: 1000},
-		SampleTextLimits:  voice.TextLimits{MinChars: 100, MaxChars: 1000},
-		MaxSampleSeconds:  120,
-		AudioFormats:      defaultVoiceFormats,
+		Provider:           voice.ProviderElevenLabs,
+		AvailableProviders: []voice.Provider{voice.ProviderElevenLabs, voice.ProviderFishAudio},
+		CanDesign:          true,
+		CanClone:           true,
+		CanCloneSpeak:      true,
+		SpeechModels:       []voice.Model{{ID: fakeSpeechModel, Name: "Fake speech", Languages: []string{"de", "en"}, MaxTextChars: 5000}},
+		DesignModels:       []voice.Model{{ID: "fake-design", Name: "Fake design"}},
+		MaxTextChars:       5000,
+		DescriptionLimits:  voice.TextLimits{MinChars: 20, MaxChars: 1000},
+		SampleTextLimits:   voice.TextLimits{MinChars: 100, MaxChars: 1000},
+		MaxSampleSeconds:   120,
+		AudioFormats:       defaultVoiceFormats,
 	}
 }
 

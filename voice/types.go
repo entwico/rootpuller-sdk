@@ -17,9 +17,50 @@ import (
 const MaxPreviews = 4
 
 // Ref identifies a saved voice. It is opaque: store it as-is and pass it to
-// Speak and Delete. It stays valid as long as the server's voice provider
-// does not change; see IsProviderMismatch.
+// Speak and Delete, which reach the provider that saved it. It stays valid as
+// long as the server has that provider configured; see IsProviderMismatch.
 type Ref string
+
+// Provider selects the voice provider of a call.
+type Provider string
+
+const (
+	// ProviderDefault is the server's default provider.
+	ProviderDefault Provider = ""
+	// ProviderElevenLabs: voice design, instant cloning, saved-voice slots
+	// and a character quota.
+	ProviderElevenLabs Provider = "elevenlabs"
+	// ProviderFishAudio: voice design, cloning and inline cloning, billed
+	// per UTF-8 byte of text from a prepaid credit.
+	ProviderFishAudio Provider = "fishaudio"
+)
+
+var providerToProto = map[Provider]voicepb.Provider{
+	ProviderDefault:    voicepb.Provider_PROVIDER_UNSPECIFIED,
+	ProviderElevenLabs: voicepb.Provider_PROVIDER_ELEVENLABS,
+	ProviderFishAudio:  voicepb.Provider_PROVIDER_FISHAUDIO,
+}
+
+func (p Provider) toProto() (voicepb.Provider, error) {
+	v, ok := providerToProto[p]
+	if !ok {
+		return 0, invalidArgument(fmt.Sprintf("voice: Provider %q is unknown", p))
+	}
+
+	return v, nil
+}
+
+// providerFromProto names a provider; one newer than this SDK keeps its
+// proto name.
+func providerFromProto(v voicepb.Provider) Provider {
+	for p, pv := range providerToProto {
+		if pv == v {
+			return p
+		}
+	}
+
+	return Provider(v.String())
+}
 
 func invalidArgument(msg string) error {
 	return apierr.New(connect.CodeInvalidArgument, msg, "", 0, nil)
@@ -27,6 +68,10 @@ func invalidArgument(msg string) error {
 
 // DesignOptions shapes a Design call. Every field is optional.
 type DesignOptions struct {
+	// Provider designs at a provider other than the server's default. The
+	// previews' handles remember it.
+	Provider Provider
+
 	// Previews is the number of previews, 1-MaxPreviews, default 3. A
 	// provider that always returns a fixed number may return that many.
 	Previews *int
@@ -45,7 +90,13 @@ func (o *DesignOptions) toProto(description, sampleText, language string) (*voic
 		return nil, invalidArgument(fmt.Sprintf("voice: Previews must be between 1 and %d", MaxPreviews))
 	}
 
+	provider, err := o.Provider.toProto()
+	if err != nil {
+		return nil, err
+	}
+
 	msg := &voicepb.DesignVoiceRequest{
+		Provider:    provider,
 		Description: description,
 		SampleText:  sampleText,
 		Language:    language,
@@ -61,7 +112,8 @@ func (o *DesignOptions) toProto(description, sampleText, language string) (*voic
 
 // Preview is one designed voice.
 type Preview struct {
-	// Index matches the audio file's name, "preview_<index>.mp3".
+	// Index matches the audio file's name, "preview_<index>.<ext>": ".mp3"
+	// for MP3 previews (ElevenLabs), ".wav" for WAV ones (Fish Audio).
 	Index int
 
 	// Handle saves this preview with Save. It is valid for a limited time;
@@ -95,6 +147,11 @@ type DesignResult struct {
 // preview is saved while Handle is valid and Sample is cloned once it has
 // expired.
 type SaveOptions struct {
+	// Provider is where Sample is cloned when there is no usable Handle;
+	// default: the Handle's provider, or the server's default without one. A
+	// Handle always saves at its own provider.
+	Provider Provider
+
 	// Description is stored with the voice.
 	Description string
 
@@ -146,6 +203,48 @@ type SpeakOptions struct {
 	// OnProgress, when set, receives progress frames as the server reports
 	// them. Called synchronously from the receive loop.
 	OnProgress func(Progress)
+}
+
+// CloneSpeakOptions shapes a CloneSpeak call. Every field is optional; the
+// embedded SpeakOptions work as for Speak.
+type CloneSpeakOptions struct {
+	SpeakOptions
+
+	// Provider clones and speaks at a provider other than the server's
+	// default.
+	Provider Provider
+
+	// SampleText is what the sample says, word for word. Providers that use
+	// it clone more faithfully with it.
+	SampleText string
+}
+
+func (o *CloneSpeakOptions) toProto(text, language string) (*voicepb.CloneSpeakRequest_Params, error) {
+	provider, err := o.Provider.toProto()
+	if err != nil {
+		return nil, err
+	}
+
+	speak, err := o.SpeakOptions.toProto("", text, language)
+	if err != nil {
+		return nil, err
+	}
+
+	params := &voicepb.CloneSpeakRequest_Params{
+		Provider:  provider,
+		Text:      text,
+		Language:  language,
+		Model:     speak.Model,
+		Speed:     speak.Speed,
+		Stability: speak.Stability,
+		Format:    speak.GetFormat(),
+	}
+
+	if o.SampleText != "" {
+		params.SampleText = &o.SampleText
+	}
+
+	return params, nil
 }
 
 // Codec is an audio encoding.
@@ -290,7 +389,8 @@ type Speech struct {
 
 // Usage is what one call cost at the voice provider.
 type Usage struct {
-	// Characters is what the provider billed.
+	// Characters is the billed text's length in characters: what ElevenLabs
+	// bills. Fish Audio bills the text's UTF-8 bytes instead.
 	Characters int64
 
 	// EstimatedCostMicros is the estimated cost in millionths of
@@ -307,10 +407,25 @@ func usageFromProto(u *voicepb.Usage) Usage {
 	}
 }
 
-// Capabilities is what the server's voice provider supports.
+// Capabilities is what one voice provider supports.
 type Capabilities struct {
+	// Provider is the provider described.
+	Provider Provider
+
+	// AvailableProviders are the providers the server has configured, its
+	// default first.
+	AvailableProviders []Provider
+
 	CanDesign bool
 	CanClone  bool
+
+	// CanCloneSpeak reports whether CloneSpeak works.
+	CanCloneSpeak bool
+
+	// CreditBalanceMicros is the provider's prepaid credit in millionths of
+	// CreditCurrencyCode, when it bills from one.
+	CreditBalanceMicros *int64
+	CreditCurrencyCode  string
 
 	// SlotsUsed and SlotsLimit are the saved-voice slots, when reported.
 	SlotsUsed  *int
@@ -366,16 +481,26 @@ type Model struct {
 }
 
 func capabilitiesFromProto(c *voicepb.Capabilities) *Capabilities {
+	providers := make([]Provider, len(c.GetAvailableProviders()))
+	for i, p := range c.GetAvailableProviders() {
+		providers[i] = providerFromProto(p)
+	}
+
 	return &Capabilities{
-		CanDesign:       c.GetCanDesign(),
-		CanClone:        c.GetCanClone(),
-		SlotsUsed:       intPtr(c.VoiceSlotsUsed),
-		SlotsLimit:      intPtr(c.VoiceSlotsLimit),
-		SpeechModels:    modelsFromProto(c.GetSpeechModels()),
-		DesignModels:    modelsFromProto(c.GetDesignModels()),
-		MaxTextChars:    int(c.GetMaxTextChars()),
-		CharactersUsed:  c.CharactersUsed,
-		CharactersLimit: c.CharactersLimit,
+		Provider:            providerFromProto(c.GetProvider()),
+		AvailableProviders:  providers,
+		CanCloneSpeak:       c.GetCanCloneSpeak(),
+		CreditBalanceMicros: c.CreditBalanceMicros,
+		CreditCurrencyCode:  c.GetCreditCurrencyCode(),
+		CanDesign:           c.GetCanDesign(),
+		CanClone:            c.GetCanClone(),
+		SlotsUsed:           intPtr(c.VoiceSlotsUsed),
+		SlotsLimit:          intPtr(c.VoiceSlotsLimit),
+		SpeechModels:        modelsFromProto(c.GetSpeechModels()),
+		DesignModels:        modelsFromProto(c.GetDesignModels()),
+		MaxTextChars:        int(c.GetMaxTextChars()),
+		CharactersUsed:      c.CharactersUsed,
+		CharactersLimit:     c.CharactersLimit,
 		DescriptionLimits: TextLimits{
 			MinChars: int(c.GetDescriptionLimits().GetMinChars()),
 			MaxChars: int(c.GetDescriptionLimits().GetMaxChars()),

@@ -10,7 +10,6 @@ import (
 	common "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/common"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
-	emptypb "google.golang.org/protobuf/types/known/emptypb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -22,6 +21,61 @@ const (
 	// Verify that runtime/protoimpl is sufficiently up-to-date.
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
+
+// A voice provider.
+type Provider int32
+
+const (
+	// The server's default provider.
+	Provider_PROVIDER_UNSPECIFIED Provider = 0
+	// ElevenLabs: voice design, instant cloning, saved-voice slots, character
+	// quota.
+	Provider_PROVIDER_ELEVENLABS Provider = 1
+	// Fish Audio: voice design, cloning and inline cloning, billed per UTF-8
+	// byte of text from a prepaid credit.
+	Provider_PROVIDER_FISHAUDIO Provider = 2
+)
+
+// Enum value maps for Provider.
+var (
+	Provider_name = map[int32]string{
+		0: "PROVIDER_UNSPECIFIED",
+		1: "PROVIDER_ELEVENLABS",
+		2: "PROVIDER_FISHAUDIO",
+	}
+	Provider_value = map[string]int32{
+		"PROVIDER_UNSPECIFIED": 0,
+		"PROVIDER_ELEVENLABS":  1,
+		"PROVIDER_FISHAUDIO":   2,
+	}
+)
+
+func (x Provider) Enum() *Provider {
+	p := new(Provider)
+	*p = x
+	return p
+}
+
+func (x Provider) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (Provider) Descriptor() protoreflect.EnumDescriptor {
+	return file_com_entwico_rootpuller_voice_voice_proto_enumTypes[0].Descriptor()
+}
+
+func (Provider) Type() protoreflect.EnumType {
+	return &file_com_entwico_rootpuller_voice_voice_proto_enumTypes[0]
+}
+
+func (x Provider) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use Provider.Descriptor instead.
+func (Provider) EnumDescriptor() ([]byte, []int) {
+	return file_com_entwico_rootpuller_voice_voice_proto_rawDescGZIP(), []int{0}
+}
 
 type AudioFormat_Codec int32
 
@@ -59,11 +113,11 @@ func (x AudioFormat_Codec) String() string {
 }
 
 func (AudioFormat_Codec) Descriptor() protoreflect.EnumDescriptor {
-	return file_com_entwico_rootpuller_voice_voice_proto_enumTypes[0].Descriptor()
+	return file_com_entwico_rootpuller_voice_voice_proto_enumTypes[1].Descriptor()
 }
 
 func (AudioFormat_Codec) Type() protoreflect.EnumType {
-	return &file_com_entwico_rootpuller_voice_voice_proto_enumTypes[0]
+	return &file_com_entwico_rootpuller_voice_voice_proto_enumTypes[1]
 }
 
 func (x AudioFormat_Codec) Number() protoreflect.EnumNumber {
@@ -72,7 +126,7 @@ func (x AudioFormat_Codec) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use AudioFormat_Codec.Descriptor instead.
 func (AudioFormat_Codec) EnumDescriptor() ([]byte, []int) {
-	return file_com_entwico_rootpuller_voice_voice_proto_rawDescGZIP(), []int{12, 0}
+	return file_com_entwico_rootpuller_voice_voice_proto_rawDescGZIP(), []int{15, 0}
 }
 
 type Progress_Stage int32
@@ -114,11 +168,11 @@ func (x Progress_Stage) String() string {
 }
 
 func (Progress_Stage) Descriptor() protoreflect.EnumDescriptor {
-	return file_com_entwico_rootpuller_voice_voice_proto_enumTypes[1].Descriptor()
+	return file_com_entwico_rootpuller_voice_voice_proto_enumTypes[2].Descriptor()
 }
 
 func (Progress_Stage) Type() protoreflect.EnumType {
-	return &file_com_entwico_rootpuller_voice_voice_proto_enumTypes[1]
+	return &file_com_entwico_rootpuller_voice_voice_proto_enumTypes[2]
 }
 
 func (x Progress_Stage) Number() protoreflect.EnumNumber {
@@ -127,11 +181,14 @@ func (x Progress_Stage) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use Progress_Stage.Descriptor instead.
 func (Progress_Stage) EnumDescriptor() ([]byte, []int) {
-	return file_com_entwico_rootpuller_voice_voice_proto_rawDescGZIP(), []int{15, 0}
+	return file_com_entwico_rootpuller_voice_voice_proto_rawDescGZIP(), []int{18, 0}
 }
 
 type DesignVoiceRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
+	// The provider to design at; unset is the server's default. The previews'
+	// handles remember it.
+	Provider Provider `protobuf:"varint,6,opt,name=provider,proto3,enum=com.entwico.rootpuller.voice.Provider" json:"provider,omitempty"`
 	// Required. The voice in English: language, gender, age, timbre, accent,
 	// delivery, e.g. "speaking German, a woman, early thirties, warm mid-range
 	// voice, slight Rhineland accent, calm and friendly". Length within
@@ -181,6 +238,13 @@ func (x *DesignVoiceRequest) ProtoReflect() protoreflect.Message {
 // Deprecated: Use DesignVoiceRequest.ProtoReflect.Descriptor instead.
 func (*DesignVoiceRequest) Descriptor() ([]byte, []int) {
 	return file_com_entwico_rootpuller_voice_voice_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *DesignVoiceRequest) GetProvider() Provider {
+	if x != nil {
+		return x.Provider
+	}
+	return Provider_PROVIDER_UNSPECIFIED
 }
 
 func (x *DesignVoiceRequest) GetDescription() string {
@@ -397,7 +461,8 @@ func (x *DesignMetadata) GetUsage() *Usage {
 type PreviewMetadata struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Zero-based and contiguous. Matches the suffix of the preview's file
-	// name ("preview_0.mp3", "preview_1.mp3", ...).
+	// name ("preview_0.mp3", "preview_1.mp3", ..., or ".wav" for WAV
+	// previews).
 	Index int32 `protobuf:"varint,1,opt,name=index,proto3" json:"index,omitempty"`
 	// Opaque handle for SaveVoice. Valid for a limited time; keep the audio as
 	// well, which SaveVoice also accepts.
@@ -909,6 +974,189 @@ func (x *SpeakMetadata) GetFormat() *AudioFormat {
 	return nil
 }
 
+type CloneSpeakRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Request:
+	//
+	//	*CloneSpeakRequest_Params_
+	//	*CloneSpeakRequest_Sample
+	Request       isCloneSpeakRequest_Request `protobuf_oneof:"request"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CloneSpeakRequest) Reset() {
+	*x = CloneSpeakRequest{}
+	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CloneSpeakRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CloneSpeakRequest) ProtoMessage() {}
+
+func (x *CloneSpeakRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CloneSpeakRequest.ProtoReflect.Descriptor instead.
+func (*CloneSpeakRequest) Descriptor() ([]byte, []int) {
+	return file_com_entwico_rootpuller_voice_voice_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *CloneSpeakRequest) GetRequest() isCloneSpeakRequest_Request {
+	if x != nil {
+		return x.Request
+	}
+	return nil
+}
+
+func (x *CloneSpeakRequest) GetParams() *CloneSpeakRequest_Params {
+	if x != nil {
+		if x, ok := x.Request.(*CloneSpeakRequest_Params_); ok {
+			return x.Params
+		}
+	}
+	return nil
+}
+
+func (x *CloneSpeakRequest) GetSample() *common.FileChunk {
+	if x != nil {
+		if x, ok := x.Request.(*CloneSpeakRequest_Sample); ok {
+			return x.Sample
+		}
+	}
+	return nil
+}
+
+type isCloneSpeakRequest_Request interface {
+	isCloneSpeakRequest_Request()
+}
+
+type CloneSpeakRequest_Params_ struct {
+	// First message of the stream, exactly once.
+	Params *CloneSpeakRequest_Params `protobuf:"bytes,1,opt,name=params,proto3,oneof"`
+}
+
+type CloneSpeakRequest_Sample struct {
+	// Required. Sample audio to clone the voice from (MP3, WAV, FLAC, M4A or
+	// OGG), up to 64 MiB; 10-30 seconds of clean speech work best.
+	Sample *common.FileChunk `protobuf:"bytes,2,opt,name=sample,proto3,oneof"`
+}
+
+func (*CloneSpeakRequest_Params_) isCloneSpeakRequest_Request() {}
+
+func (*CloneSpeakRequest_Sample) isCloneSpeakRequest_Request() {}
+
+type CloneSpeakResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Event:
+	//
+	//	*CloneSpeakResponse_Progress
+	//	*CloneSpeakResponse_Metadata
+	//	*CloneSpeakResponse_File
+	Event         isCloneSpeakResponse_Event `protobuf_oneof:"event"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CloneSpeakResponse) Reset() {
+	*x = CloneSpeakResponse{}
+	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CloneSpeakResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CloneSpeakResponse) ProtoMessage() {}
+
+func (x *CloneSpeakResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CloneSpeakResponse.ProtoReflect.Descriptor instead.
+func (*CloneSpeakResponse) Descriptor() ([]byte, []int) {
+	return file_com_entwico_rootpuller_voice_voice_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *CloneSpeakResponse) GetEvent() isCloneSpeakResponse_Event {
+	if x != nil {
+		return x.Event
+	}
+	return nil
+}
+
+func (x *CloneSpeakResponse) GetProgress() *Progress {
+	if x != nil {
+		if x, ok := x.Event.(*CloneSpeakResponse_Progress); ok {
+			return x.Progress
+		}
+	}
+	return nil
+}
+
+func (x *CloneSpeakResponse) GetMetadata() *SpeakMetadata {
+	if x != nil {
+		if x, ok := x.Event.(*CloneSpeakResponse_Metadata); ok {
+			return x.Metadata
+		}
+	}
+	return nil
+}
+
+func (x *CloneSpeakResponse) GetFile() *common.FileChunk {
+	if x != nil {
+		if x, ok := x.Event.(*CloneSpeakResponse_File); ok {
+			return x.File
+		}
+	}
+	return nil
+}
+
+type isCloneSpeakResponse_Event interface {
+	isCloneSpeakResponse_Event()
+}
+
+type CloneSpeakResponse_Progress struct {
+	Progress *Progress `protobuf:"bytes,1,opt,name=progress,proto3,oneof"`
+}
+
+type CloneSpeakResponse_Metadata struct {
+	Metadata *SpeakMetadata `protobuf:"bytes,2,opt,name=metadata,proto3,oneof"`
+}
+
+type CloneSpeakResponse_File struct {
+	File *common.FileChunk `protobuf:"bytes,3,opt,name=file,proto3,oneof"`
+}
+
+func (*CloneSpeakResponse_Progress) isCloneSpeakResponse_Event() {}
+
+func (*CloneSpeakResponse_Metadata) isCloneSpeakResponse_Event() {}
+
+func (*CloneSpeakResponse_File) isCloneSpeakResponse_Event() {}
+
 type DeleteVoiceRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Required, from SaveVoice.
@@ -919,7 +1167,7 @@ type DeleteVoiceRequest struct {
 
 func (x *DeleteVoiceRequest) Reset() {
 	*x = DeleteVoiceRequest{}
-	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[9]
+	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -931,7 +1179,7 @@ func (x *DeleteVoiceRequest) String() string {
 func (*DeleteVoiceRequest) ProtoMessage() {}
 
 func (x *DeleteVoiceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[9]
+	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -944,7 +1192,7 @@ func (x *DeleteVoiceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteVoiceRequest.ProtoReflect.Descriptor instead.
 func (*DeleteVoiceRequest) Descriptor() ([]byte, []int) {
-	return file_com_entwico_rootpuller_voice_voice_proto_rawDescGZIP(), []int{9}
+	return file_com_entwico_rootpuller_voice_voice_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *DeleteVoiceRequest) GetVoiceRef() string {
@@ -962,7 +1210,7 @@ type DeleteVoiceResponse struct {
 
 func (x *DeleteVoiceResponse) Reset() {
 	*x = DeleteVoiceResponse{}
-	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[10]
+	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -974,7 +1222,7 @@ func (x *DeleteVoiceResponse) String() string {
 func (*DeleteVoiceResponse) ProtoMessage() {}
 
 func (x *DeleteVoiceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[10]
+	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -987,7 +1235,52 @@ func (x *DeleteVoiceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteVoiceResponse.ProtoReflect.Descriptor instead.
 func (*DeleteVoiceResponse) Descriptor() ([]byte, []int) {
-	return file_com_entwico_rootpuller_voice_voice_proto_rawDescGZIP(), []int{10}
+	return file_com_entwico_rootpuller_voice_voice_proto_rawDescGZIP(), []int{12}
+}
+
+type GetCapabilitiesRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The provider to describe; unset is the server's default.
+	Provider      Provider `protobuf:"varint,1,opt,name=provider,proto3,enum=com.entwico.rootpuller.voice.Provider" json:"provider,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetCapabilitiesRequest) Reset() {
+	*x = GetCapabilitiesRequest{}
+	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetCapabilitiesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetCapabilitiesRequest) ProtoMessage() {}
+
+func (x *GetCapabilitiesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetCapabilitiesRequest.ProtoReflect.Descriptor instead.
+func (*GetCapabilitiesRequest) Descriptor() ([]byte, []int) {
+	return file_com_entwico_rootpuller_voice_voice_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *GetCapabilitiesRequest) GetProvider() Provider {
+	if x != nil {
+		return x.Provider
+	}
+	return Provider_PROVIDER_UNSPECIFIED
 }
 
 type Capabilities struct {
@@ -1020,14 +1313,24 @@ type Capabilities struct {
 	// The encodings Speak delivers, the default first. Formats the provider
 	// account's plan does not include are left out when the provider reports
 	// the plan; a format listed but refused anyway is PERMISSION_DENIED.
-	AudioFormats  []*AudioFormat `protobuf:"bytes,13,rep,name=audio_formats,json=audioFormats,proto3" json:"audio_formats,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	AudioFormats []*AudioFormat `protobuf:"bytes,13,rep,name=audio_formats,json=audioFormats,proto3" json:"audio_formats,omitempty"`
+	// The provider described.
+	Provider Provider `protobuf:"varint,14,opt,name=provider,proto3,enum=com.entwico.rootpuller.voice.Provider" json:"provider,omitempty"`
+	// Every provider configured on the server, the default first.
+	AvailableProviders []Provider `protobuf:"varint,15,rep,packed,name=available_providers,json=availableProviders,proto3,enum=com.entwico.rootpuller.voice.Provider" json:"available_providers,omitempty"`
+	// Whether CloneSpeak works.
+	CanCloneSpeak bool `protobuf:"varint,16,opt,name=can_clone_speak,json=canCloneSpeak,proto3" json:"can_clone_speak,omitempty"`
+	// The provider's prepaid credit balance in micro-units of
+	// credit_currency_code, when it reports one.
+	CreditBalanceMicros *int64 `protobuf:"varint,17,opt,name=credit_balance_micros,json=creditBalanceMicros,proto3,oneof" json:"credit_balance_micros,omitempty"`
+	CreditCurrencyCode  string `protobuf:"bytes,18,opt,name=credit_currency_code,json=creditCurrencyCode,proto3" json:"credit_currency_code,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *Capabilities) Reset() {
 	*x = Capabilities{}
-	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[11]
+	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1039,7 +1342,7 @@ func (x *Capabilities) String() string {
 func (*Capabilities) ProtoMessage() {}
 
 func (x *Capabilities) ProtoReflect() protoreflect.Message {
-	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[11]
+	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1052,7 +1355,7 @@ func (x *Capabilities) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Capabilities.ProtoReflect.Descriptor instead.
 func (*Capabilities) Descriptor() ([]byte, []int) {
-	return file_com_entwico_rootpuller_voice_voice_proto_rawDescGZIP(), []int{11}
+	return file_com_entwico_rootpuller_voice_voice_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *Capabilities) GetCanDesign() bool {
@@ -1146,6 +1449,41 @@ func (x *Capabilities) GetAudioFormats() []*AudioFormat {
 	return nil
 }
 
+func (x *Capabilities) GetProvider() Provider {
+	if x != nil {
+		return x.Provider
+	}
+	return Provider_PROVIDER_UNSPECIFIED
+}
+
+func (x *Capabilities) GetAvailableProviders() []Provider {
+	if x != nil {
+		return x.AvailableProviders
+	}
+	return nil
+}
+
+func (x *Capabilities) GetCanCloneSpeak() bool {
+	if x != nil {
+		return x.CanCloneSpeak
+	}
+	return false
+}
+
+func (x *Capabilities) GetCreditBalanceMicros() int64 {
+	if x != nil && x.CreditBalanceMicros != nil {
+		return *x.CreditBalanceMicros
+	}
+	return 0
+}
+
+func (x *Capabilities) GetCreditCurrencyCode() string {
+	if x != nil {
+		return x.CreditCurrencyCode
+	}
+	return ""
+}
+
 // An audio encoding.
 type AudioFormat struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -1163,7 +1501,7 @@ type AudioFormat struct {
 
 func (x *AudioFormat) Reset() {
 	*x = AudioFormat{}
-	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[12]
+	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1175,7 +1513,7 @@ func (x *AudioFormat) String() string {
 func (*AudioFormat) ProtoMessage() {}
 
 func (x *AudioFormat) ProtoReflect() protoreflect.Message {
-	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[12]
+	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1188,7 +1526,7 @@ func (x *AudioFormat) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AudioFormat.ProtoReflect.Descriptor instead.
 func (*AudioFormat) Descriptor() ([]byte, []int) {
-	return file_com_entwico_rootpuller_voice_voice_proto_rawDescGZIP(), []int{12}
+	return file_com_entwico_rootpuller_voice_voice_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *AudioFormat) GetCodec() AudioFormat_Codec {
@@ -1234,7 +1572,7 @@ type ModelInfo struct {
 
 func (x *ModelInfo) Reset() {
 	*x = ModelInfo{}
-	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[13]
+	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1246,7 +1584,7 @@ func (x *ModelInfo) String() string {
 func (*ModelInfo) ProtoMessage() {}
 
 func (x *ModelInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[13]
+	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1259,7 +1597,7 @@ func (x *ModelInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ModelInfo.ProtoReflect.Descriptor instead.
 func (*ModelInfo) Descriptor() ([]byte, []int) {
-	return file_com_entwico_rootpuller_voice_voice_proto_rawDescGZIP(), []int{13}
+	return file_com_entwico_rootpuller_voice_voice_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *ModelInfo) GetId() string {
@@ -1301,7 +1639,7 @@ type TextLimits struct {
 
 func (x *TextLimits) Reset() {
 	*x = TextLimits{}
-	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[14]
+	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1313,7 +1651,7 @@ func (x *TextLimits) String() string {
 func (*TextLimits) ProtoMessage() {}
 
 func (x *TextLimits) ProtoReflect() protoreflect.Message {
-	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[14]
+	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1326,7 +1664,7 @@ func (x *TextLimits) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TextLimits.ProtoReflect.Descriptor instead.
 func (*TextLimits) Descriptor() ([]byte, []int) {
-	return file_com_entwico_rootpuller_voice_voice_proto_rawDescGZIP(), []int{14}
+	return file_com_entwico_rootpuller_voice_voice_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *TextLimits) GetMinChars() int32 {
@@ -1356,7 +1694,7 @@ type Progress struct {
 
 func (x *Progress) Reset() {
 	*x = Progress{}
-	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[15]
+	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1368,7 +1706,7 @@ func (x *Progress) String() string {
 func (*Progress) ProtoMessage() {}
 
 func (x *Progress) ProtoReflect() protoreflect.Message {
-	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[15]
+	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1381,7 +1719,7 @@ func (x *Progress) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Progress.ProtoReflect.Descriptor instead.
 func (*Progress) Descriptor() ([]byte, []int) {
-	return file_com_entwico_rootpuller_voice_voice_proto_rawDescGZIP(), []int{15}
+	return file_com_entwico_rootpuller_voice_voice_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *Progress) GetStage() Progress_Stage {
@@ -1408,9 +1746,12 @@ func (x *Progress) GetMessage() string {
 // Provider-side usage of one call.
 type Usage struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Characters billed by the provider.
+	// Characters of the billed text. Providers that bill per character
+	// (ElevenLabs) bill this many; Fish Audio bills per UTF-8 byte, which is
+	// more for non-ASCII text, and estimated_cost_micros follows its unit.
 	Characters int64 `protobuf:"varint,1,opt,name=characters,proto3" json:"characters,omitempty"`
-	// Estimated cost in micro-units of currency_code; 0 when unknown.
+	// Estimated cost in micro-units of currency_code, in the provider's own
+	// billing unit; 0 when unknown.
 	EstimatedCostMicros int64  `protobuf:"varint,2,opt,name=estimated_cost_micros,json=estimatedCostMicros,proto3" json:"estimated_cost_micros,omitempty"`
 	CurrencyCode        string `protobuf:"bytes,3,opt,name=currency_code,json=currencyCode,proto3" json:"currency_code,omitempty"`
 	unknownFields       protoimpl.UnknownFields
@@ -1419,7 +1760,7 @@ type Usage struct {
 
 func (x *Usage) Reset() {
 	*x = Usage{}
-	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[16]
+	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1431,7 +1772,7 @@ func (x *Usage) String() string {
 func (*Usage) ProtoMessage() {}
 
 func (x *Usage) ProtoReflect() protoreflect.Message {
-	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[16]
+	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1444,7 +1785,7 @@ func (x *Usage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Usage.ProtoReflect.Descriptor instead.
 func (*Usage) Descriptor() ([]byte, []int) {
-	return file_com_entwico_rootpuller_voice_voice_proto_rawDescGZIP(), []int{16}
+	return file_com_entwico_rootpuller_voice_voice_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *Usage) GetCharacters() int64 {
@@ -1477,17 +1818,21 @@ type SaveVoiceRequest_Params struct {
 	// A preview handle from DesignVoice. Without a handle, a sample is
 	// required. With both, the preview is saved while the handle is valid,
 	// and the voice is cloned from the sample once it has expired. A handle
-	// from a provider that is no longer active counts as expired: with a
-	// sample the voice is cloned, without one the call fails with
-	// FAILED_PRECONDITION.
-	Handle        *string `protobuf:"bytes,3,opt,name=handle,proto3,oneof" json:"handle,omitempty"`
+	// from a provider that is not configured on the server counts as
+	// expired: with a sample the voice is cloned, without one the call
+	// fails with FAILED_PRECONDITION. A handle saves at its own provider.
+	Handle *string `protobuf:"bytes,3,opt,name=handle,proto3,oneof" json:"handle,omitempty"`
+	// The provider to clone the sample at when there is no usable handle;
+	// unset is the handle's provider when that provider is configured, and
+	// otherwise (or without a handle) the server's default.
+	Provider      Provider `protobuf:"varint,4,opt,name=provider,proto3,enum=com.entwico.rootpuller.voice.Provider" json:"provider,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SaveVoiceRequest_Params) Reset() {
 	*x = SaveVoiceRequest_Params{}
-	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[17]
+	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1499,7 +1844,7 @@ func (x *SaveVoiceRequest_Params) String() string {
 func (*SaveVoiceRequest_Params) ProtoMessage() {}
 
 func (x *SaveVoiceRequest_Params) ProtoReflect() protoreflect.Message {
-	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[17]
+	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1536,12 +1881,127 @@ func (x *SaveVoiceRequest_Params) GetHandle() string {
 	return ""
 }
 
+func (x *SaveVoiceRequest_Params) GetProvider() Provider {
+	if x != nil {
+		return x.Provider
+	}
+	return Provider_PROVIDER_UNSPECIFIED
+}
+
+type CloneSpeakRequest_Params struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The provider to clone and speak at; unset is the server's default.
+	Provider Provider `protobuf:"varint,1,opt,name=provider,proto3,enum=com.entwico.rootpuller.voice.Provider" json:"provider,omitempty"`
+	// Required, as SpeakRequest.text.
+	Text string `protobuf:"bytes,2,opt,name=text,proto3" json:"text,omitempty"`
+	// Required, as SpeakRequest.language.
+	Language string `protobuf:"bytes,3,opt,name=language,proto3" json:"language,omitempty"`
+	// What the sample says, word for word. Optional; providers that use it
+	// clone more faithfully with it, others transcribe the sample or ignore
+	// it.
+	SampleText *string `protobuf:"bytes,4,opt,name=sample_text,json=sampleText,proto3,oneof" json:"sample_text,omitempty"`
+	// As SpeakRequest.model, .speed, .stability and .format.
+	Model         *string      `protobuf:"bytes,5,opt,name=model,proto3,oneof" json:"model,omitempty"`
+	Speed         *float32     `protobuf:"fixed32,6,opt,name=speed,proto3,oneof" json:"speed,omitempty"`
+	Stability     *float32     `protobuf:"fixed32,7,opt,name=stability,proto3,oneof" json:"stability,omitempty"`
+	Format        *AudioFormat `protobuf:"bytes,8,opt,name=format,proto3,oneof" json:"format,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CloneSpeakRequest_Params) Reset() {
+	*x = CloneSpeakRequest_Params{}
+	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CloneSpeakRequest_Params) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CloneSpeakRequest_Params) ProtoMessage() {}
+
+func (x *CloneSpeakRequest_Params) ProtoReflect() protoreflect.Message {
+	mi := &file_com_entwico_rootpuller_voice_voice_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CloneSpeakRequest_Params.ProtoReflect.Descriptor instead.
+func (*CloneSpeakRequest_Params) Descriptor() ([]byte, []int) {
+	return file_com_entwico_rootpuller_voice_voice_proto_rawDescGZIP(), []int{9, 0}
+}
+
+func (x *CloneSpeakRequest_Params) GetProvider() Provider {
+	if x != nil {
+		return x.Provider
+	}
+	return Provider_PROVIDER_UNSPECIFIED
+}
+
+func (x *CloneSpeakRequest_Params) GetText() string {
+	if x != nil {
+		return x.Text
+	}
+	return ""
+}
+
+func (x *CloneSpeakRequest_Params) GetLanguage() string {
+	if x != nil {
+		return x.Language
+	}
+	return ""
+}
+
+func (x *CloneSpeakRequest_Params) GetSampleText() string {
+	if x != nil && x.SampleText != nil {
+		return *x.SampleText
+	}
+	return ""
+}
+
+func (x *CloneSpeakRequest_Params) GetModel() string {
+	if x != nil && x.Model != nil {
+		return *x.Model
+	}
+	return ""
+}
+
+func (x *CloneSpeakRequest_Params) GetSpeed() float32 {
+	if x != nil && x.Speed != nil {
+		return *x.Speed
+	}
+	return 0
+}
+
+func (x *CloneSpeakRequest_Params) GetStability() float32 {
+	if x != nil && x.Stability != nil {
+		return *x.Stability
+	}
+	return 0
+}
+
+func (x *CloneSpeakRequest_Params) GetFormat() *AudioFormat {
+	if x != nil {
+		return x.Format
+	}
+	return nil
+}
+
 var File_com_entwico_rootpuller_voice_voice_proto protoreflect.FileDescriptor
 
 const file_com_entwico_rootpuller_voice_voice_proto_rawDesc = "" +
 	"\n" +
-	"(com/entwico/rootpuller/voice/voice.proto\x12\x1ccom.entwico.rootpuller.voice\x1a*com/entwico/rootpuller/common/common.proto\"\xc6\x01\n" +
-	"\x12DesignVoiceRequest\x12 \n" +
+	"(com/entwico/rootpuller/voice/voice.proto\x12\x1ccom.entwico.rootpuller.voice\x1a*com/entwico/rootpuller/common/common.proto\"\x8a\x02\n" +
+	"\x12DesignVoiceRequest\x12B\n" +
+	"\bprovider\x18\x06 \x01(\x0e2&.com.entwico.rootpuller.voice.ProviderR\bprovider\x12 \n" +
 	"\vdescription\x18\x01 \x01(\tR\vdescription\x12\x1f\n" +
 	"\vsample_text\x18\x02 \x01(\tR\n" +
 	"sampleText\x12\x1a\n" +
@@ -1567,14 +2027,15 @@ const file_com_entwico_rootpuller_voice_voice_proto_rawDesc = "" +
 	"\x06handle\x18\x02 \x01(\tR\x06handle\x12)\n" +
 	"\x10duration_seconds\x18\x03 \x01(\x02R\x0fdurationSeconds\x12+\n" +
 	"\x0fexpires_at_unix\x18\x04 \x01(\x03H\x00R\rexpiresAtUnix\x88\x01\x01B\x12\n" +
-	"\x10_expires_at_unix\"\x9a\x02\n" +
+	"\x10_expires_at_unix\"\xdf\x02\n" +
 	"\x10SaveVoiceRequest\x12O\n" +
 	"\x06params\x18\x01 \x01(\v25.com.entwico.rootpuller.voice.SaveVoiceRequest.ParamsH\x00R\x06params\x12B\n" +
-	"\x06sample\x18\x02 \x01(\v2(.com.entwico.rootpuller.common.FileChunkH\x00R\x06sample\x1af\n" +
+	"\x06sample\x18\x02 \x01(\v2(.com.entwico.rootpuller.common.FileChunkH\x00R\x06sample\x1a\xaa\x01\n" +
 	"\x06Params\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12 \n" +
 	"\vdescription\x18\x02 \x01(\tR\vdescription\x12\x1b\n" +
-	"\x06handle\x18\x03 \x01(\tH\x00R\x06handle\x88\x01\x01B\t\n" +
+	"\x06handle\x18\x03 \x01(\tH\x00R\x06handle\x88\x01\x01\x12B\n" +
+	"\bprovider\x18\x04 \x01(\x0e2&.com.entwico.rootpuller.voice.ProviderR\bproviderB\t\n" +
 	"\a_handleB\t\n" +
 	"\arequest\"\xd3\x01\n" +
 	"\x11SaveVoiceResponse\x12\x1b\n" +
@@ -1607,10 +2068,37 @@ const file_com_entwico_rootpuller_voice_voice_proto_rawDesc = "" +
 	"\x10duration_seconds\x18\x02 \x01(\x02R\x0fdurationSeconds\x12,\n" +
 	"\x12processing_time_ms\x18\x03 \x01(\x03R\x10processingTimeMs\x129\n" +
 	"\x05usage\x18\x04 \x01(\v2#.com.entwico.rootpuller.voice.UsageR\x05usage\x12A\n" +
-	"\x06format\x18\x05 \x01(\v2).com.entwico.rootpuller.voice.AudioFormatR\x06format\"1\n" +
+	"\x06format\x18\x05 \x01(\v2).com.entwico.rootpuller.voice.AudioFormatR\x06format\"\xb7\x04\n" +
+	"\x11CloneSpeakRequest\x12P\n" +
+	"\x06params\x18\x01 \x01(\v26.com.entwico.rootpuller.voice.CloneSpeakRequest.ParamsH\x00R\x06params\x12B\n" +
+	"\x06sample\x18\x02 \x01(\v2(.com.entwico.rootpuller.common.FileChunkH\x00R\x06sample\x1a\x80\x03\n" +
+	"\x06Params\x12B\n" +
+	"\bprovider\x18\x01 \x01(\x0e2&.com.entwico.rootpuller.voice.ProviderR\bprovider\x12\x12\n" +
+	"\x04text\x18\x02 \x01(\tR\x04text\x12\x1a\n" +
+	"\blanguage\x18\x03 \x01(\tR\blanguage\x12$\n" +
+	"\vsample_text\x18\x04 \x01(\tH\x00R\n" +
+	"sampleText\x88\x01\x01\x12\x19\n" +
+	"\x05model\x18\x05 \x01(\tH\x01R\x05model\x88\x01\x01\x12\x19\n" +
+	"\x05speed\x18\x06 \x01(\x02H\x02R\x05speed\x88\x01\x01\x12!\n" +
+	"\tstability\x18\a \x01(\x02H\x03R\tstability\x88\x01\x01\x12F\n" +
+	"\x06format\x18\b \x01(\v2).com.entwico.rootpuller.voice.AudioFormatH\x04R\x06format\x88\x01\x01B\x0e\n" +
+	"\f_sample_textB\b\n" +
+	"\x06_modelB\b\n" +
+	"\x06_speedB\f\n" +
+	"\n" +
+	"_stabilityB\t\n" +
+	"\a_formatB\t\n" +
+	"\arequest\"\xee\x01\n" +
+	"\x12CloneSpeakResponse\x12D\n" +
+	"\bprogress\x18\x01 \x01(\v2&.com.entwico.rootpuller.voice.ProgressH\x00R\bprogress\x12I\n" +
+	"\bmetadata\x18\x02 \x01(\v2+.com.entwico.rootpuller.voice.SpeakMetadataH\x00R\bmetadata\x12>\n" +
+	"\x04file\x18\x03 \x01(\v2(.com.entwico.rootpuller.common.FileChunkH\x00R\x04fileB\a\n" +
+	"\x05event\"1\n" +
 	"\x12DeleteVoiceRequest\x12\x1b\n" +
 	"\tvoice_ref\x18\x01 \x01(\tR\bvoiceRef\"\x15\n" +
-	"\x13DeleteVoiceResponse\"\xcd\x06\n" +
+	"\x13DeleteVoiceResponse\"\\\n" +
+	"\x16GetCapabilitiesRequest\x12B\n" +
+	"\bprovider\x18\x01 \x01(\x0e2&.com.entwico.rootpuller.voice.ProviderR\bprovider\"\x97\t\n" +
 	"\fCapabilities\x12\x1d\n" +
 	"\n" +
 	"can_design\x18\x01 \x01(\bR\tcanDesign\x12\x1b\n" +
@@ -1626,11 +2114,17 @@ const file_com_entwico_rootpuller_voice_voice_proto_rawDesc = "" +
 	" \x01(\v2(.com.entwico.rootpuller.voice.TextLimitsR\x11descriptionLimits\x12V\n" +
 	"\x12sample_text_limits\x18\v \x01(\v2(.com.entwico.rootpuller.voice.TextLimitsR\x10sampleTextLimits\x12,\n" +
 	"\x12max_sample_seconds\x18\f \x01(\x05R\x10maxSampleSeconds\x12N\n" +
-	"\raudio_formats\x18\r \x03(\v2).com.entwico.rootpuller.voice.AudioFormatR\faudioFormatsB\x13\n" +
+	"\raudio_formats\x18\r \x03(\v2).com.entwico.rootpuller.voice.AudioFormatR\faudioFormats\x12B\n" +
+	"\bprovider\x18\x0e \x01(\x0e2&.com.entwico.rootpuller.voice.ProviderR\bprovider\x12W\n" +
+	"\x13available_providers\x18\x0f \x03(\x0e2&.com.entwico.rootpuller.voice.ProviderR\x12availableProviders\x12&\n" +
+	"\x0fcan_clone_speak\x18\x10 \x01(\bR\rcanCloneSpeak\x127\n" +
+	"\x15credit_balance_micros\x18\x11 \x01(\x03H\x04R\x13creditBalanceMicros\x88\x01\x01\x120\n" +
+	"\x14credit_currency_code\x18\x12 \x01(\tR\x12creditCurrencyCodeB\x13\n" +
 	"\x11_voice_slots_usedB\x14\n" +
 	"\x12_voice_slots_limitB\x12\n" +
 	"\x10_characters_usedB\x13\n" +
-	"\x11_characters_limit\"\xf7\x01\n" +
+	"\x11_characters_limitB\x18\n" +
+	"\x16_credit_balance_micros\"\xf7\x01\n" +
 	"\vAudioFormat\x12E\n" +
 	"\x05codec\x18\x01 \x01(\x0e2/.com.entwico.rootpuller.voice.AudioFormat.CodecR\x05codec\x12$\n" +
 	"\x0esample_rate_hz\x18\x02 \x01(\x05R\fsampleRateHz\x12!\n" +
@@ -1665,13 +2159,19 @@ const file_com_entwico_rootpuller_voice_voice_proto_rawDesc = "" +
 	"characters\x18\x01 \x01(\x03R\n" +
 	"characters\x122\n" +
 	"\x15estimated_cost_micros\x18\x02 \x01(\x03R\x13estimatedCostMicros\x12#\n" +
-	"\rcurrency_code\x18\x03 \x01(\tR\fcurrencyCode2\xa3\x04\n" +
+	"\rcurrency_code\x18\x03 \x01(\tR\fcurrencyCode*U\n" +
+	"\bProvider\x12\x18\n" +
+	"\x14PROVIDER_UNSPECIFIED\x10\x00\x12\x17\n" +
+	"\x13PROVIDER_ELEVENLABS\x10\x01\x12\x16\n" +
+	"\x12PROVIDER_FISHAUDIO\x10\x022\xb6\x05\n" +
 	"\fVoiceService\x12t\n" +
 	"\vDesignVoice\x120.com.entwico.rootpuller.voice.DesignVoiceRequest\x1a1.com.entwico.rootpuller.voice.DesignVoiceResponse0\x01\x12n\n" +
 	"\tSaveVoice\x12..com.entwico.rootpuller.voice.SaveVoiceRequest\x1a/.com.entwico.rootpuller.voice.SaveVoiceResponse(\x01\x12b\n" +
-	"\x05Speak\x12*.com.entwico.rootpuller.voice.SpeakRequest\x1a+.com.entwico.rootpuller.voice.SpeakResponse0\x01\x12r\n" +
-	"\vDeleteVoice\x120.com.entwico.rootpuller.voice.DeleteVoiceRequest\x1a1.com.entwico.rootpuller.voice.DeleteVoiceResponse\x12U\n" +
-	"\x0fGetCapabilities\x12\x16.google.protobuf.Empty\x1a*.com.entwico.rootpuller.voice.CapabilitiesB\x95\x02\n" +
+	"\x05Speak\x12*.com.entwico.rootpuller.voice.SpeakRequest\x1a+.com.entwico.rootpuller.voice.SpeakResponse0\x01\x12s\n" +
+	"\n" +
+	"CloneSpeak\x12/.com.entwico.rootpuller.voice.CloneSpeakRequest\x1a0.com.entwico.rootpuller.voice.CloneSpeakResponse(\x010\x01\x12r\n" +
+	"\vDeleteVoice\x120.com.entwico.rootpuller.voice.DeleteVoiceRequest\x1a1.com.entwico.rootpuller.voice.DeleteVoiceResponse\x12s\n" +
+	"\x0fGetCapabilities\x124.com.entwico.rootpuller.voice.GetCapabilitiesRequest\x1a*.com.entwico.rootpuller.voice.CapabilitiesB\x95\x02\n" +
 	" com.com.entwico.rootpuller.voiceB\n" +
 	"VoiceProtoP\x01ZQgithub.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/voice\xa2\x02\x04CERV\xaa\x02\x1cCom.Entwico.Rootpuller.Voice\xca\x02\x1cCom\\Entwico\\Rootpuller\\Voice\xe2\x02(Com\\Entwico\\Rootpuller\\Voice\\GPBMetadata\xea\x02\x1fCom::Entwico::Rootpuller::Voiceb\x06proto3"
 
@@ -1687,68 +2187,86 @@ func file_com_entwico_rootpuller_voice_voice_proto_rawDescGZIP() []byte {
 	return file_com_entwico_rootpuller_voice_voice_proto_rawDescData
 }
 
-var file_com_entwico_rootpuller_voice_voice_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_com_entwico_rootpuller_voice_voice_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
+var file_com_entwico_rootpuller_voice_voice_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
+var file_com_entwico_rootpuller_voice_voice_proto_msgTypes = make([]protoimpl.MessageInfo, 22)
 var file_com_entwico_rootpuller_voice_voice_proto_goTypes = []any{
-	(AudioFormat_Codec)(0),          // 0: com.entwico.rootpuller.voice.AudioFormat.Codec
-	(Progress_Stage)(0),             // 1: com.entwico.rootpuller.voice.Progress.Stage
-	(*DesignVoiceRequest)(nil),      // 2: com.entwico.rootpuller.voice.DesignVoiceRequest
-	(*DesignVoiceResponse)(nil),     // 3: com.entwico.rootpuller.voice.DesignVoiceResponse
-	(*DesignMetadata)(nil),          // 4: com.entwico.rootpuller.voice.DesignMetadata
-	(*PreviewMetadata)(nil),         // 5: com.entwico.rootpuller.voice.PreviewMetadata
-	(*SaveVoiceRequest)(nil),        // 6: com.entwico.rootpuller.voice.SaveVoiceRequest
-	(*SaveVoiceResponse)(nil),       // 7: com.entwico.rootpuller.voice.SaveVoiceResponse
-	(*SpeakRequest)(nil),            // 8: com.entwico.rootpuller.voice.SpeakRequest
-	(*SpeakResponse)(nil),           // 9: com.entwico.rootpuller.voice.SpeakResponse
-	(*SpeakMetadata)(nil),           // 10: com.entwico.rootpuller.voice.SpeakMetadata
-	(*DeleteVoiceRequest)(nil),      // 11: com.entwico.rootpuller.voice.DeleteVoiceRequest
-	(*DeleteVoiceResponse)(nil),     // 12: com.entwico.rootpuller.voice.DeleteVoiceResponse
-	(*Capabilities)(nil),            // 13: com.entwico.rootpuller.voice.Capabilities
-	(*AudioFormat)(nil),             // 14: com.entwico.rootpuller.voice.AudioFormat
-	(*ModelInfo)(nil),               // 15: com.entwico.rootpuller.voice.ModelInfo
-	(*TextLimits)(nil),              // 16: com.entwico.rootpuller.voice.TextLimits
-	(*Progress)(nil),                // 17: com.entwico.rootpuller.voice.Progress
-	(*Usage)(nil),                   // 18: com.entwico.rootpuller.voice.Usage
-	(*SaveVoiceRequest_Params)(nil), // 19: com.entwico.rootpuller.voice.SaveVoiceRequest.Params
-	(*common.FileChunk)(nil),        // 20: com.entwico.rootpuller.common.FileChunk
-	(*emptypb.Empty)(nil),           // 21: google.protobuf.Empty
+	(Provider)(0),                    // 0: com.entwico.rootpuller.voice.Provider
+	(AudioFormat_Codec)(0),           // 1: com.entwico.rootpuller.voice.AudioFormat.Codec
+	(Progress_Stage)(0),              // 2: com.entwico.rootpuller.voice.Progress.Stage
+	(*DesignVoiceRequest)(nil),       // 3: com.entwico.rootpuller.voice.DesignVoiceRequest
+	(*DesignVoiceResponse)(nil),      // 4: com.entwico.rootpuller.voice.DesignVoiceResponse
+	(*DesignMetadata)(nil),           // 5: com.entwico.rootpuller.voice.DesignMetadata
+	(*PreviewMetadata)(nil),          // 6: com.entwico.rootpuller.voice.PreviewMetadata
+	(*SaveVoiceRequest)(nil),         // 7: com.entwico.rootpuller.voice.SaveVoiceRequest
+	(*SaveVoiceResponse)(nil),        // 8: com.entwico.rootpuller.voice.SaveVoiceResponse
+	(*SpeakRequest)(nil),             // 9: com.entwico.rootpuller.voice.SpeakRequest
+	(*SpeakResponse)(nil),            // 10: com.entwico.rootpuller.voice.SpeakResponse
+	(*SpeakMetadata)(nil),            // 11: com.entwico.rootpuller.voice.SpeakMetadata
+	(*CloneSpeakRequest)(nil),        // 12: com.entwico.rootpuller.voice.CloneSpeakRequest
+	(*CloneSpeakResponse)(nil),       // 13: com.entwico.rootpuller.voice.CloneSpeakResponse
+	(*DeleteVoiceRequest)(nil),       // 14: com.entwico.rootpuller.voice.DeleteVoiceRequest
+	(*DeleteVoiceResponse)(nil),      // 15: com.entwico.rootpuller.voice.DeleteVoiceResponse
+	(*GetCapabilitiesRequest)(nil),   // 16: com.entwico.rootpuller.voice.GetCapabilitiesRequest
+	(*Capabilities)(nil),             // 17: com.entwico.rootpuller.voice.Capabilities
+	(*AudioFormat)(nil),              // 18: com.entwico.rootpuller.voice.AudioFormat
+	(*ModelInfo)(nil),                // 19: com.entwico.rootpuller.voice.ModelInfo
+	(*TextLimits)(nil),               // 20: com.entwico.rootpuller.voice.TextLimits
+	(*Progress)(nil),                 // 21: com.entwico.rootpuller.voice.Progress
+	(*Usage)(nil),                    // 22: com.entwico.rootpuller.voice.Usage
+	(*SaveVoiceRequest_Params)(nil),  // 23: com.entwico.rootpuller.voice.SaveVoiceRequest.Params
+	(*CloneSpeakRequest_Params)(nil), // 24: com.entwico.rootpuller.voice.CloneSpeakRequest.Params
+	(*common.FileChunk)(nil),         // 25: com.entwico.rootpuller.common.FileChunk
 }
 var file_com_entwico_rootpuller_voice_voice_proto_depIdxs = []int32{
-	17, // 0: com.entwico.rootpuller.voice.DesignVoiceResponse.progress:type_name -> com.entwico.rootpuller.voice.Progress
-	4,  // 1: com.entwico.rootpuller.voice.DesignVoiceResponse.metadata:type_name -> com.entwico.rootpuller.voice.DesignMetadata
-	20, // 2: com.entwico.rootpuller.voice.DesignVoiceResponse.file:type_name -> com.entwico.rootpuller.common.FileChunk
-	5,  // 3: com.entwico.rootpuller.voice.DesignMetadata.previews:type_name -> com.entwico.rootpuller.voice.PreviewMetadata
-	18, // 4: com.entwico.rootpuller.voice.DesignMetadata.usage:type_name -> com.entwico.rootpuller.voice.Usage
-	19, // 5: com.entwico.rootpuller.voice.SaveVoiceRequest.params:type_name -> com.entwico.rootpuller.voice.SaveVoiceRequest.Params
-	20, // 6: com.entwico.rootpuller.voice.SaveVoiceRequest.sample:type_name -> com.entwico.rootpuller.common.FileChunk
-	14, // 7: com.entwico.rootpuller.voice.SpeakRequest.format:type_name -> com.entwico.rootpuller.voice.AudioFormat
-	17, // 8: com.entwico.rootpuller.voice.SpeakResponse.progress:type_name -> com.entwico.rootpuller.voice.Progress
-	10, // 9: com.entwico.rootpuller.voice.SpeakResponse.metadata:type_name -> com.entwico.rootpuller.voice.SpeakMetadata
-	20, // 10: com.entwico.rootpuller.voice.SpeakResponse.file:type_name -> com.entwico.rootpuller.common.FileChunk
-	18, // 11: com.entwico.rootpuller.voice.SpeakMetadata.usage:type_name -> com.entwico.rootpuller.voice.Usage
-	14, // 12: com.entwico.rootpuller.voice.SpeakMetadata.format:type_name -> com.entwico.rootpuller.voice.AudioFormat
-	15, // 13: com.entwico.rootpuller.voice.Capabilities.speech_models:type_name -> com.entwico.rootpuller.voice.ModelInfo
-	15, // 14: com.entwico.rootpuller.voice.Capabilities.design_models:type_name -> com.entwico.rootpuller.voice.ModelInfo
-	16, // 15: com.entwico.rootpuller.voice.Capabilities.description_limits:type_name -> com.entwico.rootpuller.voice.TextLimits
-	16, // 16: com.entwico.rootpuller.voice.Capabilities.sample_text_limits:type_name -> com.entwico.rootpuller.voice.TextLimits
-	14, // 17: com.entwico.rootpuller.voice.Capabilities.audio_formats:type_name -> com.entwico.rootpuller.voice.AudioFormat
-	0,  // 18: com.entwico.rootpuller.voice.AudioFormat.codec:type_name -> com.entwico.rootpuller.voice.AudioFormat.Codec
-	1,  // 19: com.entwico.rootpuller.voice.Progress.stage:type_name -> com.entwico.rootpuller.voice.Progress.Stage
-	2,  // 20: com.entwico.rootpuller.voice.VoiceService.DesignVoice:input_type -> com.entwico.rootpuller.voice.DesignVoiceRequest
-	6,  // 21: com.entwico.rootpuller.voice.VoiceService.SaveVoice:input_type -> com.entwico.rootpuller.voice.SaveVoiceRequest
-	8,  // 22: com.entwico.rootpuller.voice.VoiceService.Speak:input_type -> com.entwico.rootpuller.voice.SpeakRequest
-	11, // 23: com.entwico.rootpuller.voice.VoiceService.DeleteVoice:input_type -> com.entwico.rootpuller.voice.DeleteVoiceRequest
-	21, // 24: com.entwico.rootpuller.voice.VoiceService.GetCapabilities:input_type -> google.protobuf.Empty
-	3,  // 25: com.entwico.rootpuller.voice.VoiceService.DesignVoice:output_type -> com.entwico.rootpuller.voice.DesignVoiceResponse
-	7,  // 26: com.entwico.rootpuller.voice.VoiceService.SaveVoice:output_type -> com.entwico.rootpuller.voice.SaveVoiceResponse
-	9,  // 27: com.entwico.rootpuller.voice.VoiceService.Speak:output_type -> com.entwico.rootpuller.voice.SpeakResponse
-	12, // 28: com.entwico.rootpuller.voice.VoiceService.DeleteVoice:output_type -> com.entwico.rootpuller.voice.DeleteVoiceResponse
-	13, // 29: com.entwico.rootpuller.voice.VoiceService.GetCapabilities:output_type -> com.entwico.rootpuller.voice.Capabilities
-	25, // [25:30] is the sub-list for method output_type
-	20, // [20:25] is the sub-list for method input_type
-	20, // [20:20] is the sub-list for extension type_name
-	20, // [20:20] is the sub-list for extension extendee
-	0,  // [0:20] is the sub-list for field type_name
+	0,  // 0: com.entwico.rootpuller.voice.DesignVoiceRequest.provider:type_name -> com.entwico.rootpuller.voice.Provider
+	21, // 1: com.entwico.rootpuller.voice.DesignVoiceResponse.progress:type_name -> com.entwico.rootpuller.voice.Progress
+	5,  // 2: com.entwico.rootpuller.voice.DesignVoiceResponse.metadata:type_name -> com.entwico.rootpuller.voice.DesignMetadata
+	25, // 3: com.entwico.rootpuller.voice.DesignVoiceResponse.file:type_name -> com.entwico.rootpuller.common.FileChunk
+	6,  // 4: com.entwico.rootpuller.voice.DesignMetadata.previews:type_name -> com.entwico.rootpuller.voice.PreviewMetadata
+	22, // 5: com.entwico.rootpuller.voice.DesignMetadata.usage:type_name -> com.entwico.rootpuller.voice.Usage
+	23, // 6: com.entwico.rootpuller.voice.SaveVoiceRequest.params:type_name -> com.entwico.rootpuller.voice.SaveVoiceRequest.Params
+	25, // 7: com.entwico.rootpuller.voice.SaveVoiceRequest.sample:type_name -> com.entwico.rootpuller.common.FileChunk
+	18, // 8: com.entwico.rootpuller.voice.SpeakRequest.format:type_name -> com.entwico.rootpuller.voice.AudioFormat
+	21, // 9: com.entwico.rootpuller.voice.SpeakResponse.progress:type_name -> com.entwico.rootpuller.voice.Progress
+	11, // 10: com.entwico.rootpuller.voice.SpeakResponse.metadata:type_name -> com.entwico.rootpuller.voice.SpeakMetadata
+	25, // 11: com.entwico.rootpuller.voice.SpeakResponse.file:type_name -> com.entwico.rootpuller.common.FileChunk
+	22, // 12: com.entwico.rootpuller.voice.SpeakMetadata.usage:type_name -> com.entwico.rootpuller.voice.Usage
+	18, // 13: com.entwico.rootpuller.voice.SpeakMetadata.format:type_name -> com.entwico.rootpuller.voice.AudioFormat
+	24, // 14: com.entwico.rootpuller.voice.CloneSpeakRequest.params:type_name -> com.entwico.rootpuller.voice.CloneSpeakRequest.Params
+	25, // 15: com.entwico.rootpuller.voice.CloneSpeakRequest.sample:type_name -> com.entwico.rootpuller.common.FileChunk
+	21, // 16: com.entwico.rootpuller.voice.CloneSpeakResponse.progress:type_name -> com.entwico.rootpuller.voice.Progress
+	11, // 17: com.entwico.rootpuller.voice.CloneSpeakResponse.metadata:type_name -> com.entwico.rootpuller.voice.SpeakMetadata
+	25, // 18: com.entwico.rootpuller.voice.CloneSpeakResponse.file:type_name -> com.entwico.rootpuller.common.FileChunk
+	0,  // 19: com.entwico.rootpuller.voice.GetCapabilitiesRequest.provider:type_name -> com.entwico.rootpuller.voice.Provider
+	19, // 20: com.entwico.rootpuller.voice.Capabilities.speech_models:type_name -> com.entwico.rootpuller.voice.ModelInfo
+	19, // 21: com.entwico.rootpuller.voice.Capabilities.design_models:type_name -> com.entwico.rootpuller.voice.ModelInfo
+	20, // 22: com.entwico.rootpuller.voice.Capabilities.description_limits:type_name -> com.entwico.rootpuller.voice.TextLimits
+	20, // 23: com.entwico.rootpuller.voice.Capabilities.sample_text_limits:type_name -> com.entwico.rootpuller.voice.TextLimits
+	18, // 24: com.entwico.rootpuller.voice.Capabilities.audio_formats:type_name -> com.entwico.rootpuller.voice.AudioFormat
+	0,  // 25: com.entwico.rootpuller.voice.Capabilities.provider:type_name -> com.entwico.rootpuller.voice.Provider
+	0,  // 26: com.entwico.rootpuller.voice.Capabilities.available_providers:type_name -> com.entwico.rootpuller.voice.Provider
+	1,  // 27: com.entwico.rootpuller.voice.AudioFormat.codec:type_name -> com.entwico.rootpuller.voice.AudioFormat.Codec
+	2,  // 28: com.entwico.rootpuller.voice.Progress.stage:type_name -> com.entwico.rootpuller.voice.Progress.Stage
+	0,  // 29: com.entwico.rootpuller.voice.SaveVoiceRequest.Params.provider:type_name -> com.entwico.rootpuller.voice.Provider
+	0,  // 30: com.entwico.rootpuller.voice.CloneSpeakRequest.Params.provider:type_name -> com.entwico.rootpuller.voice.Provider
+	18, // 31: com.entwico.rootpuller.voice.CloneSpeakRequest.Params.format:type_name -> com.entwico.rootpuller.voice.AudioFormat
+	3,  // 32: com.entwico.rootpuller.voice.VoiceService.DesignVoice:input_type -> com.entwico.rootpuller.voice.DesignVoiceRequest
+	7,  // 33: com.entwico.rootpuller.voice.VoiceService.SaveVoice:input_type -> com.entwico.rootpuller.voice.SaveVoiceRequest
+	9,  // 34: com.entwico.rootpuller.voice.VoiceService.Speak:input_type -> com.entwico.rootpuller.voice.SpeakRequest
+	12, // 35: com.entwico.rootpuller.voice.VoiceService.CloneSpeak:input_type -> com.entwico.rootpuller.voice.CloneSpeakRequest
+	14, // 36: com.entwico.rootpuller.voice.VoiceService.DeleteVoice:input_type -> com.entwico.rootpuller.voice.DeleteVoiceRequest
+	16, // 37: com.entwico.rootpuller.voice.VoiceService.GetCapabilities:input_type -> com.entwico.rootpuller.voice.GetCapabilitiesRequest
+	4,  // 38: com.entwico.rootpuller.voice.VoiceService.DesignVoice:output_type -> com.entwico.rootpuller.voice.DesignVoiceResponse
+	8,  // 39: com.entwico.rootpuller.voice.VoiceService.SaveVoice:output_type -> com.entwico.rootpuller.voice.SaveVoiceResponse
+	10, // 40: com.entwico.rootpuller.voice.VoiceService.Speak:output_type -> com.entwico.rootpuller.voice.SpeakResponse
+	13, // 41: com.entwico.rootpuller.voice.VoiceService.CloneSpeak:output_type -> com.entwico.rootpuller.voice.CloneSpeakResponse
+	15, // 42: com.entwico.rootpuller.voice.VoiceService.DeleteVoice:output_type -> com.entwico.rootpuller.voice.DeleteVoiceResponse
+	17, // 43: com.entwico.rootpuller.voice.VoiceService.GetCapabilities:output_type -> com.entwico.rootpuller.voice.Capabilities
+	38, // [38:44] is the sub-list for method output_type
+	32, // [32:38] is the sub-list for method input_type
+	32, // [32:32] is the sub-list for extension type_name
+	32, // [32:32] is the sub-list for extension extendee
+	0,  // [0:32] is the sub-list for field type_name
 }
 
 func init() { file_com_entwico_rootpuller_voice_voice_proto_init() }
@@ -1774,15 +2292,25 @@ func file_com_entwico_rootpuller_voice_voice_proto_init() {
 		(*SpeakResponse_Metadata)(nil),
 		(*SpeakResponse_File)(nil),
 	}
-	file_com_entwico_rootpuller_voice_voice_proto_msgTypes[11].OneofWrappers = []any{}
-	file_com_entwico_rootpuller_voice_voice_proto_msgTypes[17].OneofWrappers = []any{}
+	file_com_entwico_rootpuller_voice_voice_proto_msgTypes[9].OneofWrappers = []any{
+		(*CloneSpeakRequest_Params_)(nil),
+		(*CloneSpeakRequest_Sample)(nil),
+	}
+	file_com_entwico_rootpuller_voice_voice_proto_msgTypes[10].OneofWrappers = []any{
+		(*CloneSpeakResponse_Progress)(nil),
+		(*CloneSpeakResponse_Metadata)(nil),
+		(*CloneSpeakResponse_File)(nil),
+	}
+	file_com_entwico_rootpuller_voice_voice_proto_msgTypes[14].OneofWrappers = []any{}
+	file_com_entwico_rootpuller_voice_voice_proto_msgTypes[20].OneofWrappers = []any{}
+	file_com_entwico_rootpuller_voice_voice_proto_msgTypes[21].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_com_entwico_rootpuller_voice_voice_proto_rawDesc), len(file_com_entwico_rootpuller_voice_voice_proto_rawDesc)),
-			NumEnums:      2,
-			NumMessages:   18,
+			NumEnums:      3,
+			NumMessages:   22,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

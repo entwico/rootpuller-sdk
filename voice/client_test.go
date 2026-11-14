@@ -377,7 +377,7 @@ func TestFakeRejectsWhatTheServerRejects(t *testing.T) {
 		})
 	}
 
-	c, err := svc.GetCapabilities(t.Context())
+	c, err := svc.GetCapabilities(t.Context(), voice.ProviderDefault)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -485,7 +485,7 @@ func TestDeleteAndCapabilities(t *testing.T) {
 		t.Fatalf("deleted = %q", deleted)
 	}
 
-	c, err := svc.GetCapabilities(t.Context())
+	c, err := svc.GetCapabilities(t.Context(), voice.ProviderDefault)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -505,7 +505,7 @@ func TestSpeak_Format(t *testing.T) {
 		SpeakFunc: func(req rootpullertest.VoiceSpeakRequest) (*voice.Speech, error) {
 			got = req
 
-			return &voice.Speech{Audio: rootpullersdk.File{MIMEType: "audio/wav", Data: []byte("RIFF")}}, nil
+			return &voice.Speech{Audio: rootpullersdk.File{MIMEType: mimeWAV, Data: []byte("RIFF")}}, nil
 		},
 	})
 
@@ -575,7 +575,7 @@ func TestSpeak_FormatErrors(t *testing.T) {
 func TestCapabilities_AudioFormats(t *testing.T) {
 	t.Parallel()
 
-	c, err := newService(t, &rootpullertest.Voice{}).GetCapabilities(t.Context())
+	c, err := newService(t, &rootpullertest.Voice{}).GetCapabilities(t.Context(), voice.ProviderDefault)
 	if err != nil {
 		t.Fatal(err)
 	}
