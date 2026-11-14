@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.16.0 (2026-11-14)
+
+### Minor Changes
+
+- New `fleet` package for rootpuller-api's FleetService: `GetState` and `Watch` report the worker fleet — executors and their GPU memory, units started and parked on demand, the job queue with each job's wait reason, running jobs with progress and caller, recent jobs, events and percentiles. Needs the `rootpuller:fleet:read` scope. `rootpullertest.Fleet` serves scripted states.
+
 ## v0.15.0 (2026-11-14)
 
 ### Minor Changes
