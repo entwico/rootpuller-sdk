@@ -15,15 +15,17 @@ import (
 type Provider string
 
 const (
-	ProviderDefault Provider = ""
-	ProviderLaya    Provider = "laya" // Laya, open weights, served locally by the rootpuller worker
-	ProviderJev     Provider = "jev"  // TypeSafe Jev, hosted API
+	ProviderDefault    Provider = ""
+	ProviderLaya       Provider = "laya"        // Laya, open weights, served locally by the rootpuller worker
+	ProviderJev        Provider = "jev"         // TypeSafe Jev, hosted API
+	ProviderSelfHosted Provider = "self-hosted" // open-weights models served in the cluster; ModelID picks one
 )
 
 var providerToProto = map[Provider]decisionpb.DecisionProvider{
-	ProviderDefault: decisionpb.DecisionProvider_DECISION_PROVIDER_UNSPECIFIED,
-	ProviderLaya:    decisionpb.DecisionProvider_DECISION_PROVIDER_LAYA,
-	ProviderJev:     decisionpb.DecisionProvider_DECISION_PROVIDER_JEV,
+	ProviderDefault:    decisionpb.DecisionProvider_DECISION_PROVIDER_UNSPECIFIED,
+	ProviderLaya:       decisionpb.DecisionProvider_DECISION_PROVIDER_LAYA,
+	ProviderJev:        decisionpb.DecisionProvider_DECISION_PROVIDER_JEV,
+	ProviderSelfHosted: decisionpb.DecisionProvider_DECISION_PROVIDER_SELF_HOSTED,
 }
 
 func (p Provider) toProto() (decisionpb.DecisionProvider, error) {
@@ -43,6 +45,8 @@ func providerFromProto(v decisionpb.DecisionProvider) Provider {
 		return ProviderLaya
 	case decisionpb.DecisionProvider_DECISION_PROVIDER_JEV:
 		return ProviderJev
+	case decisionpb.DecisionProvider_DECISION_PROVIDER_SELF_HOSTED:
+		return ProviderSelfHosted
 	default:
 		// unknown value from a newer server: preserve it in the same style
 		// as the constants above
@@ -242,8 +246,9 @@ func answerFromProto(a *decisionpb.Answer) Answer {
 }
 
 // ModelInfo describes one decision model the gateway can serve. Loaded
-// means Laya weights are present on the worker, or the gateway has a Jev
-// API key configured.
+// means Laya weights are present on the worker, the gateway has a Jev API
+// key configured, or a self-hosted server answers its health check (one
+// started on demand reports false while parked and still takes requests).
 type ModelInfo struct {
 	Model ModelRef
 	// MaxTokens is the total context limit (state plus one question); zero
@@ -256,6 +261,8 @@ type ModelInfo struct {
 	MaxOptions  int
 	Loaded      bool
 	Description string
+	// SupportsImages is set for models that accept Options.Images.
+	SupportsImages bool
 }
 
 func modelInfoFromProto(m *decisionpb.DecisionModelInfo) ModelInfo {
@@ -266,5 +273,6 @@ func modelInfoFromProto(m *decisionpb.DecisionModelInfo) ModelInfo {
 		MaxOptions:        int(m.GetMaxOptions()),
 		Loaded:            m.GetLoaded(),
 		Description:       m.GetDescription(),
+		SupportsImages:    m.GetSupportsImages(),
 	}
 }

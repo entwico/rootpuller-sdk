@@ -7,6 +7,7 @@ import (
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/emptypb"
 
+	rootpullersdk "github.com/entwico/rootpuller-sdk"
 	"github.com/entwico/rootpuller-sdk/decision"
 	commonpb "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/common"
 	decisionpb "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/decision"
@@ -18,11 +19,14 @@ import (
 // questions, and returns the answers; a nil DecideFunc answers every
 // question with a canned value: a choice picks its alphabetically first
 // label with probability 1, a score picks level 0, and a noul returns 0.5.
-// The response echoes the request model. ListModels serves Models; when
-// nil it serves one canned loaded Laya model.
+// The response echoes the request model. DecideImagesFunc, when set, wins
+// over DecideFunc and also receives the request's images, inlined or
+// streamed through DecideUpload alike. ListModels serves Models; when nil it
+// serves one canned loaded Laya model.
 type Decision struct {
-	DecideFunc func(state any, questions map[string]decision.Question) (map[string]decision.Answer, error)
-	Models     []decision.ModelInfo
+	DecideFunc       func(state any, questions map[string]decision.Question) (map[string]decision.Answer, error)
+	DecideImagesFunc func(state any, questions map[string]decision.Question, images map[string]rootpullersdk.File) (map[string]decision.Answer, error)
+	Models           []decision.ModelInfo
 }
 
 func (f *Decision) register(mux *http.ServeMux) {
@@ -36,31 +40,56 @@ type decisionHandler struct {
 }
 
 func (h *decisionHandler) Decide(_ context.Context, req *connect.Request[decisionpb.DecideRequest]) (*connect.Response[decisionpb.DecideResponse], error) {
-	decideFunc := h.fake.DecideFunc
-	if decideFunc == nil {
-		decideFunc = cannedDecide
+	images := make(map[string]rootpullersdk.File, len(req.Msg.GetImages()))
+	for ref, img := range req.Msg.GetImages() {
+		images[ref] = rootpullersdk.File{Name: ref, MIMEType: img.GetMimeType(), Data: img.GetData()}
 	}
 
-	questions := make(map[string]decision.Question, len(req.Msg.GetQuestions()))
-	for key, q := range req.Msg.GetQuestions() {
-		questions[key] = decisionQuestionFromProto(q)
-	}
-
-	answers, err := decideFunc(req.Msg.GetState().AsInterface(), questions)
+	resp, err := h.answer(req.Msg, images)
 	if err != nil {
 		return nil, err
 	}
 
-	resp := &decisionpb.DecideResponse{
-		Answers: make(map[string]*decisionpb.Answer, len(answers)),
-		Model:   req.Msg.GetModel(),
-		Usage:   &commonpb.Usage{InputTokens: 42},
-	}
-	for key, a := range answers {
-		resp.Answers[key] = decisionAnswerToProto(a)
+	return connect.NewResponse(resp), nil
+}
+
+func (h *decisionHandler) DecideUpload(_ context.Context, stream *connect.ClientStream[decisionpb.DecideUploadRequest]) (*connect.Response[decisionpb.DecideUploadResponse], error) {
+	var params *decisionpb.DecideRequest
+
+	images := map[string]rootpullersdk.File{}
+
+	for stream.Receive() {
+		if p := stream.Msg().GetParams(); p != nil {
+			params = p
+
+			for ref, img := range p.GetImages() {
+				images[ref] = rootpullersdk.File{Name: ref, MIMEType: img.GetMimeType(), Data: img.GetData()}
+			}
+
+			continue
+		}
+
+		chunk := stream.Msg().GetImage()
+		img := images[chunk.GetName()]
+		img.Name, img.MIMEType = chunk.GetName(), chunk.GetMimeType()
+		img.Data = append(img.Data, chunk.GetData()...)
+		images[chunk.GetName()] = img
 	}
 
-	return connect.NewResponse(resp), nil
+	if err := stream.Err(); err != nil {
+		return nil, err
+	}
+
+	if params == nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, nil)
+	}
+
+	resp, err := h.answer(params, images)
+	if err != nil {
+		return nil, err
+	}
+
+	return connect.NewResponse(&decisionpb.DecideUploadResponse{Response: resp}), nil
 }
 
 func (h *decisionHandler) ListModels(_ context.Context, _ *connect.Request[emptypb.Empty]) (*connect.Response[decisionpb.ListDecisionModelsResponse], error) {
@@ -88,13 +117,49 @@ func (h *decisionHandler) ListModels(_ context.Context, _ *connect.Request[empty
 			MaxOptions:        int32(m.MaxOptions),        //nolint:gosec // test-fixture limits fit int32
 			Loaded:            m.Loaded,
 			Description:       m.Description,
+			SupportsImages:    m.SupportsImages,
 		})
 	}
 
 	return connect.NewResponse(resp), nil
 }
 
-func cannedDecide(_ any, questions map[string]decision.Question) (map[string]decision.Answer, error) {
+func (h *decisionHandler) answer(req *decisionpb.DecideRequest, images map[string]rootpullersdk.File) (*decisionpb.DecideResponse, error) {
+	questions := make(map[string]decision.Question, len(req.GetQuestions()))
+	for key, q := range req.GetQuestions() {
+		questions[key] = decisionQuestionFromProto(q)
+	}
+
+	state := req.GetState().AsInterface()
+
+	answers := cannedDecide(questions)
+
+	var err error
+
+	switch {
+	case h.fake.DecideImagesFunc != nil:
+		answers, err = h.fake.DecideImagesFunc(state, questions, images)
+	case h.fake.DecideFunc != nil:
+		answers, err = h.fake.DecideFunc(state, questions)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	resp := &decisionpb.DecideResponse{
+		Answers: make(map[string]*decisionpb.Answer, len(answers)),
+		Model:   req.GetModel(),
+		Usage:   &commonpb.Usage{InputTokens: 42},
+	}
+	for key, a := range answers {
+		resp.Answers[key] = decisionAnswerToProto(a)
+	}
+
+	return resp, nil
+}
+
+func cannedDecide(questions map[string]decision.Question) map[string]decision.Answer {
 	answers := make(map[string]decision.Answer, len(questions))
 	for key, q := range questions {
 		switch {
@@ -133,7 +198,7 @@ func cannedDecide(_ any, questions map[string]decision.Question) (map[string]dec
 		}
 	}
 
-	return answers, nil
+	return answers
 }
 
 func decisionQuestionFromProto(q *decisionpb.Question) decision.Question {
@@ -180,6 +245,8 @@ func decisionProviderToProto(p decision.Provider) decisionpb.DecisionProvider {
 		return decisionpb.DecisionProvider_DECISION_PROVIDER_LAYA
 	case decision.ProviderJev:
 		return decisionpb.DecisionProvider_DECISION_PROVIDER_JEV
+	case decision.ProviderSelfHosted:
+		return decisionpb.DecisionProvider_DECISION_PROVIDER_SELF_HOSTED
 	case decision.ProviderDefault:
 		return decisionpb.DecisionProvider_DECISION_PROVIDER_UNSPECIFIED
 	}

@@ -1,6 +1,7 @@
 package decision_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"net/http"
@@ -21,6 +22,7 @@ const (
 	layaModel = "convaiinnovations/laya/multilingual"
 	billing   = "billing"
 	urgent    = "urgent"
+	spam      = "spam"
 )
 
 func newService(t *testing.T, baseURL string, opts ...decision.Option) *decision.Service {
@@ -203,7 +205,7 @@ func TestDecideRequestShape(t *testing.T) {
 		"team":  decision.Choice("team?", map[string]string{"a": "first"}),
 		"level": decision.Score("level?", "low", "high"),
 		urgent:  decision.Noul("urgent?"),
-		"spam":  decision.NoulWithCriteria("spam?", "ads", "real mail"),
+		spam:    decision.NoulWithCriteria("spam?", "ads", "real mail"),
 	}, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -228,7 +230,7 @@ func TestDecideRequestShape(t *testing.T) {
 		t.Errorf("urgent = %v, want noul without criteria", qs[urgent])
 	}
 
-	if c := qs["spam"].GetNoul().GetCriteria(); c.GetWhenTrue() != "ads" || c.GetWhenFalse() != "real mail" {
+	if c := qs[spam].GetNoul().GetCriteria(); c.GetWhenTrue() != "ads" || c.GetWhenFalse() != "real mail" {
 		t.Errorf("spam criteria = %v", c)
 	}
 
@@ -286,6 +288,11 @@ func TestListModelsRoundTrip(t *testing.T) {
 			MaxOptions:        255,
 			Loaded:            true,
 			Description:       "TypeSafe Jev (hosted)",
+			SupportsImages:    true,
+		},
+		{
+			Model:       decision.ModelRef{Provider: decision.ProviderSelfHosted, ModelID: "jevk5-4b"},
+			Description: "self-hosted on jevk5-4b",
 		},
 	}
 
@@ -344,5 +351,65 @@ func TestInvalidInputFailsLocally(t *testing.T) {
 				t.Fatalf("err = %v, want ErrInvalidArgument", err)
 			}
 		})
+	}
+}
+
+func TestDecideSendsImages(t *testing.T) {
+	t.Parallel()
+
+	small := bytes.Repeat([]byte{1}, 1024)
+	large := bytes.Repeat([]byte{2}, decision.MaxInlineImageBytes+1)
+
+	tests := []struct {
+		name string
+		data []byte
+	}{
+		{name: "inline", data: small},
+		{name: "streamed over the inline limit", data: large},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			ref := decision.ImageRef()
+
+			var got map[string]rootpullersdk.File
+
+			srv := rootpullertest.NewServer(t, &rootpullertest.Decision{
+				DecideImagesFunc: func(_ any, _ map[string]decision.Question, images map[string]rootpullersdk.File) (map[string]decision.Answer, error) {
+					got = images
+
+					return map[string]decision.Answer{spam: {Kind: decision.KindNoul, Noul: &decision.NoulAnswer{Probability: 0.9}}}, nil
+				},
+			})
+			svc := newService(t, srv.URL)
+
+			resp, err := svc.Decide(t.Context(), map[string]any{"photo": ref},
+				map[string]decision.Question{spam: decision.Noul("is " + ref + " spam?")},
+				&decision.Options{
+					Model:  decision.ModelRef{Provider: decision.ProviderSelfHosted, ModelID: "winnow-12b"},
+					Images: map[string]rootpullersdk.File{ref: {MIMEType: "image/png", Data: tt.data}},
+				})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if !bytes.Equal(got[ref].Data, tt.data) || got[ref].MIMEType != "image/png" {
+				t.Fatalf("image arrived as %d bytes of %q, want %d bytes", len(got[ref].Data), got[ref].MIMEType, len(tt.data))
+			}
+
+			if resp.Model.Provider != decision.ProviderSelfHosted || resp.Answers[spam].Noul.Probability != 0.9 {
+				t.Fatalf("unexpected response %+v", resp)
+			}
+		})
+	}
+}
+
+func TestImageRefIsUnique(t *testing.T) {
+	t.Parallel()
+
+	if a, b := decision.ImageRef(), decision.ImageRef(); a == b || len(a) < 20 {
+		t.Fatalf("refs %q and %q", a, b)
 	}
 }

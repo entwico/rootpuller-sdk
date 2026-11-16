@@ -34,6 +34,9 @@ const (
 	DecisionProvider_DECISION_PROVIDER_LAYA DecisionProvider = 1
 	// TypeSafe Jev, hosted API.
 	DecisionProvider_DECISION_PROVIDER_JEV DecisionProvider = 2
+	// A model served inside the cluster by a /v1/systemone server. The
+	// model_id selects it; see ListModels for the configured ids.
+	DecisionProvider_DECISION_PROVIDER_SELF_HOSTED DecisionProvider = 3
 )
 
 // Enum value maps for DecisionProvider.
@@ -42,11 +45,13 @@ var (
 		0: "DECISION_PROVIDER_UNSPECIFIED",
 		1: "DECISION_PROVIDER_LAYA",
 		2: "DECISION_PROVIDER_JEV",
+		3: "DECISION_PROVIDER_SELF_HOSTED",
 	}
 	DecisionProvider_value = map[string]int32{
 		"DECISION_PROVIDER_UNSPECIFIED": 0,
 		"DECISION_PROVIDER_LAYA":        1,
 		"DECISION_PROVIDER_JEV":         2,
+		"DECISION_PROVIDER_SELF_HOSTED": 3,
 	}
 )
 
@@ -91,6 +96,9 @@ func (DecisionProvider) EnumDescriptor() ([]byte, []int) {
 //	TypeSafe Jev:
 //	  { provider: DECISION_PROVIDER_JEV, model_id: "jev-latest" }
 //
+//	A self-hosted model:
+//	  { provider: DECISION_PROVIDER_SELF_HOSTED, model_id: "jevk5-4b" }
+//
 // Server validation:
 //
 //	unknown provider                      → INVALID_ARGUMENT
@@ -101,7 +109,7 @@ type DecisionModelRef struct {
 	Provider DecisionProvider `protobuf:"varint,1,opt,name=provider,proto3,enum=com.entwico.rootpuller.decision.DecisionProvider" json:"provider,omitempty"`
 	// model_id selects a model of that provider. Empty uses the provider's
 	// default model (Laya: "convaiinnovations/laya/multilingual", Jev:
-	// "jev-latest").
+	// "jev-latest", self-hosted: the gateway's configured default).
 	ModelId       string `protobuf:"bytes,2,opt,name=model_id,json=modelId,proto3" json:"model_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -518,6 +526,12 @@ func (*Question_Noul) isQuestion_Kind() {}
 //	more than 64 questions                → RESOURCE_EXHAUSTED
 //	state or questions exceed the model's token limit
 //	                                      → INVALID_ARGUMENT
+//	image with an empty reference, an image whose reference appears nowhere
+//	in the state or the questions, an image that is not PNG or JPEG, or
+//	images sent to a model that does not accept them
+//	                                      → INVALID_ARGUMENT
+//	an image over 16 MiB, or all images together over 32 MiB
+//	                                      → RESOURCE_EXHAUSTED
 type DecideRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// model selects provider and model; the gateway default when unset.
@@ -528,7 +542,16 @@ type DecideRequest struct {
 	State *structpb.Value `protobuf:"bytes,2,opt,name=state,proto3" json:"state,omitempty"`
 	// questions map a caller-chosen key to a typed question. The same keys come
 	// back in DecideResponse.answers.
-	Questions     map[string]*Question `protobuf:"bytes,3,rep,name=questions,proto3" json:"questions,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Questions map[string]*Question `protobuf:"bytes,3,rep,name=questions,proto3" json:"questions,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// images map a caller-chosen reference to an image. Write the reference
+	// wherever the image belongs: inside the state, in a question's
+	// instructions, or in an option or level description. References match as
+	// plain text, so use something that cannot occur by accident, such as a
+	// UUID. Every image must be referenced at least once.
+	//
+	// A unary Decide is bounded by the transport's message size limit (4 MiB
+	// by default); send larger images with DecideUpload.
+	Images        map[string]*DecisionImage `protobuf:"bytes,4,rep,name=images,proto3" json:"images,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -584,6 +607,160 @@ func (x *DecideRequest) GetQuestions() map[string]*Question {
 	return nil
 }
 
+func (x *DecideRequest) GetImages() map[string]*DecisionImage {
+	if x != nil {
+		return x.Images
+	}
+	return nil
+}
+
+// DecisionImage is one still image: PNG or JPEG, up to 16 MiB. Hosted Jev
+// additionally requires each side to be 280–1568 px and does not resize.
+type DecisionImage struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// mime_type is "image/png" or "image/jpeg".
+	MimeType string `protobuf:"bytes,1,opt,name=mime_type,json=mimeType,proto3" json:"mime_type,omitempty"`
+	// data holds the encoded image bytes.
+	Data          []byte `protobuf:"bytes,2,opt,name=data,proto3" json:"data,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DecisionImage) Reset() {
+	*x = DecisionImage{}
+	mi := &file_com_entwico_rootpuller_decision_decision_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DecisionImage) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DecisionImage) ProtoMessage() {}
+
+func (x *DecisionImage) ProtoReflect() protoreflect.Message {
+	mi := &file_com_entwico_rootpuller_decision_decision_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DecisionImage.ProtoReflect.Descriptor instead.
+func (*DecisionImage) Descriptor() ([]byte, []int) {
+	return file_com_entwico_rootpuller_decision_decision_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *DecisionImage) GetMimeType() string {
+	if x != nil {
+		return x.MimeType
+	}
+	return ""
+}
+
+func (x *DecisionImage) GetData() []byte {
+	if x != nil {
+		return x.Data
+	}
+	return nil
+}
+
+// DecideUploadRequest is one frame of the client-streamed DecideUpload call.
+//
+// Protocol: the first frame must be `params`. Every following frame is an
+// `image` chunk; its `name` is the image's reference and its `mime_type` the
+// image type. Chunks with the same name are concatenated in arrival order.
+// Images inlined in params.images are allowed next to streamed ones, but a
+// reference must not appear in both.
+type DecideUploadRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Types that are valid to be assigned to Request:
+	//
+	//	*DecideUploadRequest_Params
+	//	*DecideUploadRequest_Image
+	Request       isDecideUploadRequest_Request `protobuf_oneof:"request"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DecideUploadRequest) Reset() {
+	*x = DecideUploadRequest{}
+	mi := &file_com_entwico_rootpuller_decision_decision_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DecideUploadRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DecideUploadRequest) ProtoMessage() {}
+
+func (x *DecideUploadRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_com_entwico_rootpuller_decision_decision_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DecideUploadRequest.ProtoReflect.Descriptor instead.
+func (*DecideUploadRequest) Descriptor() ([]byte, []int) {
+	return file_com_entwico_rootpuller_decision_decision_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *DecideUploadRequest) GetRequest() isDecideUploadRequest_Request {
+	if x != nil {
+		return x.Request
+	}
+	return nil
+}
+
+func (x *DecideUploadRequest) GetParams() *DecideRequest {
+	if x != nil {
+		if x, ok := x.Request.(*DecideUploadRequest_Params); ok {
+			return x.Params
+		}
+	}
+	return nil
+}
+
+func (x *DecideUploadRequest) GetImage() *common.FileChunk {
+	if x != nil {
+		if x, ok := x.Request.(*DecideUploadRequest_Image); ok {
+			return x.Image
+		}
+	}
+	return nil
+}
+
+type isDecideUploadRequest_Request interface {
+	isDecideUploadRequest_Request()
+}
+
+type DecideUploadRequest_Params struct {
+	// Initial frame: the decision request.
+	Params *DecideRequest `protobuf:"bytes,1,opt,name=params,proto3,oneof"`
+}
+
+type DecideUploadRequest_Image struct {
+	// One piece of an image.
+	Image *common.FileChunk `protobuf:"bytes,2,opt,name=image,proto3,oneof"`
+}
+
+func (*DecideUploadRequest_Params) isDecideUploadRequest_Request() {}
+
+func (*DecideUploadRequest_Image) isDecideUploadRequest_Request() {}
+
 // ChoiceAnswer is the answer to a ChoiceQuestion.
 type ChoiceAnswer struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -600,7 +777,7 @@ type ChoiceAnswer struct {
 
 func (x *ChoiceAnswer) Reset() {
 	*x = ChoiceAnswer{}
-	mi := &file_com_entwico_rootpuller_decision_decision_proto_msgTypes[7]
+	mi := &file_com_entwico_rootpuller_decision_decision_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -612,7 +789,7 @@ func (x *ChoiceAnswer) String() string {
 func (*ChoiceAnswer) ProtoMessage() {}
 
 func (x *ChoiceAnswer) ProtoReflect() protoreflect.Message {
-	mi := &file_com_entwico_rootpuller_decision_decision_proto_msgTypes[7]
+	mi := &file_com_entwico_rootpuller_decision_decision_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -625,7 +802,7 @@ func (x *ChoiceAnswer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ChoiceAnswer.ProtoReflect.Descriptor instead.
 func (*ChoiceAnswer) Descriptor() ([]byte, []int) {
-	return file_com_entwico_rootpuller_decision_decision_proto_rawDescGZIP(), []int{7}
+	return file_com_entwico_rootpuller_decision_decision_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ChoiceAnswer) GetChoice() string {
@@ -665,7 +842,7 @@ type ScoreAnswer struct {
 
 func (x *ScoreAnswer) Reset() {
 	*x = ScoreAnswer{}
-	mi := &file_com_entwico_rootpuller_decision_decision_proto_msgTypes[8]
+	mi := &file_com_entwico_rootpuller_decision_decision_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -677,7 +854,7 @@ func (x *ScoreAnswer) String() string {
 func (*ScoreAnswer) ProtoMessage() {}
 
 func (x *ScoreAnswer) ProtoReflect() protoreflect.Message {
-	mi := &file_com_entwico_rootpuller_decision_decision_proto_msgTypes[8]
+	mi := &file_com_entwico_rootpuller_decision_decision_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -690,7 +867,7 @@ func (x *ScoreAnswer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ScoreAnswer.ProtoReflect.Descriptor instead.
 func (*ScoreAnswer) Descriptor() ([]byte, []int) {
-	return file_com_entwico_rootpuller_decision_decision_proto_rawDescGZIP(), []int{8}
+	return file_com_entwico_rootpuller_decision_decision_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *ScoreAnswer) GetScore() float32 {
@@ -725,7 +902,7 @@ type NoulAnswer struct {
 
 func (x *NoulAnswer) Reset() {
 	*x = NoulAnswer{}
-	mi := &file_com_entwico_rootpuller_decision_decision_proto_msgTypes[9]
+	mi := &file_com_entwico_rootpuller_decision_decision_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -737,7 +914,7 @@ func (x *NoulAnswer) String() string {
 func (*NoulAnswer) ProtoMessage() {}
 
 func (x *NoulAnswer) ProtoReflect() protoreflect.Message {
-	mi := &file_com_entwico_rootpuller_decision_decision_proto_msgTypes[9]
+	mi := &file_com_entwico_rootpuller_decision_decision_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -750,7 +927,7 @@ func (x *NoulAnswer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NoulAnswer.ProtoReflect.Descriptor instead.
 func (*NoulAnswer) Descriptor() ([]byte, []int) {
-	return file_com_entwico_rootpuller_decision_decision_proto_rawDescGZIP(), []int{9}
+	return file_com_entwico_rootpuller_decision_decision_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *NoulAnswer) GetProbability() float32 {
@@ -775,7 +952,7 @@ type Answer struct {
 
 func (x *Answer) Reset() {
 	*x = Answer{}
-	mi := &file_com_entwico_rootpuller_decision_decision_proto_msgTypes[10]
+	mi := &file_com_entwico_rootpuller_decision_decision_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -787,7 +964,7 @@ func (x *Answer) String() string {
 func (*Answer) ProtoMessage() {}
 
 func (x *Answer) ProtoReflect() protoreflect.Message {
-	mi := &file_com_entwico_rootpuller_decision_decision_proto_msgTypes[10]
+	mi := &file_com_entwico_rootpuller_decision_decision_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -800,7 +977,7 @@ func (x *Answer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Answer.ProtoReflect.Descriptor instead.
 func (*Answer) Descriptor() ([]byte, []int) {
-	return file_com_entwico_rootpuller_decision_decision_proto_rawDescGZIP(), []int{10}
+	return file_com_entwico_rootpuller_decision_decision_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *Answer) GetKind() isAnswer_Kind {
@@ -876,7 +1053,7 @@ type DecideResponse struct {
 
 func (x *DecideResponse) Reset() {
 	*x = DecideResponse{}
-	mi := &file_com_entwico_rootpuller_decision_decision_proto_msgTypes[11]
+	mi := &file_com_entwico_rootpuller_decision_decision_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -888,7 +1065,7 @@ func (x *DecideResponse) String() string {
 func (*DecideResponse) ProtoMessage() {}
 
 func (x *DecideResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_com_entwico_rootpuller_decision_decision_proto_msgTypes[11]
+	mi := &file_com_entwico_rootpuller_decision_decision_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -901,7 +1078,7 @@ func (x *DecideResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DecideResponse.ProtoReflect.Descriptor instead.
 func (*DecideResponse) Descriptor() ([]byte, []int) {
-	return file_com_entwico_rootpuller_decision_decision_proto_rawDescGZIP(), []int{11}
+	return file_com_entwico_rootpuller_decision_decision_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *DecideResponse) GetAnswers() map[string]*Answer {
@@ -925,6 +1102,51 @@ func (x *DecideResponse) GetUsage() *common.Usage {
 	return nil
 }
 
+// DecideUploadResponse wraps the answer to a DecideUpload call.
+type DecideUploadResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Response      *DecideResponse        `protobuf:"bytes,1,opt,name=response,proto3" json:"response,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DecideUploadResponse) Reset() {
+	*x = DecideUploadResponse{}
+	mi := &file_com_entwico_rootpuller_decision_decision_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DecideUploadResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DecideUploadResponse) ProtoMessage() {}
+
+func (x *DecideUploadResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_com_entwico_rootpuller_decision_decision_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DecideUploadResponse.ProtoReflect.Descriptor instead.
+func (*DecideUploadResponse) Descriptor() ([]byte, []int) {
+	return file_com_entwico_rootpuller_decision_decision_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *DecideUploadResponse) GetResponse() *DecideResponse {
+	if x != nil {
+		return x.Response
+	}
+	return nil
+}
+
 // DecisionModelInfo describes one decision model the gateway can serve.
 type DecisionModelInfo struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -939,17 +1161,21 @@ type DecisionModelInfo struct {
 	// Maximum number of options of a choice question.
 	MaxOptions int32 `protobuf:"varint,4,opt,name=max_options,json=maxOptions,proto3" json:"max_options,omitempty"`
 	// True iff the model can be served right now (Laya: weights present on the
-	// worker; Jev: the gateway has an API key configured).
+	// worker; Jev: the gateway has an API key configured; self-hosted: its
+	// server answers the health check — a server that is started on demand
+	// reports false while it is parked and still accepts requests).
 	Loaded bool `protobuf:"varint,5,opt,name=loaded,proto3" json:"loaded,omitempty"`
 	// Short human-readable label.
-	Description   string `protobuf:"bytes,6,opt,name=description,proto3" json:"description,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Description string `protobuf:"bytes,6,opt,name=description,proto3" json:"description,omitempty"`
+	// True iff the model accepts images in DecideRequest.images.
+	SupportsImages bool `protobuf:"varint,7,opt,name=supports_images,json=supportsImages,proto3" json:"supports_images,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *DecisionModelInfo) Reset() {
 	*x = DecisionModelInfo{}
-	mi := &file_com_entwico_rootpuller_decision_decision_proto_msgTypes[12]
+	mi := &file_com_entwico_rootpuller_decision_decision_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -961,7 +1187,7 @@ func (x *DecisionModelInfo) String() string {
 func (*DecisionModelInfo) ProtoMessage() {}
 
 func (x *DecisionModelInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_com_entwico_rootpuller_decision_decision_proto_msgTypes[12]
+	mi := &file_com_entwico_rootpuller_decision_decision_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -974,7 +1200,7 @@ func (x *DecisionModelInfo) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DecisionModelInfo.ProtoReflect.Descriptor instead.
 func (*DecisionModelInfo) Descriptor() ([]byte, []int) {
-	return file_com_entwico_rootpuller_decision_decision_proto_rawDescGZIP(), []int{12}
+	return file_com_entwico_rootpuller_decision_decision_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *DecisionModelInfo) GetModel() *DecisionModelRef {
@@ -1019,6 +1245,13 @@ func (x *DecisionModelInfo) GetDescription() string {
 	return ""
 }
 
+func (x *DecisionModelInfo) GetSupportsImages() bool {
+	if x != nil {
+		return x.SupportsImages
+	}
+	return false
+}
+
 // ListDecisionModelsResponse carries the discovery payload, local models
 // first. The set may change between calls; clients should refresh rather than
 // cache across long intervals.
@@ -1031,7 +1264,7 @@ type ListDecisionModelsResponse struct {
 
 func (x *ListDecisionModelsResponse) Reset() {
 	*x = ListDecisionModelsResponse{}
-	mi := &file_com_entwico_rootpuller_decision_decision_proto_msgTypes[13]
+	mi := &file_com_entwico_rootpuller_decision_decision_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1043,7 +1276,7 @@ func (x *ListDecisionModelsResponse) String() string {
 func (*ListDecisionModelsResponse) ProtoMessage() {}
 
 func (x *ListDecisionModelsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_com_entwico_rootpuller_decision_decision_proto_msgTypes[13]
+	mi := &file_com_entwico_rootpuller_decision_decision_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1056,7 +1289,7 @@ func (x *ListDecisionModelsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListDecisionModelsResponse.ProtoReflect.Descriptor instead.
 func (*ListDecisionModelsResponse) Descriptor() ([]byte, []int) {
-	return file_com_entwico_rootpuller_decision_decision_proto_rawDescGZIP(), []int{13}
+	return file_com_entwico_rootpuller_decision_decision_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *ListDecisionModelsResponse) GetModels() []*DecisionModelInfo {
@@ -1070,7 +1303,7 @@ var File_com_entwico_rootpuller_decision_decision_proto protoreflect.FileDescrip
 
 const file_com_entwico_rootpuller_decision_decision_proto_rawDesc = "" +
 	"\n" +
-	".com/entwico/rootpuller/decision/decision.proto\x12\x1fcom.entwico.rootpuller.decision\x1a)com/entwico/rootpuller/common/usage.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1cgoogle/protobuf/struct.proto\"|\n" +
+	".com/entwico/rootpuller/decision/decision.proto\x12\x1fcom.entwico.rootpuller.decision\x1a(com/entwico/rootpuller/common/file.proto\x1a)com/entwico/rootpuller/common/usage.proto\x1a\x1bgoogle/protobuf/empty.proto\x1a\x1cgoogle/protobuf/struct.proto\"|\n" +
 	"\x10DecisionModelRef\x12M\n" +
 	"\bprovider\x18\x01 \x01(\x0e21.com.entwico.rootpuller.decision.DecisionProviderR\bprovider\x12\x19\n" +
 	"\bmodel_id\x18\x02 \x01(\tR\amodelId\"\xc8\x01\n" +
@@ -1095,14 +1328,25 @@ const file_com_entwico_rootpuller_decision_decision_proto_rawDesc = "" +
 	"\x06choice\x18\x01 \x01(\v2/.com.entwico.rootpuller.decision.ChoiceQuestionH\x00R\x06choice\x12F\n" +
 	"\x05score\x18\x02 \x01(\v2..com.entwico.rootpuller.decision.ScoreQuestionH\x00R\x05score\x12C\n" +
 	"\x04noul\x18\x03 \x01(\v2-.com.entwico.rootpuller.decision.NoulQuestionH\x00R\x04noulB\x06\n" +
-	"\x04kind\"\xcc\x02\n" +
+	"\x04kind\"\x8b\x04\n" +
 	"\rDecideRequest\x12G\n" +
 	"\x05model\x18\x01 \x01(\v21.com.entwico.rootpuller.decision.DecisionModelRefR\x05model\x12,\n" +
 	"\x05state\x18\x02 \x01(\v2\x16.google.protobuf.ValueR\x05state\x12[\n" +
-	"\tquestions\x18\x03 \x03(\v2=.com.entwico.rootpuller.decision.DecideRequest.QuestionsEntryR\tquestions\x1ag\n" +
+	"\tquestions\x18\x03 \x03(\v2=.com.entwico.rootpuller.decision.DecideRequest.QuestionsEntryR\tquestions\x12R\n" +
+	"\x06images\x18\x04 \x03(\v2:.com.entwico.rootpuller.decision.DecideRequest.ImagesEntryR\x06images\x1ag\n" +
 	"\x0eQuestionsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12?\n" +
-	"\x05value\x18\x02 \x01(\v2).com.entwico.rootpuller.decision.QuestionR\x05value:\x028\x01\"\xf0\x01\n" +
+	"\x05value\x18\x02 \x01(\v2).com.entwico.rootpuller.decision.QuestionR\x05value:\x028\x01\x1ai\n" +
+	"\vImagesEntry\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12D\n" +
+	"\x05value\x18\x02 \x01(\v2..com.entwico.rootpuller.decision.DecisionImageR\x05value:\x028\x01\"@\n" +
+	"\rDecisionImage\x12\x1b\n" +
+	"\tmime_type\x18\x01 \x01(\tR\bmimeType\x12\x12\n" +
+	"\x04data\x18\x02 \x01(\fR\x04data\"\xac\x01\n" +
+	"\x13DecideUploadRequest\x12H\n" +
+	"\x06params\x18\x01 \x01(\v2..com.entwico.rootpuller.decision.DecideRequestH\x00R\x06params\x12@\n" +
+	"\x05image\x18\x02 \x01(\v2(.com.entwico.rootpuller.common.FileChunkH\x00R\x05imageB\t\n" +
+	"\arequest\"\xf0\x01\n" +
 	"\fChoiceAnswer\x12\x16\n" +
 	"\x06choice\x18\x01 \x01(\tR\x06choice\x12f\n" +
 	"\rprobabilities\x18\x02 \x03(\v2@.com.entwico.rootpuller.decision.ChoiceAnswer.ProbabilitiesEntryR\rprobabilities\x12\x1e\n" +
@@ -1132,7 +1376,9 @@ const file_com_entwico_rootpuller_decision_decision_proto_rawDesc = "" +
 	"\x05usage\x18\x03 \x01(\v2$.com.entwico.rootpuller.common.UsageR\x05usage\x1ac\n" +
 	"\fAnswersEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12=\n" +
-	"\x05value\x18\x02 \x01(\v2'.com.entwico.rootpuller.decision.AnswerR\x05value:\x028\x01\"\x86\x02\n" +
+	"\x05value\x18\x02 \x01(\v2'.com.entwico.rootpuller.decision.AnswerR\x05value:\x028\x01\"c\n" +
+	"\x14DecideUploadResponse\x12K\n" +
+	"\bresponse\x18\x01 \x01(\v2/.com.entwico.rootpuller.decision.DecideResponseR\bresponse\"\xaf\x02\n" +
 	"\x11DecisionModelInfo\x12G\n" +
 	"\x05model\x18\x01 \x01(\v21.com.entwico.rootpuller.decision.DecisionModelRefR\x05model\x12\x1d\n" +
 	"\n" +
@@ -1141,15 +1387,18 @@ const file_com_entwico_rootpuller_decision_decision_proto_rawDesc = "" +
 	"\vmax_options\x18\x04 \x01(\x05R\n" +
 	"maxOptions\x12\x16\n" +
 	"\x06loaded\x18\x05 \x01(\bR\x06loaded\x12 \n" +
-	"\vdescription\x18\x06 \x01(\tR\vdescription\"h\n" +
+	"\vdescription\x18\x06 \x01(\tR\vdescription\x12'\n" +
+	"\x0fsupports_images\x18\a \x01(\bR\x0esupportsImages\"h\n" +
 	"\x1aListDecisionModelsResponse\x12J\n" +
-	"\x06models\x18\x01 \x03(\v22.com.entwico.rootpuller.decision.DecisionModelInfoR\x06models*l\n" +
+	"\x06models\x18\x01 \x03(\v22.com.entwico.rootpuller.decision.DecisionModelInfoR\x06models*\x8f\x01\n" +
 	"\x10DecisionProvider\x12!\n" +
 	"\x1dDECISION_PROVIDER_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16DECISION_PROVIDER_LAYA\x10\x01\x12\x19\n" +
-	"\x15DECISION_PROVIDER_JEV\x10\x022\xdf\x01\n" +
+	"\x15DECISION_PROVIDER_JEV\x10\x02\x12!\n" +
+	"\x1dDECISION_PROVIDER_SELF_HOSTED\x10\x032\xde\x02\n" +
 	"\x0fDecisionService\x12i\n" +
-	"\x06Decide\x12..com.entwico.rootpuller.decision.DecideRequest\x1a/.com.entwico.rootpuller.decision.DecideResponse\x12a\n" +
+	"\x06Decide\x12..com.entwico.rootpuller.decision.DecideRequest\x1a/.com.entwico.rootpuller.decision.DecideResponse\x12}\n" +
+	"\fDecideUpload\x124.com.entwico.rootpuller.decision.DecideUploadRequest\x1a5.com.entwico.rootpuller.decision.DecideUploadResponse(\x01\x12a\n" +
 	"\n" +
 	"ListModels\x12\x16.google.protobuf.Empty\x1a;.com.entwico.rootpuller.decision.ListDecisionModelsResponseB\xaa\x02\n" +
 	"#com.com.entwico.rootpuller.decisionB\rDecisionProtoP\x01ZTgithub.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/decision\xa2\x02\x04CERD\xaa\x02\x1fCom.Entwico.Rootpuller.Decision\xca\x02\x1fCom\\Entwico\\Rootpuller\\Decision\xe2\x02+Com\\Entwico\\Rootpuller\\Decision\\GPBMetadata\xea\x02\"Com::Entwico::Rootpuller::Decisionb\x06proto3"
@@ -1167,7 +1416,7 @@ func file_com_entwico_rootpuller_decision_decision_proto_rawDescGZIP() []byte {
 }
 
 var file_com_entwico_rootpuller_decision_decision_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_com_entwico_rootpuller_decision_decision_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
+var file_com_entwico_rootpuller_decision_decision_proto_msgTypes = make([]protoimpl.MessageInfo, 22)
 var file_com_entwico_rootpuller_decision_decision_proto_goTypes = []any{
 	(DecisionProvider)(0),              // 0: com.entwico.rootpuller.decision.DecisionProvider
 	(*DecisionModelRef)(nil),           // 1: com.entwico.rootpuller.decision.DecisionModelRef
@@ -1177,51 +1426,63 @@ var file_com_entwico_rootpuller_decision_decision_proto_goTypes = []any{
 	(*NoulQuestion)(nil),               // 5: com.entwico.rootpuller.decision.NoulQuestion
 	(*Question)(nil),                   // 6: com.entwico.rootpuller.decision.Question
 	(*DecideRequest)(nil),              // 7: com.entwico.rootpuller.decision.DecideRequest
-	(*ChoiceAnswer)(nil),               // 8: com.entwico.rootpuller.decision.ChoiceAnswer
-	(*ScoreAnswer)(nil),                // 9: com.entwico.rootpuller.decision.ScoreAnswer
-	(*NoulAnswer)(nil),                 // 10: com.entwico.rootpuller.decision.NoulAnswer
-	(*Answer)(nil),                     // 11: com.entwico.rootpuller.decision.Answer
-	(*DecideResponse)(nil),             // 12: com.entwico.rootpuller.decision.DecideResponse
-	(*DecisionModelInfo)(nil),          // 13: com.entwico.rootpuller.decision.DecisionModelInfo
-	(*ListDecisionModelsResponse)(nil), // 14: com.entwico.rootpuller.decision.ListDecisionModelsResponse
-	nil,                                // 15: com.entwico.rootpuller.decision.ChoiceQuestion.OptionsEntry
-	nil,                                // 16: com.entwico.rootpuller.decision.DecideRequest.QuestionsEntry
-	nil,                                // 17: com.entwico.rootpuller.decision.ChoiceAnswer.ProbabilitiesEntry
-	nil,                                // 18: com.entwico.rootpuller.decision.DecideResponse.AnswersEntry
-	(*structpb.Value)(nil),             // 19: google.protobuf.Value
-	(*common.Usage)(nil),               // 20: com.entwico.rootpuller.common.Usage
-	(*emptypb.Empty)(nil),              // 21: google.protobuf.Empty
+	(*DecisionImage)(nil),              // 8: com.entwico.rootpuller.decision.DecisionImage
+	(*DecideUploadRequest)(nil),        // 9: com.entwico.rootpuller.decision.DecideUploadRequest
+	(*ChoiceAnswer)(nil),               // 10: com.entwico.rootpuller.decision.ChoiceAnswer
+	(*ScoreAnswer)(nil),                // 11: com.entwico.rootpuller.decision.ScoreAnswer
+	(*NoulAnswer)(nil),                 // 12: com.entwico.rootpuller.decision.NoulAnswer
+	(*Answer)(nil),                     // 13: com.entwico.rootpuller.decision.Answer
+	(*DecideResponse)(nil),             // 14: com.entwico.rootpuller.decision.DecideResponse
+	(*DecideUploadResponse)(nil),       // 15: com.entwico.rootpuller.decision.DecideUploadResponse
+	(*DecisionModelInfo)(nil),          // 16: com.entwico.rootpuller.decision.DecisionModelInfo
+	(*ListDecisionModelsResponse)(nil), // 17: com.entwico.rootpuller.decision.ListDecisionModelsResponse
+	nil,                                // 18: com.entwico.rootpuller.decision.ChoiceQuestion.OptionsEntry
+	nil,                                // 19: com.entwico.rootpuller.decision.DecideRequest.QuestionsEntry
+	nil,                                // 20: com.entwico.rootpuller.decision.DecideRequest.ImagesEntry
+	nil,                                // 21: com.entwico.rootpuller.decision.ChoiceAnswer.ProbabilitiesEntry
+	nil,                                // 22: com.entwico.rootpuller.decision.DecideResponse.AnswersEntry
+	(*structpb.Value)(nil),             // 23: google.protobuf.Value
+	(*common.FileChunk)(nil),           // 24: com.entwico.rootpuller.common.FileChunk
+	(*common.Usage)(nil),               // 25: com.entwico.rootpuller.common.Usage
+	(*emptypb.Empty)(nil),              // 26: google.protobuf.Empty
 }
 var file_com_entwico_rootpuller_decision_decision_proto_depIdxs = []int32{
 	0,  // 0: com.entwico.rootpuller.decision.DecisionModelRef.provider:type_name -> com.entwico.rootpuller.decision.DecisionProvider
-	15, // 1: com.entwico.rootpuller.decision.ChoiceQuestion.options:type_name -> com.entwico.rootpuller.decision.ChoiceQuestion.OptionsEntry
+	18, // 1: com.entwico.rootpuller.decision.ChoiceQuestion.options:type_name -> com.entwico.rootpuller.decision.ChoiceQuestion.OptionsEntry
 	4,  // 2: com.entwico.rootpuller.decision.NoulQuestion.criteria:type_name -> com.entwico.rootpuller.decision.NoulCriteria
 	2,  // 3: com.entwico.rootpuller.decision.Question.choice:type_name -> com.entwico.rootpuller.decision.ChoiceQuestion
 	3,  // 4: com.entwico.rootpuller.decision.Question.score:type_name -> com.entwico.rootpuller.decision.ScoreQuestion
 	5,  // 5: com.entwico.rootpuller.decision.Question.noul:type_name -> com.entwico.rootpuller.decision.NoulQuestion
 	1,  // 6: com.entwico.rootpuller.decision.DecideRequest.model:type_name -> com.entwico.rootpuller.decision.DecisionModelRef
-	19, // 7: com.entwico.rootpuller.decision.DecideRequest.state:type_name -> google.protobuf.Value
-	16, // 8: com.entwico.rootpuller.decision.DecideRequest.questions:type_name -> com.entwico.rootpuller.decision.DecideRequest.QuestionsEntry
-	17, // 9: com.entwico.rootpuller.decision.ChoiceAnswer.probabilities:type_name -> com.entwico.rootpuller.decision.ChoiceAnswer.ProbabilitiesEntry
-	8,  // 10: com.entwico.rootpuller.decision.Answer.choice:type_name -> com.entwico.rootpuller.decision.ChoiceAnswer
-	9,  // 11: com.entwico.rootpuller.decision.Answer.score:type_name -> com.entwico.rootpuller.decision.ScoreAnswer
-	10, // 12: com.entwico.rootpuller.decision.Answer.noul:type_name -> com.entwico.rootpuller.decision.NoulAnswer
-	18, // 13: com.entwico.rootpuller.decision.DecideResponse.answers:type_name -> com.entwico.rootpuller.decision.DecideResponse.AnswersEntry
-	1,  // 14: com.entwico.rootpuller.decision.DecideResponse.model:type_name -> com.entwico.rootpuller.decision.DecisionModelRef
-	20, // 15: com.entwico.rootpuller.decision.DecideResponse.usage:type_name -> com.entwico.rootpuller.common.Usage
-	1,  // 16: com.entwico.rootpuller.decision.DecisionModelInfo.model:type_name -> com.entwico.rootpuller.decision.DecisionModelRef
-	13, // 17: com.entwico.rootpuller.decision.ListDecisionModelsResponse.models:type_name -> com.entwico.rootpuller.decision.DecisionModelInfo
-	6,  // 18: com.entwico.rootpuller.decision.DecideRequest.QuestionsEntry.value:type_name -> com.entwico.rootpuller.decision.Question
-	11, // 19: com.entwico.rootpuller.decision.DecideResponse.AnswersEntry.value:type_name -> com.entwico.rootpuller.decision.Answer
-	7,  // 20: com.entwico.rootpuller.decision.DecisionService.Decide:input_type -> com.entwico.rootpuller.decision.DecideRequest
-	21, // 21: com.entwico.rootpuller.decision.DecisionService.ListModels:input_type -> google.protobuf.Empty
-	12, // 22: com.entwico.rootpuller.decision.DecisionService.Decide:output_type -> com.entwico.rootpuller.decision.DecideResponse
-	14, // 23: com.entwico.rootpuller.decision.DecisionService.ListModels:output_type -> com.entwico.rootpuller.decision.ListDecisionModelsResponse
-	22, // [22:24] is the sub-list for method output_type
-	20, // [20:22] is the sub-list for method input_type
-	20, // [20:20] is the sub-list for extension type_name
-	20, // [20:20] is the sub-list for extension extendee
-	0,  // [0:20] is the sub-list for field type_name
+	23, // 7: com.entwico.rootpuller.decision.DecideRequest.state:type_name -> google.protobuf.Value
+	19, // 8: com.entwico.rootpuller.decision.DecideRequest.questions:type_name -> com.entwico.rootpuller.decision.DecideRequest.QuestionsEntry
+	20, // 9: com.entwico.rootpuller.decision.DecideRequest.images:type_name -> com.entwico.rootpuller.decision.DecideRequest.ImagesEntry
+	7,  // 10: com.entwico.rootpuller.decision.DecideUploadRequest.params:type_name -> com.entwico.rootpuller.decision.DecideRequest
+	24, // 11: com.entwico.rootpuller.decision.DecideUploadRequest.image:type_name -> com.entwico.rootpuller.common.FileChunk
+	21, // 12: com.entwico.rootpuller.decision.ChoiceAnswer.probabilities:type_name -> com.entwico.rootpuller.decision.ChoiceAnswer.ProbabilitiesEntry
+	10, // 13: com.entwico.rootpuller.decision.Answer.choice:type_name -> com.entwico.rootpuller.decision.ChoiceAnswer
+	11, // 14: com.entwico.rootpuller.decision.Answer.score:type_name -> com.entwico.rootpuller.decision.ScoreAnswer
+	12, // 15: com.entwico.rootpuller.decision.Answer.noul:type_name -> com.entwico.rootpuller.decision.NoulAnswer
+	22, // 16: com.entwico.rootpuller.decision.DecideResponse.answers:type_name -> com.entwico.rootpuller.decision.DecideResponse.AnswersEntry
+	1,  // 17: com.entwico.rootpuller.decision.DecideResponse.model:type_name -> com.entwico.rootpuller.decision.DecisionModelRef
+	25, // 18: com.entwico.rootpuller.decision.DecideResponse.usage:type_name -> com.entwico.rootpuller.common.Usage
+	14, // 19: com.entwico.rootpuller.decision.DecideUploadResponse.response:type_name -> com.entwico.rootpuller.decision.DecideResponse
+	1,  // 20: com.entwico.rootpuller.decision.DecisionModelInfo.model:type_name -> com.entwico.rootpuller.decision.DecisionModelRef
+	16, // 21: com.entwico.rootpuller.decision.ListDecisionModelsResponse.models:type_name -> com.entwico.rootpuller.decision.DecisionModelInfo
+	6,  // 22: com.entwico.rootpuller.decision.DecideRequest.QuestionsEntry.value:type_name -> com.entwico.rootpuller.decision.Question
+	8,  // 23: com.entwico.rootpuller.decision.DecideRequest.ImagesEntry.value:type_name -> com.entwico.rootpuller.decision.DecisionImage
+	13, // 24: com.entwico.rootpuller.decision.DecideResponse.AnswersEntry.value:type_name -> com.entwico.rootpuller.decision.Answer
+	7,  // 25: com.entwico.rootpuller.decision.DecisionService.Decide:input_type -> com.entwico.rootpuller.decision.DecideRequest
+	9,  // 26: com.entwico.rootpuller.decision.DecisionService.DecideUpload:input_type -> com.entwico.rootpuller.decision.DecideUploadRequest
+	26, // 27: com.entwico.rootpuller.decision.DecisionService.ListModels:input_type -> google.protobuf.Empty
+	14, // 28: com.entwico.rootpuller.decision.DecisionService.Decide:output_type -> com.entwico.rootpuller.decision.DecideResponse
+	15, // 29: com.entwico.rootpuller.decision.DecisionService.DecideUpload:output_type -> com.entwico.rootpuller.decision.DecideUploadResponse
+	17, // 30: com.entwico.rootpuller.decision.DecisionService.ListModels:output_type -> com.entwico.rootpuller.decision.ListDecisionModelsResponse
+	28, // [28:31] is the sub-list for method output_type
+	25, // [25:28] is the sub-list for method input_type
+	25, // [25:25] is the sub-list for extension type_name
+	25, // [25:25] is the sub-list for extension extendee
+	0,  // [0:25] is the sub-list for field type_name
 }
 
 func init() { file_com_entwico_rootpuller_decision_decision_proto_init() }
@@ -1235,7 +1496,11 @@ func file_com_entwico_rootpuller_decision_decision_proto_init() {
 		(*Question_Score)(nil),
 		(*Question_Noul)(nil),
 	}
-	file_com_entwico_rootpuller_decision_decision_proto_msgTypes[10].OneofWrappers = []any{
+	file_com_entwico_rootpuller_decision_decision_proto_msgTypes[8].OneofWrappers = []any{
+		(*DecideUploadRequest_Params)(nil),
+		(*DecideUploadRequest_Image)(nil),
+	}
+	file_com_entwico_rootpuller_decision_decision_proto_msgTypes[12].OneofWrappers = []any{
 		(*Answer_Choice)(nil),
 		(*Answer_Score)(nil),
 		(*Answer_Noul)(nil),
@@ -1246,7 +1511,7 @@ func file_com_entwico_rootpuller_decision_decision_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_com_entwico_rootpuller_decision_decision_proto_rawDesc), len(file_com_entwico_rootpuller_decision_decision_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   18,
+			NumMessages:   22,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

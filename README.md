@@ -95,7 +95,7 @@ links only the service packages it imports.
 | `chunker` | TextChunkerService | 8 chunking strategies; `ChunkToken(ctx, texts, opts)` |
 | `embedding` | VectorEmbeddingService | `Embed`, `EmbedStream` (Go iterator), `ListModels` |
 | `rerank` | RerankService | `Rerank(ctx, query, documents, opts)` |
-| `decision` | DecisionService | `Decide(ctx, state, questions, opts)` typed choice/score/noul answers with calibrated probabilities, Laya (local) or Jev (hosted); `ListModels` |
+| `decision` | DecisionService | `Decide(ctx, state, questions, opts)` typed choice/score/noul answers with calibrated probabilities, Laya (local), Jev (hosted) or self-hosted models, optionally with images; `ListModels` |
 | `completion` | CompletionService | `Complete`, `CompleteWithAttachments`, generic `JSON[T]` |
 | `search` | SearchService | Brave/Serper web/news/image/video search |
 | `chef` | DocumentProcessingService | text/table/markdown processing |
@@ -134,6 +134,24 @@ resp, err := decider.Decide(ctx,
     &decision.Options{Model: decision.ModelRef{Provider: decision.ProviderJev}},
 )
 dep := resp.Answers["department"].Choice // .Choice, .Probabilities, .Confidence
+```
+
+`decision.ProviderSelfHosted` reaches open-weights models served in the
+cluster; `ModelID` picks one (`ListModels` names them). Models whose
+`ModelInfo.SupportsImages` is set take images: key each by a reference and
+write the reference where the image belongs. Images over
+`decision.MaxInlineImageBytes` together are streamed automatically.
+
+```go
+photo := decision.ImageRef()
+resp, err := decider.Decide(ctx,
+    map[string]any{"listing": "Vintage lamp, 40 EUR", "photo": photo},
+    map[string]decision.Question{"matches": decision.Noul("Does " + photo + " show the item described?")},
+    &decision.Options{
+        Model:  decision.ModelRef{Provider: decision.ProviderJev},
+        Images: map[string]rootpullersdk.File{photo: {MIMEType: "image/jpeg", Data: jpeg}},
+    },
+)
 ```
 
 ### Live transcription

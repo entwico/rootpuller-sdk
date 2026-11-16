@@ -36,6 +36,9 @@ const (
 const (
 	// DecisionServiceDecideProcedure is the fully-qualified name of the DecisionService's Decide RPC.
 	DecisionServiceDecideProcedure = "/com.entwico.rootpuller.decision.DecisionService/Decide"
+	// DecisionServiceDecideUploadProcedure is the fully-qualified name of the DecisionService's
+	// DecideUpload RPC.
+	DecisionServiceDecideUploadProcedure = "/com.entwico.rootpuller.decision.DecisionService/DecideUpload"
 	// DecisionServiceListModelsProcedure is the fully-qualified name of the DecisionService's
 	// ListModels RPC.
 	DecisionServiceListModelsProcedure = "/com.entwico.rootpuller.decision.DecisionService/ListModels"
@@ -47,6 +50,9 @@ type DecisionServiceClient interface {
 	// Decide answers every question in the request against the same state in a
 	// single round trip.
 	Decide(context.Context, *connect.Request[decision.DecideRequest]) (*connect.Response[decision.DecideResponse], error)
+	// DecideUpload is Decide with the images streamed in chunks, for requests
+	// over the unary message size limit.
+	DecideUpload(context.Context) *connect.ClientStreamForClient[decision.DecideUploadRequest, decision.DecideUploadResponse]
 	// ListModels reports the decision models the gateway can serve right now,
 	// with their limits. Intended for client-side discovery of which provider
 	// and model_id to pass.
@@ -74,6 +80,12 @@ func NewDecisionServiceClient(httpClient connect.HTTPClient, baseURL string, opt
 			connect.WithSchema(decisionServiceMethods.ByName("Decide")),
 			connect.WithClientOptions(opts...),
 		),
+		decideUpload: connect.NewClient[decision.DecideUploadRequest, decision.DecideUploadResponse](
+			httpClient,
+			baseURL+DecisionServiceDecideUploadProcedure,
+			connect.WithSchema(decisionServiceMethods.ByName("DecideUpload")),
+			connect.WithClientOptions(opts...),
+		),
 		listModels: connect.NewClient[emptypb.Empty, decision.ListDecisionModelsResponse](
 			httpClient,
 			baseURL+DecisionServiceListModelsProcedure,
@@ -85,13 +97,19 @@ func NewDecisionServiceClient(httpClient connect.HTTPClient, baseURL string, opt
 
 // decisionServiceClient implements DecisionServiceClient.
 type decisionServiceClient struct {
-	decide     *connect.Client[decision.DecideRequest, decision.DecideResponse]
-	listModels *connect.Client[emptypb.Empty, decision.ListDecisionModelsResponse]
+	decide       *connect.Client[decision.DecideRequest, decision.DecideResponse]
+	decideUpload *connect.Client[decision.DecideUploadRequest, decision.DecideUploadResponse]
+	listModels   *connect.Client[emptypb.Empty, decision.ListDecisionModelsResponse]
 }
 
 // Decide calls com.entwico.rootpuller.decision.DecisionService.Decide.
 func (c *decisionServiceClient) Decide(ctx context.Context, req *connect.Request[decision.DecideRequest]) (*connect.Response[decision.DecideResponse], error) {
 	return c.decide.CallUnary(ctx, req)
+}
+
+// DecideUpload calls com.entwico.rootpuller.decision.DecisionService.DecideUpload.
+func (c *decisionServiceClient) DecideUpload(ctx context.Context) *connect.ClientStreamForClient[decision.DecideUploadRequest, decision.DecideUploadResponse] {
+	return c.decideUpload.CallClientStream(ctx)
 }
 
 // ListModels calls com.entwico.rootpuller.decision.DecisionService.ListModels.
@@ -105,6 +123,9 @@ type DecisionServiceHandler interface {
 	// Decide answers every question in the request against the same state in a
 	// single round trip.
 	Decide(context.Context, *connect.Request[decision.DecideRequest]) (*connect.Response[decision.DecideResponse], error)
+	// DecideUpload is Decide with the images streamed in chunks, for requests
+	// over the unary message size limit.
+	DecideUpload(context.Context, *connect.ClientStream[decision.DecideUploadRequest]) (*connect.Response[decision.DecideUploadResponse], error)
 	// ListModels reports the decision models the gateway can serve right now,
 	// with their limits. Intended for client-side discovery of which provider
 	// and model_id to pass.
@@ -127,6 +148,12 @@ func NewDecisionServiceHandler(svc DecisionServiceHandler, opts ...connect.Handl
 		connect.WithSchema(decisionServiceMethods.ByName("Decide")),
 		connect.WithHandlerOptions(opts...),
 	)
+	decisionServiceDecideUploadHandler := connect.NewClientStreamHandler(
+		DecisionServiceDecideUploadProcedure,
+		svc.DecideUpload,
+		connect.WithSchema(decisionServiceMethods.ByName("DecideUpload")),
+		connect.WithHandlerOptions(opts...),
+	)
 	decisionServiceListModelsHandler := connect.NewUnaryHandler(
 		DecisionServiceListModelsProcedure,
 		svc.ListModels,
@@ -137,6 +164,8 @@ func NewDecisionServiceHandler(svc DecisionServiceHandler, opts ...connect.Handl
 		switch r.URL.Path {
 		case DecisionServiceDecideProcedure:
 			decisionServiceDecideHandler.ServeHTTP(w, r)
+		case DecisionServiceDecideUploadProcedure:
+			decisionServiceDecideUploadHandler.ServeHTTP(w, r)
 		case DecisionServiceListModelsProcedure:
 			decisionServiceListModelsHandler.ServeHTTP(w, r)
 		default:
@@ -150,6 +179,10 @@ type UnimplementedDecisionServiceHandler struct{}
 
 func (UnimplementedDecisionServiceHandler) Decide(context.Context, *connect.Request[decision.DecideRequest]) (*connect.Response[decision.DecideResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("com.entwico.rootpuller.decision.DecisionService.Decide is not implemented"))
+}
+
+func (UnimplementedDecisionServiceHandler) DecideUpload(context.Context, *connect.ClientStream[decision.DecideUploadRequest]) (*connect.Response[decision.DecideUploadResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("com.entwico.rootpuller.decision.DecisionService.DecideUpload is not implemented"))
 }
 
 func (UnimplementedDecisionServiceHandler) ListModels(context.Context, *connect.Request[emptypb.Empty]) (*connect.Response[decision.ListDecisionModelsResponse], error) {
