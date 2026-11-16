@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.17.0 (2026-11-16)
+
+### Minor Changes
+
+- decision: `Options.Images` sends images with a request (inline, or streamed through `DecideUpload` above `MaxInlineImageBytes`), `ImageRef` mints a reference for one, `ProviderSelfHosted` reaches the cluster's self-hosted models and `ModelInfo.SupportsImages` tells which models take images; the `rootpullertest` fake gains `DecideImagesFunc` and `DecideUpload`
+
 ## v0.16.0 (2026-11-14)
 
 ### Minor Changes
