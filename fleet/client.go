@@ -2,17 +2,20 @@
 // the worker fleet behind rootpuller-api, for dashboards. Executors (a GPU and
 // its memory budget), units started and parked on them, the job queue with
 // each job's wait reason, running jobs with their progress, recent jobs,
-// events and percentiles.
+// events and percentiles. PinUnit keeps a unit running for a while, for using
+// a worker directly.
 //
-// Both calls need a token with the fleet read scope (rootpuller:fleet:read by
+// Every call needs a token with the fleet read scope (rootpuller:fleet:read by
 // default); without it they fail with PermissionDenied.
 package fleet
 
 import (
 	"context"
 	"iter"
+	"time"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/durationpb"
 
 	rootpullersdk "github.com/entwico/rootpuller-sdk"
 	fleetpb "github.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/fleet"
@@ -43,6 +46,37 @@ func (s *Service) GetState(ctx context.Context) (*State, error) {
 	st := stateFromProto(resp.Msg.GetState())
 
 	return &st, nil
+}
+
+// PinUnit wakes the unit if it is cold and keeps it running for d (at most
+// 12h), whatever its idle time; it is not parked to make room for other work
+// meanwhile. Pinning a pinned unit replaces when its pin ends. The pin ends
+// early when the unit fails to start or is scaled down by hand, and an api
+// restart drops it. An unknown unit is NotFound, an always-on one
+// FailedPrecondition, a duration out of range InvalidArgument.
+func (s *Service) PinUnit(ctx context.Context, unit string, d time.Duration) (*Unit, error) {
+	resp, err := s.rpc.PinUnit(ctx, connect.NewRequest(&fleetpb.PinUnitRequest{Unit: unit, Duration: durationpb.New(d)}))
+	if err != nil {
+		return nil, transport.WrapError(err, fleetconnect.FleetServicePinUnitProcedure)
+	}
+
+	u := unitFromProto(resp.Msg.GetUnit())
+
+	return &u, nil
+}
+
+// UnpinUnit ends the unit's pin; it then parks after its idle time, or at
+// once when other work needs its memory. A unit that is not pinned is left as
+// it is.
+func (s *Service) UnpinUnit(ctx context.Context, unit string) (*Unit, error) {
+	resp, err := s.rpc.UnpinUnit(ctx, connect.NewRequest(&fleetpb.UnpinUnitRequest{Unit: unit}))
+	if err != nil {
+		return nil, transport.WrapError(err, fleetconnect.FleetServiceUnpinUnitProcedure)
+	}
+
+	u := unitFromProto(resp.Msg.GetUnit())
+
+	return &u, nil
 }
 
 // Watch yields the state at once, then again after every change (at most a

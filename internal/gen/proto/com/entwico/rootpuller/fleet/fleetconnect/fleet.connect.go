@@ -37,6 +37,10 @@ const (
 	FleetServiceGetStateProcedure = "/com.entwico.rootpuller.fleet.FleetService/GetState"
 	// FleetServiceWatchStateProcedure is the fully-qualified name of the FleetService's WatchState RPC.
 	FleetServiceWatchStateProcedure = "/com.entwico.rootpuller.fleet.FleetService/WatchState"
+	// FleetServicePinUnitProcedure is the fully-qualified name of the FleetService's PinUnit RPC.
+	FleetServicePinUnitProcedure = "/com.entwico.rootpuller.fleet.FleetService/PinUnit"
+	// FleetServiceUnpinUnitProcedure is the fully-qualified name of the FleetService's UnpinUnit RPC.
+	FleetServiceUnpinUnitProcedure = "/com.entwico.rootpuller.fleet.FleetService/UnpinUnit"
 )
 
 // FleetServiceClient is a client for the com.entwico.rootpuller.fleet.FleetService service.
@@ -44,6 +48,15 @@ type FleetServiceClient interface {
 	GetState(context.Context, *connect.Request[fleet.GetStateRequest]) (*connect.Response[fleet.GetStateResponse], error)
 	// WatchState streams the state until the caller cancels.
 	WatchState(context.Context, *connect.Request[fleet.WatchStateRequest]) (*connect.ServerStreamForClient[fleet.WatchStateResponse], error)
+	// PinUnit wakes the unit if it is cold and keeps it running for the given
+	// duration. Pinning a pinned unit replaces when its pin ends. The pin is
+	// dropped early when the unit fails to start or is scaled down outside the
+	// fleet.
+	PinUnit(context.Context, *connect.Request[fleet.PinUnitRequest]) (*connect.Response[fleet.PinUnitResponse], error)
+	// UnpinUnit ends the unit's pin; the unit then parks after its usual idle
+	// time, or at once when other work needs its memory. Unpinning a unit that
+	// is not pinned changes nothing.
+	UnpinUnit(context.Context, *connect.Request[fleet.UnpinUnitRequest]) (*connect.Response[fleet.UnpinUnitResponse], error)
 }
 
 // NewFleetServiceClient constructs a client for the com.entwico.rootpuller.fleet.FleetService
@@ -69,6 +82,18 @@ func NewFleetServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 			connect.WithSchema(fleetServiceMethods.ByName("WatchState")),
 			connect.WithClientOptions(opts...),
 		),
+		pinUnit: connect.NewClient[fleet.PinUnitRequest, fleet.PinUnitResponse](
+			httpClient,
+			baseURL+FleetServicePinUnitProcedure,
+			connect.WithSchema(fleetServiceMethods.ByName("PinUnit")),
+			connect.WithClientOptions(opts...),
+		),
+		unpinUnit: connect.NewClient[fleet.UnpinUnitRequest, fleet.UnpinUnitResponse](
+			httpClient,
+			baseURL+FleetServiceUnpinUnitProcedure,
+			connect.WithSchema(fleetServiceMethods.ByName("UnpinUnit")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -76,6 +101,8 @@ func NewFleetServiceClient(httpClient connect.HTTPClient, baseURL string, opts .
 type fleetServiceClient struct {
 	getState   *connect.Client[fleet.GetStateRequest, fleet.GetStateResponse]
 	watchState *connect.Client[fleet.WatchStateRequest, fleet.WatchStateResponse]
+	pinUnit    *connect.Client[fleet.PinUnitRequest, fleet.PinUnitResponse]
+	unpinUnit  *connect.Client[fleet.UnpinUnitRequest, fleet.UnpinUnitResponse]
 }
 
 // GetState calls com.entwico.rootpuller.fleet.FleetService.GetState.
@@ -88,12 +115,31 @@ func (c *fleetServiceClient) WatchState(ctx context.Context, req *connect.Reques
 	return c.watchState.CallServerStream(ctx, req)
 }
 
+// PinUnit calls com.entwico.rootpuller.fleet.FleetService.PinUnit.
+func (c *fleetServiceClient) PinUnit(ctx context.Context, req *connect.Request[fleet.PinUnitRequest]) (*connect.Response[fleet.PinUnitResponse], error) {
+	return c.pinUnit.CallUnary(ctx, req)
+}
+
+// UnpinUnit calls com.entwico.rootpuller.fleet.FleetService.UnpinUnit.
+func (c *fleetServiceClient) UnpinUnit(ctx context.Context, req *connect.Request[fleet.UnpinUnitRequest]) (*connect.Response[fleet.UnpinUnitResponse], error) {
+	return c.unpinUnit.CallUnary(ctx, req)
+}
+
 // FleetServiceHandler is an implementation of the com.entwico.rootpuller.fleet.FleetService
 // service.
 type FleetServiceHandler interface {
 	GetState(context.Context, *connect.Request[fleet.GetStateRequest]) (*connect.Response[fleet.GetStateResponse], error)
 	// WatchState streams the state until the caller cancels.
 	WatchState(context.Context, *connect.Request[fleet.WatchStateRequest], *connect.ServerStream[fleet.WatchStateResponse]) error
+	// PinUnit wakes the unit if it is cold and keeps it running for the given
+	// duration. Pinning a pinned unit replaces when its pin ends. The pin is
+	// dropped early when the unit fails to start or is scaled down outside the
+	// fleet.
+	PinUnit(context.Context, *connect.Request[fleet.PinUnitRequest]) (*connect.Response[fleet.PinUnitResponse], error)
+	// UnpinUnit ends the unit's pin; the unit then parks after its usual idle
+	// time, or at once when other work needs its memory. Unpinning a unit that
+	// is not pinned changes nothing.
+	UnpinUnit(context.Context, *connect.Request[fleet.UnpinUnitRequest]) (*connect.Response[fleet.UnpinUnitResponse], error)
 }
 
 // NewFleetServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -115,12 +161,28 @@ func NewFleetServiceHandler(svc FleetServiceHandler, opts ...connect.HandlerOpti
 		connect.WithSchema(fleetServiceMethods.ByName("WatchState")),
 		connect.WithHandlerOptions(opts...),
 	)
+	fleetServicePinUnitHandler := connect.NewUnaryHandler(
+		FleetServicePinUnitProcedure,
+		svc.PinUnit,
+		connect.WithSchema(fleetServiceMethods.ByName("PinUnit")),
+		connect.WithHandlerOptions(opts...),
+	)
+	fleetServiceUnpinUnitHandler := connect.NewUnaryHandler(
+		FleetServiceUnpinUnitProcedure,
+		svc.UnpinUnit,
+		connect.WithSchema(fleetServiceMethods.ByName("UnpinUnit")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/com.entwico.rootpuller.fleet.FleetService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case FleetServiceGetStateProcedure:
 			fleetServiceGetStateHandler.ServeHTTP(w, r)
 		case FleetServiceWatchStateProcedure:
 			fleetServiceWatchStateHandler.ServeHTTP(w, r)
+		case FleetServicePinUnitProcedure:
+			fleetServicePinUnitHandler.ServeHTTP(w, r)
+		case FleetServiceUnpinUnitProcedure:
+			fleetServiceUnpinUnitHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -136,4 +198,12 @@ func (UnimplementedFleetServiceHandler) GetState(context.Context, *connect.Reque
 
 func (UnimplementedFleetServiceHandler) WatchState(context.Context, *connect.Request[fleet.WatchStateRequest], *connect.ServerStream[fleet.WatchStateResponse]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("com.entwico.rootpuller.fleet.FleetService.WatchState is not implemented"))
+}
+
+func (UnimplementedFleetServiceHandler) PinUnit(context.Context, *connect.Request[fleet.PinUnitRequest]) (*connect.Response[fleet.PinUnitResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("com.entwico.rootpuller.fleet.FleetService.PinUnit is not implemented"))
+}
+
+func (UnimplementedFleetServiceHandler) UnpinUnit(context.Context, *connect.Request[fleet.UnpinUnitRequest]) (*connect.Response[fleet.UnpinUnitResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("com.entwico.rootpuller.fleet.FleetService.UnpinUnit is not implemented"))
 }

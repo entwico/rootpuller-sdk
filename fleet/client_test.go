@@ -3,6 +3,7 @@ package fleet_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"testing"
 	"time"
@@ -18,6 +19,8 @@ const (
 	comfyui = "comfyui"
 	painter = "painter"
 )
+
+var errUnknownUnit = errors.New("unknown unit")
 
 func newService(t *testing.T, fake *rootpullertest.Fleet) *fleet.Service {
 	t.Helper()
@@ -45,6 +48,7 @@ func sampleState() fleet.State {
 			Name: comfyui, Executor: "gpu-01", Managed: true, State: fleet.UnitWarm, Since: at,
 			GPUMemoryBytes: 13 << 30, Jobs: 1, LastUsedAt: at, DrainedForJob: "J7",
 			Starts: 2, ColdStartP50: 40 * time.Second, ColdStartP95: 70 * time.Second,
+			PinnedUntil: at.Add(time.Hour),
 		}},
 		Workers: []fleet.Worker{{Name: painter, Spillover: "waitForPreferred", Deployments: []fleet.Deployment{
 			{Name: "cluster", Unit: comfyui, MaxConcurrent: 2, Active: 1},
@@ -129,6 +133,67 @@ func TestFleet_WithoutTheScopeIsPermissionDenied(t *testing.T) {
 
 		break
 	}
+	_, err = svc.PinUnit(context.Background(), comfyui, time.Hour)
+	requireCode(t, err, connect.CodePermissionDenied)
+
+	_, err = svc.UnpinUnit(context.Background(), comfyui)
+	requireCode(t, err, connect.CodePermissionDenied)
+}
+
+func TestPinUnit_SendsTheUnitAndDuration(t *testing.T) {
+	t.Parallel()
+
+	var got []string
+
+	until := time.Date(2026, 11, 19, 14, 0, 0, 0, time.UTC)
+	svc := newService(t, &rootpullertest.Fleet{
+		PinFunc: func(unit string, d time.Duration) (fleet.Unit, error) {
+			got = append(got, unit+" "+d.String())
+
+			return fleet.Unit{Name: unit, Managed: true, State: fleet.UnitCold, PinnedUntil: until,
+				PinWaitReason: "waiting for GPU memory held by composer"}, nil
+		},
+		UnpinFunc: func(unit string) (fleet.Unit, error) {
+			got = append(got, "unpin "+unit)
+
+			return fleet.Unit{Name: unit, Managed: true, State: fleet.UnitWarm}, nil
+		},
+	})
+
+	u, err := svc.PinUnit(context.Background(), comfyui, 2*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !u.PinnedUntil.Equal(until) || u.PinWaitReason != "waiting for GPU memory held by composer" {
+		t.Fatalf("pinned unit = %+v", u)
+	}
+
+	u, err = svc.UnpinUnit(context.Background(), comfyui)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !u.PinnedUntil.IsZero() {
+		t.Fatalf("unpinned unit still pinned until %v", u.PinnedUntil)
+	}
+
+	if want := []string{"comfyui 2h0m0s", "unpin comfyui"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("calls = %v, want %v", got, want)
+	}
+}
+
+func TestPinUnit_AnUnknownUnitIsNotFound(t *testing.T) {
+	t.Parallel()
+
+	svc := newService(t, &rootpullertest.Fleet{
+		PinFunc: func(unit string, _ time.Duration) (fleet.Unit, error) {
+			return fleet.Unit{}, connect.NewError(connect.CodeNotFound, fmt.Errorf("%w: %s", errUnknownUnit, unit))
+		},
+	})
+
+	_, err := svc.PinUnit(context.Background(), "nope", time.Hour)
+	requireCode(t, err, connect.CodeNotFound)
 }
 
 func requireCode(t *testing.T, err error, code connect.Code) {

@@ -316,8 +316,13 @@ type Unit struct {
 	// The last start or stop failure, with its cause.
 	LastError string `protobuf:"bytes,15,opt,name=last_error,json=lastError,proto3" json:"last_error,omitempty"`
 	// Over the last few cold starts.
-	ColdStartP50  *durationpb.Duration `protobuf:"bytes,16,opt,name=cold_start_p50,json=coldStartP50,proto3" json:"cold_start_p50,omitempty"`
-	ColdStartP95  *durationpb.Duration `protobuf:"bytes,17,opt,name=cold_start_p95,json=coldStartP95,proto3" json:"cold_start_p95,omitempty"`
+	ColdStartP50 *durationpb.Duration `protobuf:"bytes,16,opt,name=cold_start_p50,json=coldStartP50,proto3" json:"cold_start_p50,omitempty"`
+	ColdStartP95 *durationpb.Duration `protobuf:"bytes,17,opt,name=cold_start_p95,json=coldStartP95,proto3" json:"cold_start_p95,omitempty"`
+	// When the unit's pin ends; unset when it is not pinned.
+	PinnedUntil *timestamppb.Timestamp `protobuf:"bytes,18,opt,name=pinned_until,json=pinnedUntil,proto3" json:"pinned_until,omitempty"`
+	// Why a pinned unit has not been started yet (its GPU memory is being
+	// freed, say); empty otherwise.
+	PinWaitReason string `protobuf:"bytes,19,opt,name=pin_wait_reason,json=pinWaitReason,proto3" json:"pin_wait_reason,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -469,6 +474,20 @@ func (x *Unit) GetColdStartP95() *durationpb.Duration {
 		return x.ColdStartP95
 	}
 	return nil
+}
+
+func (x *Unit) GetPinnedUntil() *timestamppb.Timestamp {
+	if x != nil {
+		return x.PinnedUntil
+	}
+	return nil
+}
+
+func (x *Unit) GetPinWaitReason() string {
+	if x != nil {
+		return x.PinWaitReason
+	}
+	return ""
 }
 
 type Deployment struct {
@@ -1394,6 +1413,192 @@ func (x *WatchStateResponse) GetState() *FleetState {
 	return nil
 }
 
+type PinUnitRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The unit's name, as the state lists it.
+	Unit string `protobuf:"bytes,1,opt,name=unit,proto3" json:"unit,omitempty"`
+	// How long the unit stays pinned from now: more than zero, at most 12h.
+	Duration      *durationpb.Duration `protobuf:"bytes,2,opt,name=duration,proto3" json:"duration,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PinUnitRequest) Reset() {
+	*x = PinUnitRequest{}
+	mi := &file_com_entwico_rootpuller_fleet_fleet_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PinUnitRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PinUnitRequest) ProtoMessage() {}
+
+func (x *PinUnitRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_com_entwico_rootpuller_fleet_fleet_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PinUnitRequest.ProtoReflect.Descriptor instead.
+func (*PinUnitRequest) Descriptor() ([]byte, []int) {
+	return file_com_entwico_rootpuller_fleet_fleet_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *PinUnitRequest) GetUnit() string {
+	if x != nil {
+		return x.Unit
+	}
+	return ""
+}
+
+func (x *PinUnitRequest) GetDuration() *durationpb.Duration {
+	if x != nil {
+		return x.Duration
+	}
+	return nil
+}
+
+type PinUnitResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Unit          *Unit                  `protobuf:"bytes,1,opt,name=unit,proto3" json:"unit,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PinUnitResponse) Reset() {
+	*x = PinUnitResponse{}
+	mi := &file_com_entwico_rootpuller_fleet_fleet_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PinUnitResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PinUnitResponse) ProtoMessage() {}
+
+func (x *PinUnitResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_com_entwico_rootpuller_fleet_fleet_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PinUnitResponse.ProtoReflect.Descriptor instead.
+func (*PinUnitResponse) Descriptor() ([]byte, []int) {
+	return file_com_entwico_rootpuller_fleet_fleet_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *PinUnitResponse) GetUnit() *Unit {
+	if x != nil {
+		return x.Unit
+	}
+	return nil
+}
+
+type UnpinUnitRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Unit          string                 `protobuf:"bytes,1,opt,name=unit,proto3" json:"unit,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UnpinUnitRequest) Reset() {
+	*x = UnpinUnitRequest{}
+	mi := &file_com_entwico_rootpuller_fleet_fleet_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UnpinUnitRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UnpinUnitRequest) ProtoMessage() {}
+
+func (x *UnpinUnitRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_com_entwico_rootpuller_fleet_fleet_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UnpinUnitRequest.ProtoReflect.Descriptor instead.
+func (*UnpinUnitRequest) Descriptor() ([]byte, []int) {
+	return file_com_entwico_rootpuller_fleet_fleet_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *UnpinUnitRequest) GetUnit() string {
+	if x != nil {
+		return x.Unit
+	}
+	return ""
+}
+
+type UnpinUnitResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Unit          *Unit                  `protobuf:"bytes,1,opt,name=unit,proto3" json:"unit,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UnpinUnitResponse) Reset() {
+	*x = UnpinUnitResponse{}
+	mi := &file_com_entwico_rootpuller_fleet_fleet_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UnpinUnitResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UnpinUnitResponse) ProtoMessage() {}
+
+func (x *UnpinUnitResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_com_entwico_rootpuller_fleet_fleet_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UnpinUnitResponse.ProtoReflect.Descriptor instead.
+func (*UnpinUnitResponse) Descriptor() ([]byte, []int) {
+	return file_com_entwico_rootpuller_fleet_fleet_proto_rawDescGZIP(), []int{17}
+}
+
+func (x *UnpinUnitResponse) GetUnit() *Unit {
+	if x != nil {
+		return x.Unit
+	}
+	return nil
+}
+
 var File_com_entwico_rootpuller_fleet_fleet_proto protoreflect.FileDescriptor
 
 const file_com_entwico_rootpuller_fleet_fleet_proto_rawDesc = "" +
@@ -1409,7 +1614,7 @@ const file_com_entwico_rootpuller_fleet_fleet_proto_rawDesc = "" +
 	"\vmeasured_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"measuredAt\x12\x1f\n" +
 	"\vguard_error\x18\b \x01(\tR\n" +
-	"guardError\"\xaa\x05\n" +
+	"guardError\"\x91\x06\n" +
 	"\x04Unit\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1a\n" +
 	"\bexecutor\x18\x02 \x01(\tR\bexecutor\x12\x18\n" +
@@ -1431,7 +1636,9 @@ const file_com_entwico_rootpuller_fleet_fleet_proto_rawDesc = "" +
 	"\n" +
 	"last_error\x18\x0f \x01(\tR\tlastError\x12?\n" +
 	"\x0ecold_start_p50\x18\x10 \x01(\v2\x19.google.protobuf.DurationR\fcoldStartP50\x12?\n" +
-	"\x0ecold_start_p95\x18\x11 \x01(\v2\x19.google.protobuf.DurationR\fcoldStartP95\"s\n" +
+	"\x0ecold_start_p95\x18\x11 \x01(\v2\x19.google.protobuf.DurationR\fcoldStartP95\x12=\n" +
+	"\fpinned_until\x18\x12 \x01(\v2\x1a.google.protobuf.TimestampR\vpinnedUntil\x12&\n" +
+	"\x0fpin_wait_reason\x18\x13 \x01(\tR\rpinWaitReason\"s\n" +
 	"\n" +
 	"Deployment\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x12\n" +
@@ -1517,7 +1724,16 @@ const file_com_entwico_rootpuller_fleet_fleet_proto_rawDesc = "" +
 	"\x05state\x18\x01 \x01(\v2(.com.entwico.rootpuller.fleet.FleetStateR\x05state\"\x13\n" +
 	"\x11WatchStateRequest\"T\n" +
 	"\x12WatchStateResponse\x12>\n" +
-	"\x05state\x18\x01 \x01(\v2(.com.entwico.rootpuller.fleet.FleetStateR\x05state*\x83\x01\n" +
+	"\x05state\x18\x01 \x01(\v2(.com.entwico.rootpuller.fleet.FleetStateR\x05state\"[\n" +
+	"\x0ePinUnitRequest\x12\x12\n" +
+	"\x04unit\x18\x01 \x01(\tR\x04unit\x125\n" +
+	"\bduration\x18\x02 \x01(\v2\x19.google.protobuf.DurationR\bduration\"I\n" +
+	"\x0fPinUnitResponse\x126\n" +
+	"\x04unit\x18\x01 \x01(\v2\".com.entwico.rootpuller.fleet.UnitR\x04unit\"&\n" +
+	"\x10UnpinUnitRequest\x12\x12\n" +
+	"\x04unit\x18\x01 \x01(\tR\x04unit\"K\n" +
+	"\x11UnpinUnitResponse\x126\n" +
+	"\x04unit\x18\x01 \x01(\v2\".com.entwico.rootpuller.fleet.UnitR\x04unit*\x83\x01\n" +
 	"\tUnitState\x12\x1a\n" +
 	"\x16UNIT_STATE_UNSPECIFIED\x10\x00\x12\x13\n" +
 	"\x0fUNIT_STATE_COLD\x10\x01\x12\x17\n" +
@@ -1535,11 +1751,13 @@ const file_com_entwico_rootpuller_fleet_fleet_proto_rawDesc = "" +
 	"\x12JOB_OUTCOME_FAILED\x10\x02\x12\x19\n" +
 	"\x15JOB_OUTCOME_CANCELLED\x10\x03\x12\x19\n" +
 	"\x15JOB_OUTCOME_ABANDONED\x10\x04\x12\x18\n" +
-	"\x14JOB_OUTCOME_REJECTED\x10\x052\xec\x01\n" +
+	"\x14JOB_OUTCOME_REJECTED\x10\x052\xc2\x03\n" +
 	"\fFleetService\x12i\n" +
 	"\bGetState\x12-.com.entwico.rootpuller.fleet.GetStateRequest\x1a..com.entwico.rootpuller.fleet.GetStateResponse\x12q\n" +
 	"\n" +
-	"WatchState\x12/.com.entwico.rootpuller.fleet.WatchStateRequest\x1a0.com.entwico.rootpuller.fleet.WatchStateResponse0\x01B\x95\x02\n" +
+	"WatchState\x12/.com.entwico.rootpuller.fleet.WatchStateRequest\x1a0.com.entwico.rootpuller.fleet.WatchStateResponse0\x01\x12f\n" +
+	"\aPinUnit\x12,.com.entwico.rootpuller.fleet.PinUnitRequest\x1a-.com.entwico.rootpuller.fleet.PinUnitResponse\x12l\n" +
+	"\tUnpinUnit\x12..com.entwico.rootpuller.fleet.UnpinUnitRequest\x1a/.com.entwico.rootpuller.fleet.UnpinUnitResponseB\x95\x02\n" +
 	" com.com.entwico.rootpuller.fleetB\n" +
 	"FleetProtoP\x01ZQgithub.com/entwico/rootpuller-sdk/internal/gen/proto/com/entwico/rootpuller/fleet\xa2\x02\x04CERF\xaa\x02\x1cCom.Entwico.Rootpuller.Fleet\xca\x02\x1cCom\\Entwico\\Rootpuller\\Fleet\xe2\x02(Com\\Entwico\\Rootpuller\\Fleet\\GPBMetadata\xea\x02\x1fCom::Entwico::Rootpuller::Fleetb\x06proto3"
 
@@ -1556,7 +1774,7 @@ func file_com_entwico_rootpuller_fleet_fleet_proto_rawDescGZIP() []byte {
 }
 
 var file_com_entwico_rootpuller_fleet_fleet_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
-var file_com_entwico_rootpuller_fleet_fleet_proto_msgTypes = make([]protoimpl.MessageInfo, 14)
+var file_com_entwico_rootpuller_fleet_fleet_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
 var file_com_entwico_rootpuller_fleet_fleet_proto_goTypes = []any{
 	(UnitState)(0),                // 0: com.entwico.rootpuller.fleet.UnitState
 	(JobClass)(0),                 // 1: com.entwico.rootpuller.fleet.JobClass
@@ -1575,53 +1793,65 @@ var file_com_entwico_rootpuller_fleet_fleet_proto_goTypes = []any{
 	(*GetStateResponse)(nil),      // 14: com.entwico.rootpuller.fleet.GetStateResponse
 	(*WatchStateRequest)(nil),     // 15: com.entwico.rootpuller.fleet.WatchStateRequest
 	(*WatchStateResponse)(nil),    // 16: com.entwico.rootpuller.fleet.WatchStateResponse
-	(*timestamppb.Timestamp)(nil), // 17: google.protobuf.Timestamp
-	(*durationpb.Duration)(nil),   // 18: google.protobuf.Duration
+	(*PinUnitRequest)(nil),        // 17: com.entwico.rootpuller.fleet.PinUnitRequest
+	(*PinUnitResponse)(nil),       // 18: com.entwico.rootpuller.fleet.PinUnitResponse
+	(*UnpinUnitRequest)(nil),      // 19: com.entwico.rootpuller.fleet.UnpinUnitRequest
+	(*UnpinUnitResponse)(nil),     // 20: com.entwico.rootpuller.fleet.UnpinUnitResponse
+	(*timestamppb.Timestamp)(nil), // 21: google.protobuf.Timestamp
+	(*durationpb.Duration)(nil),   // 22: google.protobuf.Duration
 }
 var file_com_entwico_rootpuller_fleet_fleet_proto_depIdxs = []int32{
-	17, // 0: com.entwico.rootpuller.fleet.Executor.measured_at:type_name -> google.protobuf.Timestamp
+	21, // 0: com.entwico.rootpuller.fleet.Executor.measured_at:type_name -> google.protobuf.Timestamp
 	0,  // 1: com.entwico.rootpuller.fleet.Unit.state:type_name -> com.entwico.rootpuller.fleet.UnitState
-	17, // 2: com.entwico.rootpuller.fleet.Unit.since:type_name -> google.protobuf.Timestamp
-	17, // 3: com.entwico.rootpuller.fleet.Unit.last_used_at:type_name -> google.protobuf.Timestamp
-	17, // 4: com.entwico.rootpuller.fleet.Unit.parks_at:type_name -> google.protobuf.Timestamp
-	18, // 5: com.entwico.rootpuller.fleet.Unit.cold_start_p50:type_name -> google.protobuf.Duration
-	18, // 6: com.entwico.rootpuller.fleet.Unit.cold_start_p95:type_name -> google.protobuf.Duration
-	5,  // 7: com.entwico.rootpuller.fleet.Worker.deployments:type_name -> com.entwico.rootpuller.fleet.Deployment
-	1,  // 8: com.entwico.rootpuller.fleet.Job.class:type_name -> com.entwico.rootpuller.fleet.JobClass
-	17, // 9: com.entwico.rootpuller.fleet.Job.enqueued_at:type_name -> google.protobuf.Timestamp
-	17, // 10: com.entwico.rootpuller.fleet.Job.started_at:type_name -> google.protobuf.Timestamp
-	1,  // 11: com.entwico.rootpuller.fleet.JobRecord.class:type_name -> com.entwico.rootpuller.fleet.JobClass
-	17, // 12: com.entwico.rootpuller.fleet.JobRecord.enqueued_at:type_name -> google.protobuf.Timestamp
-	17, // 13: com.entwico.rootpuller.fleet.JobRecord.started_at:type_name -> google.protobuf.Timestamp
-	17, // 14: com.entwico.rootpuller.fleet.JobRecord.ended_at:type_name -> google.protobuf.Timestamp
-	2,  // 15: com.entwico.rootpuller.fleet.JobRecord.outcome:type_name -> com.entwico.rootpuller.fleet.JobOutcome
-	17, // 16: com.entwico.rootpuller.fleet.Event.at:type_name -> google.protobuf.Timestamp
-	2,  // 17: com.entwico.rootpuller.fleet.OutcomeCount.outcome:type_name -> com.entwico.rootpuller.fleet.JobOutcome
-	10, // 18: com.entwico.rootpuller.fleet.WorkerStats.outcomes:type_name -> com.entwico.rootpuller.fleet.OutcomeCount
-	18, // 19: com.entwico.rootpuller.fleet.WorkerStats.wait_p50:type_name -> google.protobuf.Duration
-	18, // 20: com.entwico.rootpuller.fleet.WorkerStats.wait_p95:type_name -> google.protobuf.Duration
-	18, // 21: com.entwico.rootpuller.fleet.WorkerStats.run_p50:type_name -> google.protobuf.Duration
-	18, // 22: com.entwico.rootpuller.fleet.WorkerStats.run_p95:type_name -> google.protobuf.Duration
-	17, // 23: com.entwico.rootpuller.fleet.FleetState.at:type_name -> google.protobuf.Timestamp
-	3,  // 24: com.entwico.rootpuller.fleet.FleetState.executors:type_name -> com.entwico.rootpuller.fleet.Executor
-	4,  // 25: com.entwico.rootpuller.fleet.FleetState.units:type_name -> com.entwico.rootpuller.fleet.Unit
-	6,  // 26: com.entwico.rootpuller.fleet.FleetState.workers:type_name -> com.entwico.rootpuller.fleet.Worker
-	7,  // 27: com.entwico.rootpuller.fleet.FleetState.queue:type_name -> com.entwico.rootpuller.fleet.Job
-	7,  // 28: com.entwico.rootpuller.fleet.FleetState.running:type_name -> com.entwico.rootpuller.fleet.Job
-	8,  // 29: com.entwico.rootpuller.fleet.FleetState.recent_jobs:type_name -> com.entwico.rootpuller.fleet.JobRecord
-	9,  // 30: com.entwico.rootpuller.fleet.FleetState.events:type_name -> com.entwico.rootpuller.fleet.Event
-	11, // 31: com.entwico.rootpuller.fleet.FleetState.stats:type_name -> com.entwico.rootpuller.fleet.WorkerStats
-	12, // 32: com.entwico.rootpuller.fleet.GetStateResponse.state:type_name -> com.entwico.rootpuller.fleet.FleetState
-	12, // 33: com.entwico.rootpuller.fleet.WatchStateResponse.state:type_name -> com.entwico.rootpuller.fleet.FleetState
-	13, // 34: com.entwico.rootpuller.fleet.FleetService.GetState:input_type -> com.entwico.rootpuller.fleet.GetStateRequest
-	15, // 35: com.entwico.rootpuller.fleet.FleetService.WatchState:input_type -> com.entwico.rootpuller.fleet.WatchStateRequest
-	14, // 36: com.entwico.rootpuller.fleet.FleetService.GetState:output_type -> com.entwico.rootpuller.fleet.GetStateResponse
-	16, // 37: com.entwico.rootpuller.fleet.FleetService.WatchState:output_type -> com.entwico.rootpuller.fleet.WatchStateResponse
-	36, // [36:38] is the sub-list for method output_type
-	34, // [34:36] is the sub-list for method input_type
-	34, // [34:34] is the sub-list for extension type_name
-	34, // [34:34] is the sub-list for extension extendee
-	0,  // [0:34] is the sub-list for field type_name
+	21, // 2: com.entwico.rootpuller.fleet.Unit.since:type_name -> google.protobuf.Timestamp
+	21, // 3: com.entwico.rootpuller.fleet.Unit.last_used_at:type_name -> google.protobuf.Timestamp
+	21, // 4: com.entwico.rootpuller.fleet.Unit.parks_at:type_name -> google.protobuf.Timestamp
+	22, // 5: com.entwico.rootpuller.fleet.Unit.cold_start_p50:type_name -> google.protobuf.Duration
+	22, // 6: com.entwico.rootpuller.fleet.Unit.cold_start_p95:type_name -> google.protobuf.Duration
+	21, // 7: com.entwico.rootpuller.fleet.Unit.pinned_until:type_name -> google.protobuf.Timestamp
+	5,  // 8: com.entwico.rootpuller.fleet.Worker.deployments:type_name -> com.entwico.rootpuller.fleet.Deployment
+	1,  // 9: com.entwico.rootpuller.fleet.Job.class:type_name -> com.entwico.rootpuller.fleet.JobClass
+	21, // 10: com.entwico.rootpuller.fleet.Job.enqueued_at:type_name -> google.protobuf.Timestamp
+	21, // 11: com.entwico.rootpuller.fleet.Job.started_at:type_name -> google.protobuf.Timestamp
+	1,  // 12: com.entwico.rootpuller.fleet.JobRecord.class:type_name -> com.entwico.rootpuller.fleet.JobClass
+	21, // 13: com.entwico.rootpuller.fleet.JobRecord.enqueued_at:type_name -> google.protobuf.Timestamp
+	21, // 14: com.entwico.rootpuller.fleet.JobRecord.started_at:type_name -> google.protobuf.Timestamp
+	21, // 15: com.entwico.rootpuller.fleet.JobRecord.ended_at:type_name -> google.protobuf.Timestamp
+	2,  // 16: com.entwico.rootpuller.fleet.JobRecord.outcome:type_name -> com.entwico.rootpuller.fleet.JobOutcome
+	21, // 17: com.entwico.rootpuller.fleet.Event.at:type_name -> google.protobuf.Timestamp
+	2,  // 18: com.entwico.rootpuller.fleet.OutcomeCount.outcome:type_name -> com.entwico.rootpuller.fleet.JobOutcome
+	10, // 19: com.entwico.rootpuller.fleet.WorkerStats.outcomes:type_name -> com.entwico.rootpuller.fleet.OutcomeCount
+	22, // 20: com.entwico.rootpuller.fleet.WorkerStats.wait_p50:type_name -> google.protobuf.Duration
+	22, // 21: com.entwico.rootpuller.fleet.WorkerStats.wait_p95:type_name -> google.protobuf.Duration
+	22, // 22: com.entwico.rootpuller.fleet.WorkerStats.run_p50:type_name -> google.protobuf.Duration
+	22, // 23: com.entwico.rootpuller.fleet.WorkerStats.run_p95:type_name -> google.protobuf.Duration
+	21, // 24: com.entwico.rootpuller.fleet.FleetState.at:type_name -> google.protobuf.Timestamp
+	3,  // 25: com.entwico.rootpuller.fleet.FleetState.executors:type_name -> com.entwico.rootpuller.fleet.Executor
+	4,  // 26: com.entwico.rootpuller.fleet.FleetState.units:type_name -> com.entwico.rootpuller.fleet.Unit
+	6,  // 27: com.entwico.rootpuller.fleet.FleetState.workers:type_name -> com.entwico.rootpuller.fleet.Worker
+	7,  // 28: com.entwico.rootpuller.fleet.FleetState.queue:type_name -> com.entwico.rootpuller.fleet.Job
+	7,  // 29: com.entwico.rootpuller.fleet.FleetState.running:type_name -> com.entwico.rootpuller.fleet.Job
+	8,  // 30: com.entwico.rootpuller.fleet.FleetState.recent_jobs:type_name -> com.entwico.rootpuller.fleet.JobRecord
+	9,  // 31: com.entwico.rootpuller.fleet.FleetState.events:type_name -> com.entwico.rootpuller.fleet.Event
+	11, // 32: com.entwico.rootpuller.fleet.FleetState.stats:type_name -> com.entwico.rootpuller.fleet.WorkerStats
+	12, // 33: com.entwico.rootpuller.fleet.GetStateResponse.state:type_name -> com.entwico.rootpuller.fleet.FleetState
+	12, // 34: com.entwico.rootpuller.fleet.WatchStateResponse.state:type_name -> com.entwico.rootpuller.fleet.FleetState
+	22, // 35: com.entwico.rootpuller.fleet.PinUnitRequest.duration:type_name -> google.protobuf.Duration
+	4,  // 36: com.entwico.rootpuller.fleet.PinUnitResponse.unit:type_name -> com.entwico.rootpuller.fleet.Unit
+	4,  // 37: com.entwico.rootpuller.fleet.UnpinUnitResponse.unit:type_name -> com.entwico.rootpuller.fleet.Unit
+	13, // 38: com.entwico.rootpuller.fleet.FleetService.GetState:input_type -> com.entwico.rootpuller.fleet.GetStateRequest
+	15, // 39: com.entwico.rootpuller.fleet.FleetService.WatchState:input_type -> com.entwico.rootpuller.fleet.WatchStateRequest
+	17, // 40: com.entwico.rootpuller.fleet.FleetService.PinUnit:input_type -> com.entwico.rootpuller.fleet.PinUnitRequest
+	19, // 41: com.entwico.rootpuller.fleet.FleetService.UnpinUnit:input_type -> com.entwico.rootpuller.fleet.UnpinUnitRequest
+	14, // 42: com.entwico.rootpuller.fleet.FleetService.GetState:output_type -> com.entwico.rootpuller.fleet.GetStateResponse
+	16, // 43: com.entwico.rootpuller.fleet.FleetService.WatchState:output_type -> com.entwico.rootpuller.fleet.WatchStateResponse
+	18, // 44: com.entwico.rootpuller.fleet.FleetService.PinUnit:output_type -> com.entwico.rootpuller.fleet.PinUnitResponse
+	20, // 45: com.entwico.rootpuller.fleet.FleetService.UnpinUnit:output_type -> com.entwico.rootpuller.fleet.UnpinUnitResponse
+	42, // [42:46] is the sub-list for method output_type
+	38, // [38:42] is the sub-list for method input_type
+	38, // [38:38] is the sub-list for extension type_name
+	38, // [38:38] is the sub-list for extension extendee
+	0,  // [0:38] is the sub-list for field type_name
 }
 
 func init() { file_com_entwico_rootpuller_fleet_fleet_proto_init() }
@@ -1635,7 +1865,7 @@ func file_com_entwico_rootpuller_fleet_fleet_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_com_entwico_rootpuller_fleet_fleet_proto_rawDesc), len(file_com_entwico_rootpuller_fleet_fleet_proto_rawDesc)),
 			NumEnums:      3,
-			NumMessages:   14,
+			NumMessages:   18,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

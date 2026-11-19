@@ -19,11 +19,16 @@ var errFleetDenied = errors.New("the fleet state needs the rootpuller:fleet:read
 
 // Fleet is a facade-typed fake FleetService. GetState answers the last of
 // States (an empty state without any); WatchState streams States in order and
-// then stays open until the client leaves, as the real server does. Denied
-// fails both with PermissionDenied, like a token without the read scope.
+// then stays open until the client leaves, as the real server does. PinFunc
+// and UnpinFunc answer PinUnit and UnpinUnit; without them a pin answers a
+// warm unit pinned for the requested time and an unpin the same unit without
+// a pin. Denied fails every call with PermissionDenied, like a token without
+// the read scope.
 type Fleet struct {
-	States []fleet.State
-	Denied bool
+	States    []fleet.State
+	PinFunc   func(unit string, d time.Duration) (fleet.Unit, error)
+	UnpinFunc func(unit string) (fleet.Unit, error)
+	Denied    bool
 }
 
 func (f *Fleet) register(mux *http.ServeMux) {
@@ -72,6 +77,41 @@ func (h *fleetHandler) WatchState(
 	return nil
 }
 
+func (h *fleetHandler) PinUnit(_ context.Context, req *connect.Request[fleetpb.PinUnitRequest]) (*connect.Response[fleetpb.PinUnitResponse], error) {
+	if h.fake.Denied {
+		return nil, connect.NewError(connect.CodePermissionDenied, errFleetDenied)
+	}
+
+	d := req.Msg.GetDuration().AsDuration()
+	u := fleet.Unit{Name: req.Msg.GetUnit(), Managed: true, State: fleet.UnitWarm, PinnedUntil: time.Now().Add(d)}
+
+	if h.fake.PinFunc != nil {
+		var err error
+		if u, err = h.fake.PinFunc(req.Msg.GetUnit(), d); err != nil {
+			return nil, err
+		}
+	}
+
+	return connect.NewResponse(&fleetpb.PinUnitResponse{Unit: fleetUnitToProto(u)}), nil
+}
+
+func (h *fleetHandler) UnpinUnit(_ context.Context, req *connect.Request[fleetpb.UnpinUnitRequest]) (*connect.Response[fleetpb.UnpinUnitResponse], error) {
+	if h.fake.Denied {
+		return nil, connect.NewError(connect.CodePermissionDenied, errFleetDenied)
+	}
+
+	u := fleet.Unit{Name: req.Msg.GetUnit(), Managed: true, State: fleet.UnitWarm}
+
+	if h.fake.UnpinFunc != nil {
+		var err error
+		if u, err = h.fake.UnpinFunc(req.Msg.GetUnit()); err != nil {
+			return nil, err
+		}
+	}
+
+	return connect.NewResponse(&fleetpb.UnpinUnitResponse{Unit: fleetUnitToProto(u)}), nil
+}
+
 func fleetTime(t time.Time) *timestamppb.Timestamp {
 	if t.IsZero() {
 		return nil
@@ -109,6 +149,18 @@ var (
 )
 
 //nolint:gosec // counts in a fake state are small
+func fleetUnitToProto(u fleet.Unit) *fleetpb.Unit {
+	return &fleetpb.Unit{
+		Name: u.Name, Executor: u.Executor, Managed: u.Managed, State: fleetUnitStates[u.State],
+		Since: fleetTime(u.Since), GpuMemoryBytes: u.GPUMemoryBytes, Jobs: int32(u.Jobs), Probes: int32(u.Probes),
+		LastUsedAt: fleetTime(u.LastUsedAt), ParksAt: fleetTime(u.ParksAt), DrainedForJob: u.DrainedForJob,
+		HeldReason: u.HeldReason, Starts: int32(u.Starts), Failures: int32(u.Failures), LastError: u.LastError,
+		ColdStartP50: fleetDuration(u.ColdStartP50), ColdStartP95: fleetDuration(u.ColdStartP95),
+		PinnedUntil: fleetTime(u.PinnedUntil), PinWaitReason: u.PinWaitReason,
+	}
+}
+
+//nolint:gosec // counts in a fake state are small
 func fleetStateToProto(s fleet.State) *fleetpb.FleetState {
 	out := &fleetpb.FleetState{At: fleetTime(s.At)}
 
@@ -121,13 +173,7 @@ func fleetStateToProto(s fleet.State) *fleetpb.FleetState {
 	}
 
 	for _, u := range s.Units {
-		out.Units = append(out.Units, &fleetpb.Unit{
-			Name: u.Name, Executor: u.Executor, Managed: u.Managed, State: fleetUnitStates[u.State],
-			Since: fleetTime(u.Since), GpuMemoryBytes: u.GPUMemoryBytes, Jobs: int32(u.Jobs), Probes: int32(u.Probes),
-			LastUsedAt: fleetTime(u.LastUsedAt), ParksAt: fleetTime(u.ParksAt), DrainedForJob: u.DrainedForJob,
-			HeldReason: u.HeldReason, Starts: int32(u.Starts), Failures: int32(u.Failures), LastError: u.LastError,
-			ColdStartP50: fleetDuration(u.ColdStartP50), ColdStartP95: fleetDuration(u.ColdStartP95),
-		})
+		out.Units = append(out.Units, fleetUnitToProto(u))
 	}
 
 	for _, w := range s.Workers {

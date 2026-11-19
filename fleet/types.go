@@ -112,6 +112,11 @@ type Unit struct {
 
 	ColdStartP50 time.Duration
 	ColdStartP95 time.Duration
+
+	// PinnedUntil is when the unit's pin ends; zero when it is not pinned.
+	PinnedUntil time.Time
+	// PinWaitReason says why a pinned unit has not been started yet.
+	PinWaitReason string
 }
 
 // Worker is one kind of work and its deployments, default first.
@@ -233,6 +238,30 @@ func durationOf(d *durationpb.Duration) time.Duration {
 	return d.AsDuration()
 }
 
+func unitFromProto(u *fleetpb.Unit) Unit {
+	return Unit{
+		Name:           u.GetName(),
+		Executor:       u.GetExecutor(),
+		Managed:        u.GetManaged(),
+		State:          unitStates[u.GetState()],
+		Since:          timeOf(u.GetSince()),
+		GPUMemoryBytes: u.GetGpuMemoryBytes(),
+		Jobs:           int(u.GetJobs()),
+		Probes:         int(u.GetProbes()),
+		LastUsedAt:     timeOf(u.GetLastUsedAt()),
+		ParksAt:        timeOf(u.GetParksAt()),
+		DrainedForJob:  u.GetDrainedForJob(),
+		HeldReason:     u.GetHeldReason(),
+		Starts:         int(u.GetStarts()),
+		Failures:       int(u.GetFailures()),
+		LastError:      u.GetLastError(),
+		ColdStartP50:   durationOf(u.GetColdStartP50()),
+		ColdStartP95:   durationOf(u.GetColdStartP95()),
+		PinnedUntil:    timeOf(u.GetPinnedUntil()),
+		PinWaitReason:  u.GetPinWaitReason(),
+	}
+}
+
 func stateFromProto(pb *fleetpb.FleetState) State {
 	s := State{At: timeOf(pb.GetAt())}
 
@@ -250,25 +279,7 @@ func stateFromProto(pb *fleetpb.FleetState) State {
 	}
 
 	for _, u := range pb.GetUnits() {
-		s.Units = append(s.Units, Unit{
-			Name:           u.GetName(),
-			Executor:       u.GetExecutor(),
-			Managed:        u.GetManaged(),
-			State:          unitStates[u.GetState()],
-			Since:          timeOf(u.GetSince()),
-			GPUMemoryBytes: u.GetGpuMemoryBytes(),
-			Jobs:           int(u.GetJobs()),
-			Probes:         int(u.GetProbes()),
-			LastUsedAt:     timeOf(u.GetLastUsedAt()),
-			ParksAt:        timeOf(u.GetParksAt()),
-			DrainedForJob:  u.GetDrainedForJob(),
-			HeldReason:     u.GetHeldReason(),
-			Starts:         int(u.GetStarts()),
-			Failures:       int(u.GetFailures()),
-			LastError:      u.GetLastError(),
-			ColdStartP50:   durationOf(u.GetColdStartP50()),
-			ColdStartP95:   durationOf(u.GetColdStartP95()),
-		})
+		s.Units = append(s.Units, unitFromProto(u))
 	}
 
 	for _, w := range pb.GetWorkers() {
