@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.18.0 (2026-11-19)
+
+### Minor Changes
+
+- `fleet.Service.PinUnit` and `UnpinUnit` keep a unit running for up to 12h, whatever its idle time, for using a worker such as ComfyUI directly; `Unit.PinnedUntil` and `Unit.PinWaitReason` show pins in the state. Needs rootpuller-api with fleet pins. `rootpullertest.Fleet` answers the pin calls (`PinFunc`, `UnpinFunc`).
+
 ## v0.17.0 (2026-11-16)
 
 ### Minor Changes
